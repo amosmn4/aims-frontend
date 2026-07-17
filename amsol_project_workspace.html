@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AMSOL — Project Workspace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16233F; --ink-2:#1F3157; --paper:#F1F2EC; --paper-2:#FFFFFF;
+  --line:#DBDED2; --line-soft:#E8E9E2; --slate:#5B6470; --slate-light:#8B93A0;
+  --gold:#B4802A; --gold-soft:#F3E4C6; --teal:#2F6F62; --teal-soft:#DCEAE5;
+  --coral:#AE4A3C; --coral-soft:#F5DEDA; --blue:#375D8A; --blue-soft:#DCE5F0;
+  --purple:#6B5490; --purple-soft:#E6E0EF; --amber:#C08A2E; --amber-soft:#F3E9CE;
+  --font-display:'Fraunces',serif; --font-body:'IBM Plex Sans',sans-serif; --font-mono:'IBM Plex Mono',monospace;
+  --shadow-card:0 1px 2px rgba(22,35,63,0.06), 0 1px 1px rgba(22,35,63,0.04);
+  --shadow-float:0 12px 32px rgba(22,35,63,0.18);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{font-family:var(--font-body);background:var(--paper);color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased;}
+button{font-family:inherit;}
+::selection{background:var(--gold-soft);}
+
+/* topbar */
+.topbar{background:var(--ink);color:#fff;padding:0 22px;display:flex;align-items:center;gap:18px;height:58px;position:sticky;top:0;z-index:50;box-shadow:0 2px 12px rgba(0,0,0,.15);}
+.brand{display:flex;align-items:baseline;gap:8px;font-family:var(--font-display);font-size:19px;font-weight:700;}
+.brand .mark{width:25px;height:25px;border-radius:6px;background:linear-gradient(135deg,var(--gold),#8C5F1D);display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-body);font-weight:700;font-size:12.5px;color:#1a1200;}
+.brand small{font-family:var(--font-mono);font-size:9.5px;color:#9FA8C0;font-weight:400;}
+.proj-switch{background:rgba(255,255,255,0.09);border:1px solid rgba(255,255,255,0.14);color:#fff;border-radius:9px;padding:7px 12px;font-size:13px;font-family:inherit;}
+.proj-switch option{color:#111;}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--teal);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);}
+
+/* project header */
+.projhead{max-width:1500px;margin:0 auto;padding:20px 26px 0;}
+.ph-row{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;}
+.ph-left h1{font-family:var(--font-display);font-size:25px;margin:0 0 5px;}
+.ph-meta{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--slate);}
+.chip{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center;gap:4px;}
+.health-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+.ph-stats{display:flex;gap:14px;}
+.ph-stat{background:var(--paper-2);border:1px solid var(--line);border-radius:12px;padding:10px 16px;text-align:center;min-width:88px;}
+.ph-stat .n{font-family:var(--font-mono);font-size:18px;font-weight:600;}
+.ph-stat .l{font-size:10px;color:var(--slate-light);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
+.ring-wrap{position:relative;width:64px;height:64px;}
+.ring-wrap svg{transform:rotate(-90deg);}
+.ring-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:14px;font-weight:600;}
+
+/* tabs */
+.tabbar{max-width:1500px;margin:16px auto 0;padding:0 26px;display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto;}
+.tabbtn{background:none;border:none;padding:11px 14px;font-size:13px;font-weight:600;color:var(--slate);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
+.tabbtn.active{color:var(--ink);border-color:var(--gold);}
+.tabbtn:hover{color:var(--ink);}
+
+.wrap{max-width:1500px;margin:0 auto;padding:20px 26px 60px;}
+.pane{display:none;}
+.pane.active{display:block;}
+.panel{background:var(--paper-2);border:1px solid var(--line);border-radius:14px;padding:18px 20px;}
+.panel + .panel{margin-top:14px;}
+.panel h3{font-family:var(--font-display);font-size:16px;margin:0 0 12px;display:flex;align-items:center;justify-content:space-between;}
+.section-label{font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--slate-light);margin:4px 0 10px;}
+.btn{border:1px solid var(--line);background:var(--paper-2);color:var(--ink);padding:8px 13px;border-radius:9px;font-size:12.8px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+.btn:hover{border-color:var(--slate-light);}
+.btn-primary{background:var(--ink);color:#fff;border-color:var(--ink);}
+.btn-primary:hover{background:var(--ink-2);}
+.btn-sm{padding:5px 10px;font-size:11.8px;border-radius:7px;}
+.seg{display:flex;background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:2px;}
+.seg button{border:none;background:none;padding:6px 12px;font-size:12px;font-weight:600;color:var(--slate);border-radius:7px;cursor:pointer;}
+.seg button.active{background:var(--paper-2);color:var(--ink);box-shadow:var(--shadow-card);}
+
+/* Overview grid */
+.ov-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;}
+.metric-card{background:var(--paper-2);border:1px solid var(--line);border-radius:14px;padding:16px 18px;}
+.metric-card .label{font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--slate-light);}
+.metric-card .num{font-family:var(--font-display);font-size:24px;font-weight:600;margin:6px 0 4px;}
+.metric-card .sub{font-size:11.5px;color:var(--slate);}
+.bar-track{background:var(--line-soft);border-radius:6px;height:8px;overflow:hidden;margin-top:8px;}
+.bar-fill{height:100%;border-radius:6px;}
+.two-col{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;}
+.milestone-strip{display:flex;gap:10px;overflow-x:auto;padding:4px 0;}
+.ms-item{flex:0 0 168px;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 13px;}
+.ms-item .d{font-family:var(--font-mono);font-size:10.5px;color:var(--slate-light);}
+.ms-item .t{font-size:12.5px;font-weight:600;margin:5px 0 8px;line-height:1.35;}
+.ms-status{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;display:inline-block;}
+.donut-legend{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
+.dl-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--slate);}
+.dl-dot{width:8px;height:8px;border-radius:50%;}
+.dl-num{margin-left:auto;font-family:var(--font-mono);font-weight:600;color:var(--ink);}
+
+/* Tasks */
+.wbs-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line-soft);font-size:12.8px;}
+.wbs-phase{font-weight:700;background:var(--paper);padding:8px 6px;border-radius:8px;margin-top:10px;font-size:12.5px;color:var(--ink-2);}
+.wbs-name{flex:1;}
+.wbs-name .sub{font-size:10.5px;color:var(--slate-light);margin-top:1px;}
+.status-pill{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap;}
+.priority-pill{font-size:10px;font-weight:600;padding:2px 7px;border-radius:6px;}
+.prog-mini{width:70px;background:var(--line-soft);border-radius:5px;height:6px;overflow:hidden;}
+.prog-mini-fill{height:100%;background:var(--teal);border-radius:5px;}
+.mini-avatar{width:22px;height:22px;border-radius:50%;background:var(--ink-2);color:#fff;font-size:9.5px;font-weight:600;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);flex:none;}
+
+.kanban-board{display:flex;gap:12px;overflow-x:auto;}
+.kcol{flex:0 0 230px;background:rgba(219,222,210,0.28);border-radius:12px;padding:10px 8px;}
+.kcol-head{display:flex;justify-content:space-between;align-items:center;padding:2px 6px 8px;font-size:12px;font-weight:600;}
+.kcard{background:var(--paper-2);border:1px solid var(--line);border-radius:10px;padding:10px 11px;margin-bottom:8px;cursor:grab;box-shadow:var(--shadow-card);font-size:12.3px;}
+.kcard.dragging{opacity:.35;}
+.kcol.dragover{outline:2px dashed var(--gold);outline-offset:-2px;}
+.kcard .t{font-weight:600;margin-bottom:6px;line-height:1.35;}
+.kcard-foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;}
+
+/* Gantt */
+.gantt-wrap{overflow-x:auto;}
+.gantt{min-width:900px;}
+.gantt-header{display:flex;border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:6px;position:relative;margin-left:220px;}
+.gantt-header span{flex:1;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--slate-light);}
+.grow{display:flex;align-items:center;border-bottom:1px solid var(--line-soft);height:34px;}
+.grow-label{flex:0 0 220px;font-size:12px;padding-right:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.grow-label.phase{font-weight:700;color:var(--ink-2);}
+.gtrack{position:relative;flex:1;height:100%;}
+.gbar{position:absolute;top:8px;height:18px;border-radius:5px;font-size:9.5px;color:#fff;display:flex;align-items:center;padding:0 7px;white-space:nowrap;overflow:hidden;}
+.gmilestone{position:absolute;top:6px;width:14px;height:14px;background:var(--gold);transform:translateX(-50%) rotate(45deg);border-radius:2px;}
+.gtoday{position:absolute;top:0;bottom:0;width:2px;background:var(--coral);z-index:2;}
+.gtoday-label{position:absolute;top:-16px;font-size:9px;font-family:var(--font-mono);color:var(--coral);transform:translateX(-50%);}
+.crit{box-shadow:0 0 0 2px var(--coral) inset;}
+
+/* Team */
+.team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;}
+.team-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px;}
+.team-top{display:flex;gap:10px;align-items:center;}
+.team-av{width:36px;height:36px;border-radius:50%;background:var(--ink-2);color:#fff;font-family:var(--font-mono);font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none;}
+.team-name{font-size:13px;font-weight:600;}
+.team-role{font-size:11px;color:var(--slate);}
+.alloc-track{background:var(--line-soft);height:7px;border-radius:5px;margin-top:10px;overflow:hidden;}
+.alloc-fill{height:100%;border-radius:5px;}
+table.raci{width:100%;border-collapse:collapse;font-size:12px;}
+table.raci th,table.raci td{border:1px solid var(--line);padding:8px 10px;text-align:center;}
+table.raci th{background:var(--paper);font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--slate);}
+table.raci td:first-child, table.raci th:first-child{text-align:left;font-weight:600;}
+.raci-tag{display:inline-block;width:22px;height:22px;border-radius:50%;font-size:10.5px;font-weight:700;line-height:22px;}
+
+/* Financials */
+.fin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+.evm-bars{display:flex;flex-direction:column;gap:12px;margin-top:14px;}
+.evm-row{display:flex;align-items:center;gap:10px;}
+.evm-label{width:150px;font-size:12px;color:var(--slate);flex:none;}
+.evm-track{flex:1;background:var(--line-soft);height:14px;border-radius:6px;overflow:hidden;}
+.evm-fill{height:100%;border-radius:6px;}
+.evm-val{width:110px;text-align:right;font-family:var(--font-mono);font-size:12px;flex:none;}
+table.costs{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px;}
+table.costs th,table.costs td{padding:9px 8px;border-bottom:1px solid var(--line-soft);text-align:left;}
+table.costs th{font-size:10.5px;text-transform:uppercase;color:var(--slate-light);font-family:var(--font-mono);font-weight:500;}
+table.costs td.num, table.costs th.num{text-align:right;font-family:var(--font-mono);}
+
+/* Calendar */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+.cal-dow{font-size:10.5px;text-transform:uppercase;color:var(--slate-light);text-align:center;font-family:var(--font-mono);padding-bottom:4px;}
+.cal-cell{min-height:78px;border:1px solid var(--line-soft);border-radius:8px;padding:5px 6px;font-size:10.5px;background:var(--paper);}
+.cal-cell.today{border-color:var(--gold);background:var(--gold-soft);}
+.cal-cell .dnum{font-family:var(--font-mono);color:var(--slate-light);font-size:10px;}
+.cal-ev{margin-top:3px;padding:2px 5px;border-radius:5px;font-size:9.5px;font-weight:600;line-height:1.3;}
+
+/* Communications */
+.log-entry{display:flex;gap:10px;padding:11px 0;border-bottom:1px solid var(--line-soft);}
+.log-icon{width:28px;height:28px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:12.5px;}
+.log-body{font-size:12.5px;flex:1;}
+.log-body .lb-top{display:flex;justify-content:space-between;gap:8px;}
+.log-body .who{font-weight:600;}
+.log-body .when{font-family:var(--font-mono);font-size:10.5px;color:var(--slate-light);}
+.log-body .text{color:var(--slate);margin-top:2px;line-height:1.5;}
+.add-log{display:flex;gap:8px;margin-top:12px;}
+.add-log select,.add-log input{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:inherit;}
+.add-log select{flex:0 0 108px;}
+.add-log input{flex:1;}
+
+/* RAID */
+table.raid{width:100%;border-collapse:collapse;font-size:12.3px;}
+table.raid th,table.raid td{padding:9px 8px;border-bottom:1px solid var(--line-soft);text-align:left;vertical-align:top;}
+table.raid th{font-size:10.5px;text-transform:uppercase;color:var(--slate-light);font-family:var(--font-mono);font-weight:500;}
+.raid-type{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:6px;}
+.sev-pill{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;}
+
+.toast-wrap{position:fixed;bottom:20px;right:20px;z-index:90;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--ink);color:#fff;padding:10px 15px;border-radius:10px;font-size:12.5px;box-shadow:var(--shadow-float);display:flex;align-items:center;gap:8px;animation:ti .2s ease;}
+@keyframes ti{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.toast .dot{width:7px;height:7px;border-radius:50%;background:var(--teal);flex:none;}
+
+@media (max-width:900px){
+  .ov-grid,.fin-grid{grid-template-columns:1fr 1fr;}
+  .two-col{grid-template-columns:1fr;}
+  .ph-stats{flex-wrap:wrap;}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="mark">A</span>AMSOL <small>PROJECT WORKSPACE</small></div>
+  <select class="proj-switch" id="proj-switch" onchange="switchProject(this.value)"></select>
+  <div class="topbar-right"><div class="avatar">SM</div></div>
+</div>
+
+<div class="projhead">
+  <div class="ph-row">
+    <div class="ph-left">
+      <h1 id="p-name"></h1>
+      <div class="ph-meta" id="p-meta"></div>
+    </div>
+    <div class="ph-stats" id="p-stats"></div>
+  </div>
+</div>
+
+<div class="tabbar" id="tabbar">
+  <button class="tabbtn active" data-pane="overview">Overview</button>
+  <button class="tabbtn" data-pane="tasks">Tasks</button>
+  <button class="tabbtn" data-pane="gantt">Gantt &amp; Timeline</button>
+  <button class="tabbtn" data-pane="team">Team &amp; Resources</button>
+  <button class="tabbtn" data-pane="financials">Financials</button>
+  <button class="tabbtn" data-pane="calendar">Calendar</button>
+  <button class="tabbtn" data-pane="comms">Communications</button>
+  <button class="tabbtn" data-pane="raid">Risks &amp; Issues</button>
+</div>
+
+<div class="wrap">
+  <div class="pane active" id="pane-overview"></div>
+  <div class="pane" id="pane-tasks"></div>
+  <div class="pane" id="pane-gantt"></div>
+  <div class="pane" id="pane-team"></div>
+  <div class="pane" id="pane-financials"></div>
+  <div class="pane" id="pane-calendar"></div>
+  <div class="pane" id="pane-comms"></div>
+  <div class="pane" id="pane-raid"></div>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+/* ============================================================
+   CONSTANTS
+============================================================ */
+const TODAY = new Date('2026-07-14');
+const STATUS_COLORS = { todo:'#8B93A0', inprogress:'#B4802A', review:'#375D8A', blocked:'#AE4A3C', done:'#2F6F62' };
+const STATUS_LABELS = { todo:'To Do', inprogress:'In Progress', review:'In Review', blocked:'Blocked', done:'Done' };
+const PRIORITY_COLORS = { low:{bg:'#E6E0EF',text:'#6B5490'}, medium:{bg:'#F3E4C6',text:'#8C5F1D'}, high:{bg:'#F5DEDA',text:'#AE4A3C'} };
+const HEALTH = { green:{color:'#2F6F62',label:'On Track'}, amber:{color:'#B4802A',label:'At Risk'}, red:{color:'#AE4A3C',label:'Off Track'} };
+function money(n){ return 'KES ' + Math.round(n).toLocaleString('en-KE'); }
+function initials(s){ return s.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
+function fmtDate(d){ return new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
+function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
+function toast(msg){
+  const wrap = document.getElementById('toast-wrap');
+  const t=document.createElement('div'); t.className='toast'; t.innerHTML=`<span class="dot"></span>${msg}`;
+  wrap.appendChild(t);
+  setTimeout(()=>{t.style.transition='opacity .3s';t.style.opacity='0';setTimeout(()=>t.remove(),300);},3000);
+}
+
+/* ============================================================
+   SEED DATA — TWO PROJECTS
+============================================================ */
+let tId=1;
+const T = (name,phase,assignee,status,priority,start,end,est,act,deps)=>({
+  id:'T-'+(tId++), name, phase, assignee, status, priority, start, end, est, act, deps:deps||[]
+});
+
+const PROJECTS = {
+  equity:{
+    id:'PRJ-1002', name:'Equity Group Staffing Framework', client:'Equity Group Foundation',
+    dept:'HR & Recruitment', methodology:'Waterfall + Kanban delivery', health:'amber',
+    start:'2026-06-01', end:'2026-08-15', budget:9800000, committed:7200000, actual:4900000,
+    manager:'Amina N.',
+    phases:['Mobilization & Planning','Recruitment & Selection','Deployment','Stabilization & Handover'],
+    tasks:[
+      T('Kickoff meeting with client HR team','Mobilization & Planning','Amina N.','done','medium','2026-06-01','2026-06-02',4,4),
+      T('Branch mapping & staffing plan','Mobilization & Planning','Amina N.','done','high','2026-06-02','2026-06-08',24,26),
+      T('Client sign-off on selection criteria','Mobilization & Planning','Faith O.','done','medium','2026-06-08','2026-06-14',8,7,['T-2']),
+      T('Job postings & sourcing','Recruitment & Selection','Brian K.','done','medium','2026-06-15','2026-06-22',20,22),
+      T('Screening & shortlisting','Recruitment & Selection','Brian K.','done','high','2026-06-22','2026-06-29',30,33,['T-4']),
+      T('Interviews — Branches 1–6','Recruitment & Selection','Brian K.','done','high','2026-06-29','2026-07-05',26,28,['T-5']),
+      T('Interviews — Branches 7–12','Recruitment & Selection','Faith O.','inprogress','high','2026-07-05','2026-07-16',26,14,['T-5']),
+      T('Background & reference checks','Recruitment & Selection','Metropol Vetting (ext.)','inprogress','medium','2026-07-08','2026-07-18',18,9,['T-6']),
+      T('Offer letters & contracts','Deployment','Amina N.','inprogress','high','2026-07-14','2026-07-20',12,4,['T-7','T-8']),
+      T('Onboarding — Batch 1 (Branches 1–6)','Deployment','Faith O.','todo','medium','2026-07-18','2026-07-22',16,0,['T-9']),
+      T('Onboarding — Batch 2 (Branches 7–12)','Deployment','Faith O.','todo','medium','2026-07-22','2026-07-25',16,0,['T-10']),
+      T('Branch deployment & induction','Deployment','Brian K.','todo','high','2026-07-22','2026-07-25',20,0,['T-10','T-11']),
+      T('30-day performance check-in','Stabilization & Handover','Amina N.','todo','low','2026-08-01','2026-08-05',8,0,['T-12']),
+      T('Client satisfaction review','Stabilization & Handover','Amina N.','todo','medium','2026-08-05','2026-08-10',6,0,['T-13']),
+      T('Final handover report','Stabilization & Handover','Amina N.','todo','medium','2026-08-10','2026-08-15',10,0,['T-14'])
+    ],
+    milestones:[
+      {name:'Kickoff Complete', date:'2026-06-02', status:'done'},
+      {name:'Recruitment Complete', date:'2026-07-16', status:'atrisk'},
+      {name:'All Staff Deployed', date:'2026-07-25', status:'upcoming'},
+      {name:'Project Closure', date:'2026-08-15', status:'upcoming'}
+    ],
+    team:[
+      {name:'Amina N.', role:'Project Lead, HR & Recruitment', type:'internal', allocation:70, hours:96},
+      {name:'Brian K.', role:'Senior Recruiter', type:'internal', allocation:90, hours:140},
+      {name:'Faith O.', role:'HR Coordinator', type:'internal', allocation:60, hours:78},
+      {name:'Metropol Vetting Services', role:'Background & Reference Checks', type:'external', allocation:30, hours:22},
+      {name:'Client HR Director (Equity)', role:'Client Sponsor', type:'external', allocation:15, hours:10}
+    ],
+    raci:[
+      {deliverable:'Staffing Plan & Branch Mapping', r:'Amina N.', a:'Amina N.', c:'Client HR Director', i:'Brian K., Faith O.'},
+      {deliverable:'Candidate Shortlist', r:'Brian K.', a:'Amina N.', c:'Faith O.', i:'Client HR Director'},
+      {deliverable:'Client Sign-off / Selection Criteria', r:'Faith O.', a:'Amina N.', c:'Client HR Director', i:'Brian K.'},
+      {deliverable:'Final Handover Report', r:'Amina N.', a:'Amina N.', c:'Brian K., Faith O.', i:'Client HR Director'}
+    ],
+    costCategories:[
+      {cat:'Internal Labour', budget:4200000, actual:2650000},
+      {cat:'External / Vetting Partner', budget:900000, actual:520000},
+      {cat:'Recruitment Advertising', budget:600000, actual:410000},
+      {cat:'Travel & Site Visits', budget:500000, actual:280000},
+      {cat:'Contingency', budget:3600000, actual:1040000}
+    ],
+    invoiceSchedule:[
+      {milestone:'Mobilization', amount:2450000, status:'Paid', date:'2026-06-10'},
+      {milestone:'Recruitment Complete', amount:2450000, status:'Invoiced', date:'2026-07-18'},
+      {milestone:'Deployment Complete', amount:2450000, status:'Pending', date:'2026-07-28'},
+      {milestone:'Project Closure', amount:2450000, status:'Pending', date:'2026-08-18'}
+    ],
+    comms:[
+      {type:'meeting', who:'Amina N.', text:'Monthly steering committee review with client HR team.', when:'Jul 12'},
+      {type:'note', who:'Brian K.', text:'60 of 72 candidates confirmed across all 12 branches.', when:'Jul 10'},
+      {type:'email', who:'Faith O.', text:'Sent onboarding schedule draft to branch managers.', when:'Jul 09'},
+      {type:'call', who:'Amina N.', text:'Escalation call re: background check turnaround with Metropol.', when:'Jul 07'},
+      {type:'visit', who:'Brian K.', text:'Site visit — Branch 4 & 5 facility readiness check.', when:'Jul 03'}
+    ],
+    raid:[
+      {type:'Risk', desc:'Background check turnaround for Branches 7–12 may slip past deployment date.', severity:'high', owner:'Amina N.', status:'Open', mitigation:'Escalated to Metropol; parallel-processing batches.'},
+      {type:'Issue', desc:'Candidate pool shortage for two rural branch locations.', severity:'medium', owner:'Brian K.', status:'Open', mitigation:'Widening sourcing radius, engaging local agencies.'},
+      {type:'Dependency', desc:'Final confirmed branch list required from client finance team.', severity:'medium', owner:'Client HR Director', status:'Open', mitigation:'Follow-up meeting scheduled Jul 16.'},
+      {type:'Assumption', desc:'Client will provide onboarding venue at each branch at no cost.', severity:'low', owner:'Faith O.', status:'Accepted', mitigation:'Confirmed in contract clause 4.2.'}
+    ],
+    calEvents:[
+      {date:'2026-07-14', title:'Offer letters drafted', type:'deadline'},
+      {date:'2026-07-16', title:'Interviews batch 2 close', type:'milestone'},
+      {date:'2026-07-16', title:'Client follow-up call', type:'meeting'},
+      {date:'2026-07-18', title:'Vetting report due', type:'deadline'},
+      {date:'2026-07-20', title:'Contracts signed', type:'deadline'},
+      {date:'2026-07-22', title:'Onboarding batch 1', type:'meeting'},
+      {date:'2026-07-25', title:'All branches deployed', type:'milestone'}
+    ]
+  },
+  bidco:{
+    id:'PRJ-1003', name:'Bidco Payroll System Migration', client:'Bidco Africa', dept:'Payroll & Finance',
+    methodology:'Agile (2-week sprints)', health:'green',
+    start:'2026-07-07', end:'2026-09-20', budget:3100000, committed:1200000, actual:180000,
+    manager:'John K.',
+    phases:['Discovery & Setup','Migration & Configuration','Testing & Training','Go-Live & Support'],
+    tasks:[
+      T('Contract signed & kickoff','Discovery & Setup','John K.','done','medium','2026-07-07','2026-07-08',3,3),
+      T('Current payroll system audit','Discovery & Setup','John K.','inprogress','high','2026-07-08','2026-07-18',24,10),
+      T('Data extraction & cleansing plan','Discovery & Setup','Susan A. (Client)','todo','high','2026-07-16','2026-07-24',16,0,['T-'+(tId-1)]),
+      T('New system configuration','Migration & Configuration','John K.','todo','high','2026-07-24','2026-08-10',40,0),
+      T('Parallel run — payroll cycle 1','Testing & Training','John K.','todo','medium','2026-08-11','2026-08-25',20,0),
+      T('Staff training sessions','Testing & Training','John K.','todo','medium','2026-08-20','2026-08-28',12,0),
+      T('Go-live','Go-Live & Support','John K.','todo','high','2026-09-01','2026-09-05',8,0),
+      T('Hypercare support (2 weeks)','Go-Live & Support','John K.','todo','low','2026-09-05','2026-09-20',16,0)
+    ],
+    milestones:[
+      {name:'Kickoff Complete', date:'2026-07-08', status:'done'},
+      {name:'Configuration Complete', date:'2026-08-10', status:'upcoming'},
+      {name:'Go-Live', date:'2026-09-05', status:'upcoming'},
+      {name:'Project Closure', date:'2026-09-20', status:'upcoming'}
+    ],
+    team:[
+      {name:'John K.', role:'Project Lead, Payroll & Finance', type:'internal', allocation:80, hours:24},
+      {name:'Susan A. (Client)', role:'Finance Lead, Bidco', type:'external', allocation:20, hours:6},
+      {name:'Systemworks Ltd', role:'Payroll Software Vendor', type:'external', allocation:40, hours:12}
+    ],
+    raci:[
+      {deliverable:'Data Migration Plan', r:'John K.', a:'John K.', c:'Susan A.', i:'Systemworks Ltd'},
+      {deliverable:'System Configuration', r:'Systemworks Ltd', a:'John K.', c:'Susan A.', i:'—'}
+    ],
+    costCategories:[
+      {cat:'Internal Labour', budget:1200000, actual:130000},
+      {cat:'Software Licensing', budget:1400000, actual:0},
+      {cat:'Training & Change Mgmt', budget:300000, actual:50000},
+      {cat:'Contingency', budget:200000, actual:0}
+    ],
+    invoiceSchedule:[
+      {milestone:'Kickoff', amount:775000, status:'Pending', date:'2026-07-15'},
+      {milestone:'Configuration Complete', amount:775000, status:'Pending', date:'2026-08-15'},
+      {milestone:'Go-Live', amount:775000, status:'Pending', date:'2026-09-10'},
+      {milestone:'Project Closure', amount:775000, status:'Pending', date:'2026-09-25'}
+    ],
+    comms:[
+      {type:'meeting', who:'John K.', text:'Kickoff and onboarding checklist walkthrough with Bidco finance.', when:'Jul 07'},
+      {type:'email', who:'John K.', text:'Sent current-state audit questionnaire to Susan A.', when:'Jul 09'}
+    ],
+    raid:[
+      {type:'Assumption', desc:'Bidco will provide 3 years of historical payroll data in a clean export.', severity:'medium', owner:'Susan A.', status:'Open', mitigation:'Data sample requested to validate format before full extraction.'}
+    ],
+    calEvents:[
+      {date:'2026-07-15', title:'Kickoff invoice due', type:'deadline'},
+      {date:'2026-07-18', title:'Audit report due', type:'deadline'}
+    ]
+  }
+};
+
+let currentProjectKey='equity';
+function P(){ return PROJECTS[currentProjectKey]; }
+
+/* ============================================================
+   INIT / SWITCHER
+============================================================ */
+function initSwitcher(){
+  const sel = document.getElementById('proj-switch');
+  sel.innerHTML = Object.keys(PROJECTS).map(k=>`<option value="${k}">${PROJECTS[k].name}</option>`).join('');
+  sel.value = currentProjectKey;
+}
+function switchProject(key){ currentProjectKey=key; renderAll(); toast('Switched to '+P().name); }
+
+document.getElementById('tabbar').addEventListener('click', e=>{
+  const btn = e.target.closest('.tabbtn'); if(!btn) return;
+  document.querySelectorAll('.tabbtn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
+  document.getElementById('pane-'+btn.dataset.pane).classList.add('active');
+});
+
+/* ============================================================
+   HEADER
+============================================================ */
+function renderHeader(){
+  const p = P();
+  document.getElementById('p-name').textContent = p.name;
+  const h = HEALTH[p.health];
+  document.getElementById('p-meta').innerHTML = `
+    <span class="chip" style="background:${h.color}22;color:${h.color}"><span class="health-dot" style="background:${h.color}"></span>${h.label}</span>
+    <span>${p.client}</span> · <span>${p.dept}</span> · <span>${p.methodology}</span> · <span class="section-label" style="margin:0;display:inline">${fmtDate(p.start)} – ${fmtDate(p.end)}</span>
+    · <span>PM: <b>${p.manager}</b></span>
+  `;
+  const pct = computePercentComplete(p);
+  const budgetPct = Math.min(100, Math.round(p.actual/p.budget*100));
+  const daysLeft = daysBetween(TODAY, p.end);
+
+  const r=26, c=2*Math.PI*r;
+  document.getElementById('p-stats').innerHTML = `
+    <div class="ph-stat">
+      <div class="ring-wrap">
+        <svg width="64" height="64"><circle cx="32" cy="32" r="${r}" fill="none" stroke="#E8E9E2" stroke-width="7"/>
+        <circle cx="32" cy="32" r="${r}" fill="none" stroke="${h.color}" stroke-width="7" stroke-dasharray="${c}" stroke-dashoffset="${c*(1-pct/100)}" stroke-linecap="round"/></svg>
+        <div class="ring-label">${pct}%</div>
+      </div>
+      <div class="l" style="margin-top:6px;">Complete</div>
+    </div>
+    <div class="ph-stat"><div class="n">${daysLeft>=0?daysLeft:0}</div><div class="l">Days Left</div></div>
+    <div class="ph-stat"><div class="n" style="font-size:14px;">${money(p.budget)}</div><div class="l">Budget</div></div>
+    <div class="ph-stat"><div class="n" style="color:${budgetPct>85?'var(--coral)':'var(--ink)'}">${budgetPct}%</div><div class="l">Budget Used</div></div>
+  `;
+}
+function computePercentComplete(p){
+  const totalEst = p.tasks.reduce((a,t)=>a+t.est,0);
+  const doneEst = p.tasks.reduce((a,t)=> a + (t.status==='done'? t.est : t.status==='inprogress' || t.status==='review' ? t.est*(t.act/(t.est||1)>1?1:t.act/(t.est||1)) : 0), 0);
+  return Math.min(100, Math.round(doneEst/totalEst*100));
+}
+
+/* ============================================================
+   OVERVIEW
+============================================================ */
+function renderOverview(){
+  const p = P();
+  const pct = computePercentComplete(p);
+  const budgetPct = Math.min(100,Math.round(p.actual/p.budget*100));
+  const statusCounts = {};
+  Object.keys(STATUS_LABELS).forEach(k=>statusCounts[k]=0);
+  p.tasks.forEach(t=>statusCounts[t.status]++);
+  const totalTasks = p.tasks.length;
+
+  const elapsedFrac = Math.max(0,Math.min(1, daysBetween(p.start,TODAY)/daysBetween(p.start,p.end)));
+  const PV = p.budget*elapsedFrac, EV = p.budget*pct/100, AC = p.actual;
+  const CPI = (EV/AC)||0, SPI=(EV/PV)||0;
+
+  document.getElementById('pane-overview').innerHTML = `
+    <div class="ov-grid">
+      <div class="metric-card"><div class="label">Overall Progress</div><div class="num">${pct}%</div><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:var(--teal)"></div></div><div class="sub">${totalTasks} tasks across ${p.phases.length} phases</div></div>
+      <div class="metric-card"><div class="label">Budget Burn</div><div class="num">${budgetPct}%</div><div class="bar-track"><div class="bar-fill" style="width:${budgetPct}%;background:${budgetPct>85?'var(--coral)':'var(--gold)'}"></div></div><div class="sub">${money(p.actual)} of ${money(p.budget)}</div></div>
+      <div class="metric-card"><div class="label">Schedule Performance (SPI)</div><div class="num" style="color:${SPI>=1?'var(--teal)':'var(--coral)'}">${SPI.toFixed(2)}</div><div class="sub">${SPI>=1?'Ahead of / on schedule':'Behind schedule'}</div></div>
+      <div class="metric-card"><div class="label">Cost Performance (CPI)</div><div class="num" style="color:${CPI>=1?'var(--teal)':'var(--coral)'}">${CPI.toFixed(2)}</div><div class="sub">${CPI>=1?'Under / on budget':'Over budget for work done'}</div></div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <h3>Milestones</h3>
+        <div class="milestone-strip">${p.milestones.map(m=>{
+          const st = m.status==='done'?{bg:'var(--teal-soft)',c:'var(--teal)',l:'Complete'}:m.status==='atrisk'?{bg:'var(--gold-soft)',c:'var(--gold)',l:'At Risk'}:{bg:'var(--paper)',c:'var(--slate)',l:'Upcoming'};
+          return `<div class="ms-item"><div class="d">${fmtDate(m.date)}</div><div class="t">${m.name}</div><span class="ms-status" style="background:${st.bg};color:${st.c}">${st.l}</span></div>`;
+        }).join('')}</div>
+
+        <div class="section-label" style="margin-top:20px;">EVM Snapshot</div>
+        <div class="evm-bars">
+          <div class="evm-row"><div class="evm-label">Planned Value (PV)</div><div class="evm-track"><div class="evm-fill" style="width:${Math.min(100,PV/p.budget*100)}%;background:var(--slate-light)"></div></div><div class="evm-val">${money(PV)}</div></div>
+          <div class="evm-row"><div class="evm-label">Earned Value (EV)</div><div class="evm-track"><div class="evm-fill" style="width:${Math.min(100,EV/p.budget*100)}%;background:var(--teal)"></div></div><div class="evm-val">${money(EV)}</div></div>
+          <div class="evm-row"><div class="evm-label">Actual Cost (AC)</div><div class="evm-track"><div class="evm-fill" style="width:${Math.min(100,AC/p.budget*100)}%;background:var(--gold)"></div></div><div class="evm-val">${money(AC)}</div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Task Status Breakdown</h3>
+        ${donutSVG(statusCounts, totalTasks)}
+        <div class="donut-legend">
+          ${Object.keys(STATUS_LABELS).map(k=>`<div class="dl-row"><span class="dl-dot" style="background:${STATUS_COLORS[k]}"></span>${STATUS_LABELS[k]}<span class="dl-num">${statusCounts[k]}</span></div>`).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+function donutSVG(counts,total){
+  const r=52, c=2*Math.PI*r; let offset=0;
+  const segs = Object.keys(counts).map(k=>{
+    const frac = total? counts[k]/total : 0;
+    const len = frac*c;
+    const seg = `<circle cx="70" cy="70" r="${r}" fill="none" stroke="${STATUS_COLORS[k]}" stroke-width="16" stroke-dasharray="${len} ${c-len}" stroke-dashoffset="${-offset}" />`;
+    offset += len;
+    return seg;
+  }).join('');
+  return `<svg width="140" height="140" viewBox="0 0 140 140" style="transform:rotate(-90deg)">${segs}</svg>`;
+}
+
+/* ============================================================
+   TASKS — LIST + KANBAN
+============================================================ */
+let taskView = 'list';
+function renderTasks(){
+  const p = P();
+  document.getElementById('pane-tasks').innerHTML = `
+    <div class="panel">
+      <h3>Tasks &amp; Work Breakdown Structure
+        <div class="seg">
+          <button class="${taskView==='list'?'active':''}" onclick="setTaskView('list')">List / WBS</button>
+          <button class="${taskView==='kanban'?'active':''}" onclick="setTaskView('kanban')">Kanban</button>
+        </div>
+      </h3>
+      <div id="task-view-body"></div>
+    </div>`;
+  renderTaskViewBody();
+}
+function setTaskView(v){ taskView=v; renderTasks(); }
+function renderTaskViewBody(){
+  const p = P();
+  const body = document.getElementById('task-view-body');
+  if(taskView==='list'){
+    let html = '';
+    p.phases.forEach(ph=>{
+      html += `<div class="wbs-phase">${ph}</div>`;
+      p.tasks.filter(t=>t.phase===ph).forEach(t=>{
+        const pct = t.status==='done'?100:Math.min(99,Math.round(t.act/(t.est||1)*100));
+        const pr = PRIORITY_COLORS[t.priority];
+        html += `
+        <div class="wbs-row">
+          <div class="mini-avatar">${initials(t.assignee)}</div>
+          <div class="wbs-name">${t.name}<div class="sub">${fmtDate(t.start)} → ${fmtDate(t.end)} · Est ${t.est}h / Act ${t.act}h${t.deps.length?' · depends on '+t.deps.join(', '):''}</div></div>
+          <span class="priority-pill" style="background:${pr.bg};color:${pr.text}">${t.priority}</span>
+          <div class="prog-mini"><div class="prog-mini-fill" style="width:${pct}%"></div></div>
+          <span class="status-pill" style="background:${STATUS_COLORS[t.status]}22;color:${STATUS_COLORS[t.status]}">${STATUS_LABELS[t.status]}</span>
+        </div>`;
+      });
+    });
+    body.innerHTML = html;
+  } else {
+    body.innerHTML = `<div class="kanban-board" id="kanban-board">${Object.keys(STATUS_LABELS).map(k=>{
+      const items = p.tasks.filter(t=>t.status===k);
+      return `<div class="kcol" data-status="${k}">
+        <div class="kcol-head"><span>${STATUS_LABELS[k]}</span><span class="section-label" style="margin:0;">${items.length}</span></div>
+        ${items.map(t=>{
+          const pr = PRIORITY_COLORS[t.priority];
+          return `<div class="kcard" draggable="true" data-id="${t.id}">
+            <div class="t">${t.name}</div>
+            <span class="priority-pill" style="background:${pr.bg};color:${pr.text}">${t.priority}</span>
+            <div class="kcard-foot"><span class="section-label" style="margin:0;">${fmtDate(t.end)}</span><div class="mini-avatar">${initials(t.assignee)}</div></div>
+          </div>`;
+        }).join('') || `<div class="section-label" style="text-align:center;padding:12px 0;">No tasks</div>`}
+      </div>`;
+    }).join('')}</div>`;
+    attachKanbanDnD();
+  }
+}
+function attachKanbanDnD(){
+  const board = document.getElementById('kanban-board');
+  let dragId = null;
+  board.querySelectorAll('.kcard').forEach(c=>{
+    c.addEventListener('dragstart', ()=>{ dragId=c.dataset.id; c.classList.add('dragging'); });
+    c.addEventListener('dragend', ()=> c.classList.remove('dragging'));
+  });
+  board.querySelectorAll('.kcol').forEach(col=>{
+    col.addEventListener('dragover', e=>{ e.preventDefault(); col.classList.add('dragover'); });
+    col.addEventListener('dragleave', ()=> col.classList.remove('dragover'));
+    col.addEventListener('drop', e=>{
+      e.preventDefault(); col.classList.remove('dragover');
+      const t = P().tasks.find(x=>x.id===dragId);
+      if(t){ t.status = col.dataset.status; renderTaskViewBody(); renderHeader(); toast(`${t.id} moved to ${STATUS_LABELS[t.status]}`); }
+    });
+  });
+}
+
+/* ============================================================
+   GANTT
+============================================================ */
+function renderGantt(){
+  const p = P();
+  const start = new Date(p.start), end = new Date(p.end);
+  const totalDays = daysBetween(start,end);
+  const months = [];
+  let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  while(cur <= end){ months.push(new Date(cur)); cur.setMonth(cur.getMonth()+1); }
+
+  const posPct = d => Math.max(0,Math.min(100, daysBetween(start,d)/totalDays*100));
+  const todayPct = posPct(TODAY);
+
+  let rows = '';
+  p.phases.forEach(ph=>{
+    rows += `<div class="grow"><div class="grow-label phase">${ph}</div><div class="gtrack"></div></div>`;
+    p.tasks.filter(t=>t.phase===ph).forEach(t=>{
+      const left = posPct(t.start), right = posPct(t.end);
+      const width = Math.max(1.2, right-left);
+      const overdue = t.status!=='done' && new Date(t.end) < TODAY;
+      rows += `<div class="grow"><div class="grow-label">${t.name}</div><div class="gtrack">
+        <div class="gbar ${overdue?'crit':''}" style="left:${left}%;width:${width}%;background:${STATUS_COLORS[t.status]}">${t.name.length>18 && width>10 ? t.name.slice(0,16)+'…' : ''}</div>
+      </div></div>`;
+    });
+  });
+  p.milestones.forEach(m=>{
+    const left = posPct(m.date);
+    rows += `<div class="grow"><div class="grow-label" style="font-style:italic;color:var(--slate);">◆ ${m.name}</div><div class="gtrack">
+      <div class="gmilestone" style="left:${left}%"></div>
+    </div></div>`;
+  });
+
+  document.getElementById('pane-gantt').innerHTML = `
+    <div class="panel">
+      <h3>Gantt Chart &amp; Timeline <span class="section-label" style="margin:0;">critical / overdue tasks outlined in red</span></h3>
+      <div class="gantt-wrap"><div class="gantt">
+        <div class="gantt-header">${months.map(m=>`<span>${m.toLocaleDateString('en-GB',{month:'short',year:'2-digit'})}</span>`).join('')}</div>
+        <div style="position:relative;">
+          <div class="gtoday" style="left:calc(220px + ${todayPct}% * (100% - 220px)/100);"><span class="gtoday-label">Today</span></div>
+          ${rows}
+        </div>
+      </div></div>
+    </div>`;
+}
+
+/* ============================================================
+   TEAM & RESOURCES
+============================================================ */
+function renderTeam(){
+  const p = P();
+  document.getElementById('pane-team').innerHTML = `
+    <div class="panel">
+      <h3>Team &amp; Resource Allocation</h3>
+      <div class="team-grid">
+        ${p.team.map(m=>{
+          const isExt = m.type==='external';
+          return `<div class="team-card">
+            <div class="team-top">
+              <div class="team-av" style="background:${isExt?'var(--purple)':'var(--ink-2)'}">${initials(m.name)}</div>
+              <div><div class="team-name">${m.name}</div><div class="team-role">${m.role}</div></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:10px;">
+              <span class="chip" style="background:${isExt?'var(--purple-soft)':'var(--teal-soft)'};color:${isExt?'var(--purple)':'var(--teal)'}">${isExt?'External':'Internal'}</span>
+              <span class="section-label" style="margin:0;">${m.hours}h logged</span>
+            </div>
+            <div class="alloc-track"><div class="alloc-fill" style="width:${m.allocation}%;background:${m.allocation>80?'var(--coral)':'var(--gold)'}"></div></div>
+            <div class="section-label" style="margin:6px 0 0;">${m.allocation}% allocated to this project</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+    <div class="panel">
+      <h3>RACI Matrix — Key Deliverables</h3>
+      <table class="raci">
+        <tr><th>Deliverable</th><th>R</th><th>A</th><th>C</th><th>I</th></tr>
+        ${p.raci.map(row=>`<tr>
+          <td>${row.deliverable}</td>
+          <td>${row.r}</td><td>${row.a}</td><td>${row.c}</td><td>${row.i}</td>
+        </tr>`).join('')}
+      </table>
+      <div class="section-label" style="margin-top:12px;">R = Responsible · A = Accountable · C = Consulted · I = Informed</div>
+    </div>`;
+}
+
+/* ============================================================
+   FINANCIALS
+============================================================ */
+function renderFinancials(){
+  const p = P();
+  const remaining = p.budget - p.actual;
+  document.getElementById('pane-financials').innerHTML = `
+    <div class="fin-grid">
+      <div class="metric-card"><div class="label">Total Budget</div><div class="num">${money(p.budget)}</div></div>
+      <div class="metric-card"><div class="label">Committed</div><div class="num">${money(p.committed)}</div><div class="sub">contracted / obligated</div></div>
+      <div class="metric-card"><div class="label">Actual Spend</div><div class="num">${money(p.actual)}</div></div>
+      <div class="metric-card"><div class="label">Remaining</div><div class="num" style="color:${remaining<0?'var(--coral)':'var(--teal)'}">${money(remaining)}</div></div>
+    </div>
+    <div class="two-col">
+      <div class="panel">
+        <h3>Cost Breakdown by Category</h3>
+        <table class="costs">
+          <tr><th>Category</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">% Used</th></tr>
+          ${p.costCategories.map(c=>`<tr><td>${c.cat}</td><td class="num">${money(c.budget)}</td><td class="num">${money(c.actual)}</td><td class="num">${Math.round(c.actual/c.budget*100)}%</td></tr>`).join('')}
+        </table>
+      </div>
+      <div class="panel">
+        <h3>Invoice Schedule</h3>
+        ${p.invoiceSchedule.map(inv=>{
+          const col = inv.status==='Paid'?{bg:'var(--teal-soft)',c:'var(--teal)'}:inv.status==='Invoiced'?{bg:'var(--gold-soft)',c:'var(--gold)'}:{bg:'var(--paper)',c:'var(--slate)'};
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px;">
+            <div><div style="font-weight:600;">${inv.milestone}</div><div class="section-label" style="margin:2px 0 0;">${fmtDate(inv.date)}</div></div>
+            <div style="text-align:right;"><div style="font-family:var(--font-mono);">${money(inv.amount)}</div><span class="chip" style="background:${col.bg};color:${col.c};margin-top:4px;">${inv.status}</span></div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+/* ============================================================
+   CALENDAR
+============================================================ */
+function renderCalendar(){
+  const p = P();
+  const year = TODAY.getFullYear(), month = TODAY.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startOffset = (firstDay.getDay()+6)%7; // Monday-first
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const evColor = { deadline:'var(--coral-soft)', milestone:'var(--gold-soft)', meeting:'var(--blue-soft)' };
+  const evText = { deadline:'var(--coral)', milestone:'var(--gold)', meeting:'var(--blue)' };
+
+  let cells = '';
+  for(let i=0;i<startOffset;i++) cells += `<div class="cal-cell" style="background:transparent;border:none;"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday = dateStr === TODAY.toISOString().slice(0,10);
+    const evs = p.calEvents.filter(e=>e.date===dateStr);
+    cells += `<div class="cal-cell ${isToday?'today':''}"><div class="dnum">${d}</div>
+      ${evs.map(e=>`<div class="cal-ev" style="background:${evColor[e.type]};color:${evText[e.type]}">${e.title}</div>`).join('')}
+    </div>`;
+  }
+  document.getElementById('pane-calendar').innerHTML = `
+    <div class="panel">
+      <h3>${firstDay.toLocaleDateString('en-GB',{month:'long',year:'numeric'})} <span class="section-label" style="margin:0;">deadlines · milestones · meetings</span></h3>
+      <div class="cal-grid">${dow.map(d=>`<div class="cal-dow">${d}</div>`).join('')}${cells}</div>
+    </div>`;
+}
+
+/* ============================================================
+   COMMUNICATIONS
+============================================================ */
+function renderComms(){
+  const p = P();
+  const icons = {meeting:'&#128197;', email:'&#9993;', note:'&#128221;', call:'&#128222;', visit:'&#128205;'};
+  const colors = {meeting:'var(--blue-soft)', email:'var(--teal-soft)', note:'var(--paper)', call:'var(--purple-soft)', visit:'var(--gold-soft)'};
+  document.getElementById('pane-comms').innerHTML = `
+    <div class="panel">
+      <h3>Communications Log</h3>
+      <div id="comms-list">${p.comms.map(l=>`
+        <div class="log-entry">
+          <div class="log-icon" style="background:${colors[l.type]}">${icons[l.type]}</div>
+          <div class="log-body"><div class="lb-top"><span class="who">${l.who}</span><span class="when">${l.when}</span></div><div class="text">${l.text}</div></div>
+        </div>`).join('')}</div>
+      <div class="add-log">
+        <select id="comm-type"><option value="note">Note</option><option value="meeting">Meeting</option><option value="email">Email</option><option value="call">Call</option><option value="visit">Site Visit</option></select>
+        <input id="comm-text" placeholder="Log an update…" onkeydown="if(event.key==='Enter')addComm()">
+        <button class="btn btn-sm btn-primary" onclick="addComm()">Add</button>
+      </div>
+    </div>`;
+}
+function addComm(){
+  const type = document.getElementById('comm-type').value;
+  const text = document.getElementById('comm-text').value.trim();
+  if(!text) return;
+  P().comms.unshift({type, who:'You', text, when:'Just now'});
+  renderComms();
+  toast('Communication logged');
+}
+
+/* ============================================================
+   RAID
+============================================================ */
+function renderRaid(){
+  const p = P();
+  const typeColor = {Risk:{bg:'var(--coral-soft)',c:'var(--coral)'}, Issue:{bg:'var(--gold-soft)',c:'var(--gold)'}, Dependency:{bg:'var(--blue-soft)',c:'var(--blue)'}, Assumption:{bg:'var(--purple-soft)',c:'var(--purple)'}};
+  const sevColor = {high:{bg:'var(--coral-soft)',c:'var(--coral)'}, medium:{bg:'var(--gold-soft)',c:'var(--gold)'}, low:{bg:'var(--teal-soft)',c:'var(--teal)'}};
+  document.getElementById('pane-raid').innerHTML = `
+    <div class="panel">
+      <h3>RAID Log <span class="section-label" style="margin:0;">Risks · Assumptions · Issues · Dependencies</span></h3>
+      <table class="raid">
+        <tr><th>Type</th><th>Description</th><th>Severity</th><th>Owner</th><th>Status</th><th>Mitigation / Response</th></tr>
+        ${p.raid.map(r=>`<tr>
+          <td><span class="raid-type" style="background:${typeColor[r.type].bg};color:${typeColor[r.type].c}">${r.type}</span></td>
+          <td>${r.desc}</td>
+          <td><span class="sev-pill" style="background:${sevColor[r.severity].bg};color:${sevColor[r.severity].c}">${r.severity}</span></td>
+          <td>${r.owner}</td>
+          <td>${r.status}</td>
+          <td style="color:var(--slate);">${r.mitigation}</td>
+        </tr>`).join('')}
+      </table>
+    </div>`;
+}
+
+/* ============================================================
+   RENDER ALL
+============================================================ */
+function renderAll(){
+  renderHeader();
+  renderOverview();
+  renderTasks();
+  renderGantt();
+  renderTeam();
+  renderFinancials();
+  renderCalendar();
+  renderComms();
+  renderRaid();
+}
+
+initSwitcher();
+renderAll();
+</script>
+</body>
+</html>

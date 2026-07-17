@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AMSOL — Pipeline &amp; Delivery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16233F;
+  --ink-2:#1F3157;
+  --paper:#F1F2EC;
+  --paper-2:#FFFFFF;
+  --line:#DBDED2;
+  --line-soft:#E8E9E2;
+  --slate:#5B6470;
+  --slate-light:#8B93A0;
+  --gold:#B4802A;
+  --gold-soft:#F3E4C6;
+  --teal:#2F6F62;
+  --teal-soft:#DCEAE5;
+  --coral:#AE4A3C;
+  --coral-soft:#F5DEDA;
+  --blue:#375D8A;
+  --blue-soft:#DCE5F0;
+  --purple:#6B5490;
+  --purple-soft:#E6E0EF;
+  --font-display:'Fraunces',serif;
+  --font-body:'IBM Plex Sans',sans-serif;
+  --font-mono:'IBM Plex Mono',monospace;
+  --shadow-card:0 1px 2px rgba(22,35,63,0.06), 0 1px 1px rgba(22,35,63,0.04);
+  --shadow-float:0 12px 32px rgba(22,35,63,0.18);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:var(--font-body);
+  background:var(--paper);
+  color:var(--ink);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--gold-soft);}
+a{color:inherit;}
+button{font-family:inherit;}
+
+/* ---------- Top nav ---------- */
+.topbar{
+  background:var(--ink);
+  color:#fff;
+  padding:0 24px;
+  display:flex;
+  align-items:center;
+  gap:28px;
+  height:60px;
+  position:sticky;
+  top:0;
+  z-index:40;
+  box-shadow:0 2px 12px rgba(0,0,0,0.15);
+}
+.brand{
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+  font-family:var(--font-display);
+  font-size:20px;
+  font-weight:700;
+  letter-spacing:0.3px;
+}
+.brand .mark{
+  width:26px;height:26px;border-radius:6px;
+  background:linear-gradient(135deg,var(--gold),#8C5F1D);
+  display:inline-flex;align-items:center;justify-content:center;
+  font-family:var(--font-body);font-weight:700;font-size:13px;color:#1a1200;
+}
+.brand small{font-family:var(--font-mono);font-size:10px;color:#9FA8C0;font-weight:400;letter-spacing:0.5px;}
+.modtabs{display:flex;gap:4px;flex:1;}
+.modtab{
+  background:transparent;border:none;color:#B7BEDA;
+  padding:9px 16px;border-radius:8px;font-size:13.5px;font-weight:500;cursor:pointer;
+  display:flex;align-items:center;gap:8px;transition:background .15s,color .15s;
+}
+.modtab .n{
+  background:rgba(255,255,255,0.12);border-radius:20px;padding:1px 7px;font-family:var(--font-mono);font-size:11px;color:#fff;
+}
+.modtab:hover{background:rgba(255,255,255,0.06);color:#fff;}
+.modtab.active{background:#fff;color:var(--ink);}
+.modtab.active .n{background:var(--gold-soft);color:#5f4315;}
+.topbar-right{display:flex;align-items:center;gap:10px;}
+.avatar{
+  width:32px;height:32px;border-radius:50%;
+  background:var(--teal);color:#fff;font-size:12.5px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);
+}
+
+/* ---------- Layout ---------- */
+.view{display:none;padding:22px 26px 60px;max-width:1600px;margin:0 auto;}
+.view.active{display:block;}
+
+.view-header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:6px;flex-wrap:wrap;}
+.view-title{font-family:var(--font-display);font-size:27px;font-weight:600;margin:0;}
+.view-sub{color:var(--slate);font-size:13.5px;margin-top:4px;}
+.btn{
+  border:1px solid var(--line);background:var(--paper-2);color:var(--ink);
+  padding:9px 15px;border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;
+  display:inline-flex;align-items:center;gap:7px;transition:border-color .15s,transform .1s;
+}
+.btn:hover{border-color:var(--slate-light);}
+.btn:active{transform:scale(0.98);}
+.btn-primary{background:var(--ink);color:#fff;border-color:var(--ink);}
+.btn-primary:hover{background:var(--ink-2);border-color:var(--ink-2);}
+.btn-gold{background:var(--gold);color:#fff;border-color:var(--gold);}
+.btn-ghost{background:transparent;border-color:transparent;}
+.btn-ghost:hover{background:var(--line-soft);}
+.btn-sm{padding:6px 11px;font-size:12.5px;border-radius:7px;}
+.btn:disabled{opacity:.45;cursor:not-allowed;}
+
+/* ---------- Pipeline spine (signature element) ---------- */
+.spine-wrap{margin:18px 0 22px;padding:18px 20px 14px;background:var(--paper-2);border:1px solid var(--line);border-radius:14px;}
+.spine-label{font-family:var(--font-mono);font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--slate-light);margin-bottom:10px;}
+.spine-svg{width:100%;display:block;}
+.spine-stage-label{font-family:var(--font-body);font-size:11.5px;font-weight:600;fill:var(--ink);}
+.spine-stage-count{font-family:var(--font-mono);font-size:15px;font-weight:500;}
+
+/* ---------- Kanban ---------- */
+.board{display:flex;gap:14px;overflow-x:auto;padding-bottom:20px;align-items:flex-start;}
+.column{
+  flex:0 0 268px;background:rgba(219,222,210,0.28);border-radius:14px;padding:12px 10px 14px;
+  min-height:120px;
+}
+.column-head{display:flex;align-items:center;justify-content:space-between;padding:4px 6px 10px;}
+.column-title{font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;}
+.column-dot{width:8px;height:8px;border-radius:50%;flex:none;}
+.column-count{font-family:var(--font-mono);font-size:11px;color:var(--slate);background:var(--paper-2);border-radius:20px;padding:1px 8px;}
+.cardstack{display:flex;flex-direction:column;gap:9px;min-height:40px;}
+.column.dragover{outline:2px dashed var(--gold);outline-offset:-2px;background:rgba(180,128,42,0.06);}
+
+.card{
+  background:var(--paper-2);border:1px solid var(--line);border-radius:11px;padding:12px 13px 11px;
+  cursor:grab;box-shadow:var(--shadow-card);transition:box-shadow .15s,transform .1s;
+}
+.card:hover{box-shadow:0 4px 14px rgba(22,35,63,0.12);}
+.card.dragging{opacity:.35;}
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:7px;}
+.card-id{font-family:var(--font-mono);font-size:10px;color:var(--slate-light);}
+.card-title{font-size:13.5px;font-weight:600;line-height:1.35;margin:2px 0 8px;}
+.chip{
+  font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:20px;display:inline-flex;align-items:center;gap:4px;
+  letter-spacing:.2px;
+}
+.card-meta{display:flex;align-items:center;justify-content:space-between;margin-top:9px;font-size:11.5px;color:var(--slate);}
+.card-meta .val{font-family:var(--font-mono);font-weight:500;color:var(--ink);}
+.card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:9px;padding-top:9px;border-top:1px dashed var(--line);}
+.mini-avatar{width:22px;height:22px;border-radius:50%;background:var(--ink-2);color:#fff;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);}
+.log-count{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--slate-light);}
+.card-flag{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;}
+.flag-lost{background:var(--coral-soft);color:var(--coral);}
+.flag-won{background:var(--teal-soft);color:var(--teal);}
+.flag-nofeedback{background:var(--paper);color:var(--slate);border:1px solid var(--line);}
+.convert-btn{
+  margin-top:9px;width:100%;background:var(--teal);color:#fff;border:none;padding:7px 0;border-radius:7px;
+  font-size:12px;font-weight:600;cursor:pointer;
+}
+.convert-btn:hover{background:#255249;}
+.converted-badge{margin-top:9px;font-size:11px;color:var(--teal);font-weight:600;display:flex;align-items:center;gap:5px;}
+
+/* ---------- Empty state ---------- */
+.empty-col{text-align:center;color:var(--slate-light);font-size:11.5px;padding:16px 6px;border:1px dashed var(--line);border-radius:9px;}
+
+/* ---------- Dashboard ---------- */
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:20px 0 26px;}
+.stat-card{background:var(--paper-2);border:1px solid var(--line);border-radius:14px;padding:18px 20px;}
+.stat-card .label{font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--slate-light);}
+.stat-card .num{font-family:var(--font-display);font-size:30px;font-weight:600;margin:6px 0 4px;}
+.stat-card .sub{font-size:12px;color:var(--slate);}
+.dash-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:18px;}
+.panel{background:var(--paper-2);border:1px solid var(--line);border-radius:14px;padding:18px 20px;}
+.panel h3{font-family:var(--font-display);font-size:16px;margin:0 0 12px;}
+.feed-item{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);}
+.feed-item:last-child{border:none;}
+.feed-dot{width:7px;height:7px;border-radius:50%;margin-top:6px;flex:none;}
+.feed-text{font-size:12.8px;line-height:1.5;}
+.feed-time{font-family:var(--font-mono);font-size:10.5px;color:var(--slate-light);margin-top:2px;}
+.dept-bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.dept-bar-label{width:120px;font-size:12px;color:var(--slate);flex:none;}
+.dept-bar-track{flex:1;background:var(--line-soft);border-radius:6px;height:8px;overflow:hidden;}
+.dept-bar-fill{height:100%;border-radius:6px;}
+.dept-bar-num{font-family:var(--font-mono);font-size:11.5px;width:22px;text-align:right;flex:none;}
+
+/* ---------- Slide-over ---------- */
+.overlay{position:fixed;inset:0;background:rgba(22,35,63,0.35);z-index:60;display:none;}
+.overlay.show{display:block;}
+.slideover{
+  position:fixed;top:0;right:0;bottom:0;width:460px;max-width:92vw;background:var(--paper-2);
+  z-index:61;box-shadow:var(--shadow-float);transform:translateX(100%);transition:transform .25s ease;
+  display:flex;flex-direction:column;
+}
+.slideover.show{transform:translateX(0);}
+.so-head{padding:20px 22px 14px;border-bottom:1px solid var(--line);}
+.so-head-top{display:flex;justify-content:space-between;align-items:flex-start;}
+.so-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--slate);line-height:1;padding:2px 6px;}
+.so-close:hover{color:var(--ink);}
+.so-id{font-family:var(--font-mono);font-size:11px;color:var(--slate-light);}
+.so-title{font-family:var(--font-display);font-size:19px;font-weight:600;margin:4px 0 10px;}
+.so-tags{display:flex;gap:6px;flex-wrap:wrap;}
+.so-tabs{display:flex;gap:2px;padding:0 22px;border-bottom:1px solid var(--line);}
+.so-tab{background:none;border:none;padding:11px 4px;margin-right:18px;font-size:12.5px;font-weight:600;color:var(--slate);cursor:pointer;border-bottom:2px solid transparent;}
+.so-tab.active{color:var(--ink);border-color:var(--gold);}
+.so-body{padding:18px 22px;overflow-y:auto;flex:1;}
+.so-pane{display:none;}
+.so-pane.active{display:block;}
+.kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;margin-bottom:18px;}
+.kv{font-size:12.5px;}
+.kv .k{color:var(--slate-light);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;font-family:var(--font-mono);margin-bottom:3px;}
+.kv .v{font-weight:600;}
+.stage-tracker{display:flex;gap:4px;margin-bottom:20px;}
+.stage-dot-track{flex:1;height:6px;border-radius:4px;background:var(--line-soft);}
+.stage-dot-track.done{background:var(--teal);}
+.stage-dot-track.current{background:var(--gold);}
+.section-label{font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--slate-light);margin:20px 0 10px;}
+.log-entry{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line-soft);}
+.log-icon{width:26px;height:26px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;}
+.log-body{font-size:12.5px;flex:1;}
+.log-body .lb-top{display:flex;justify-content:space-between;gap:8px;}
+.log-body .who{font-weight:600;}
+.log-body .when{font-family:var(--font-mono);font-size:10.5px;color:var(--slate-light);}
+.log-body .text{color:var(--slate);margin-top:2px;line-height:1.5;}
+.add-log{display:flex;gap:8px;margin-top:14px;}
+.add-log select, .add-log input{
+  border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:inherit;
+}
+.add-log select{flex:0 0 108px;}
+.add-log input{flex:1;}
+.doc-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px;}
+.doc-ico{width:30px;height:30px;border-radius:7px;background:var(--blue-soft);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;}
+.so-footer{padding:14px 22px;border-top:1px solid var(--line);display:flex;gap:8px;}
+.invoice-box{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:14px;}
+.invoice-row{display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0;}
+.invoice-row b{font-family:var(--font-mono);}
+
+/* ---------- Modal (new card) ---------- */
+.modal-back{position:fixed;inset:0;background:rgba(22,35,63,0.4);z-index:70;display:none;align-items:center;justify-content:center;padding:20px;}
+.modal-back.show{display:flex;}
+.modal{background:var(--paper-2);border-radius:16px;width:460px;max-width:100%;max-height:88vh;overflow-y:auto;box-shadow:var(--shadow-float);}
+.modal-head{padding:20px 22px 6px;}
+.modal-head h3{font-family:var(--font-display);font-size:19px;margin:0 0 3px;}
+.modal-head p{font-size:12px;color:var(--slate);margin:0 0 6px;}
+.modal-body{padding:8px 22px 4px;}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:11.5px;font-weight:600;color:var(--slate);margin-bottom:5px;}
+.field input,.field select,.field textarea{
+  width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:13px;font-family:inherit;background:#fff;
+}
+.field textarea{resize:vertical;min-height:56px;}
+.field-row{display:flex;gap:10px;}
+.field-row .field{flex:1;}
+.modal-foot{padding:14px 22px 20px;display:flex;justify-content:flex-end;gap:8px;}
+
+/* ---------- Toast ---------- */
+.toast-wrap{position:fixed;bottom:22px;right:22px;z-index:90;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--ink);color:#fff;padding:11px 16px;border-radius:10px;font-size:12.8px;box-shadow:var(--shadow-float);display:flex;align-items:center;gap:9px;animation:toastin .2s ease;}
+@keyframes toastin{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.toast .dot{width:7px;height:7px;border-radius:50%;background:var(--teal);flex:none;}
+
+/* dept color helper classes applied inline via style attr mostly */
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin:14px 0 4px;}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--slate);}
+.legend-dot{width:8px;height:8px;border-radius:50%;}
+
+@media (max-width:760px){
+  .modtabs{overflow-x:auto;}
+  .stat-row{grid-template-columns:1fr 1fr;}
+  .dash-grid{grid-template-columns:1fr;}
+  .slideover{width:100vw;}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="mark">A</span>AMSOL <small>PIPELINE&nbsp;OS</small></div>
+  <div class="modtabs" id="modtabs">
+    <button class="modtab active" data-view="dashboard">Overview</button>
+    <button class="modtab" data-view="tenders">Tender Pipeline <span class="n" id="tab-count-tenders">0</span></button>
+    <button class="modtab" data-view="engagements">Client Engagement <span class="n" id="tab-count-engagements">0</span></button>
+    <button class="modtab" data-view="projects">Projects &amp; Delivery <span class="n" id="tab-count-projects">0</span></button>
+  </div>
+  <div class="topbar-right">
+    <div class="avatar">SM</div>
+  </div>
+</div>
+
+<!-- ============ DASHBOARD ============ -->
+<div class="view active" id="view-dashboard">
+  <div class="view-header">
+    <div>
+      <h1 class="view-title">Good morning, Sarah</h1>
+      <div class="view-sub">Here's where every tender, client request and live project stands today.</div>
+    </div>
+  </div>
+
+  <div class="stat-row" id="dash-stats"></div>
+
+  <div class="dash-grid">
+    <div class="panel">
+      <h3>Recent activity</h3>
+      <div id="dash-feed"></div>
+    </div>
+    <div class="panel">
+      <h3>Load by department</h3>
+      <div id="dash-depts"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TENDER PIPELINE ============ -->
+<div class="view" id="view-tenders">
+  <div class="view-header">
+    <div>
+      <h1 class="view-title">Tender Pipeline</h1>
+      <div class="view-sub">From identifying an opportunity to award — then handed to the delivering department.</div>
+    </div>
+    <button class="btn btn-primary" onclick="openNewModal('tender')">+ New tender</button>
+  </div>
+  <div class="spine-wrap"><div class="spine-label">Stage flow</div><svg class="spine-svg" id="spine-tenders" viewBox="0 0 1000 60"></svg></div>
+  <div class="board" id="board-tenders"></div>
+</div>
+
+<!-- ============ CLIENT ENGAGEMENT ============ -->
+<div class="view" id="view-engagements">
+  <div class="view-header">
+    <div>
+      <h1 class="view-title">Client Engagement</h1>
+      <div class="view-sub">Inbound requests from the operations desk through to won/lost decisions.</div>
+    </div>
+    <button class="btn btn-primary" onclick="openNewModal('engagement')">+ New request</button>
+  </div>
+  <div class="spine-wrap"><div class="spine-label">Stage flow</div><svg class="spine-svg" id="spine-engagements" viewBox="0 0 1000 60"></svg></div>
+  <div class="board" id="board-engagements"></div>
+</div>
+
+<!-- ============ PROJECTS & DELIVERY ============ -->
+<div class="view" id="view-projects">
+  <div class="view-header">
+    <div>
+      <h1 class="view-title">Projects &amp; Delivery</h1>
+      <div class="view-sub">Won tenders and onboarded clients, tracked through delivery, invoicing and payment.</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <select id="dept-filter" class="btn btn-sm" style="cursor:pointer;" onchange="renderProjects()"></select>
+    </div>
+  </div>
+  <div class="spine-wrap"><div class="spine-label">Stage flow</div><svg class="spine-svg" id="spine-projects" viewBox="0 0 1000 60"></svg></div>
+  <div class="board" id="board-projects"></div>
+</div>
+
+<!-- ============ SLIDE-OVER ============ -->
+<div class="overlay" id="overlay" onclick="closeSlideover()"></div>
+<div class="slideover" id="slideover">
+  <div class="so-head">
+    <div class="so-head-top">
+      <div>
+        <div class="so-id" id="so-id"></div>
+        <div class="so-title" id="so-title"></div>
+      </div>
+      <button class="so-close" onclick="closeSlideover()">&times;</button>
+    </div>
+    <div class="so-tags" id="so-tags"></div>
+  </div>
+  <div class="so-tabs">
+    <button class="so-tab active" data-pane="overview" onclick="soTab('overview')">Overview</button>
+    <button class="so-tab" data-pane="activity" onclick="soTab('activity')">Activity &amp; Communication</button>
+    <button class="so-tab" data-pane="docs" onclick="soTab('docs')">Documents</button>
+  </div>
+  <div class="so-body">
+    <div class="so-pane active" id="pane-overview"></div>
+    <div class="so-pane" id="pane-activity"></div>
+    <div class="so-pane" id="pane-docs"></div>
+  </div>
+  <div class="so-footer" id="so-footer"></div>
+</div>
+
+<!-- ============ NEW CARD MODAL ============ -->
+<div class="modal-back" id="modal-back">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modal-title">New tender</h3>
+      <p id="modal-sub">Log a new opportunity into the pipeline.</p>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeNewModal()">Cancel</button>
+      <button class="btn btn-primary" id="modal-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+/* ============================================================
+   DATA MODEL
+============================================================ */
+const DEPTS = {
+  bd:        {name:'Tender & BD',        text:'#8C5F1D', bg:'#F3E4C6'},
+  hr:        {name:'HR & Recruitment',   text:'#2F6F62', bg:'#DCEAE5'},
+  payroll:   {name:'Payroll & Finance',  text:'#375D8A', bg:'#DCE5F0'},
+  compliance:{name:'Compliance & Legal', text:'#AE4A3C', bg:'#F5DEDA'},
+  ops:       {name:'Operations',         text:'#6B5490', bg:'#E6E0EF'},
+  it:        {name:'IT & Systems',       text:'#2E7A6B', bg:'#DBEFE9'}
+};
+
+const TENDER_STAGES = [
+  {k:'identified',  label:'Identified',            color:'#8B93A0'},
+  {k:'applying',    label:'Preparing Application',  color:'#B4802A'},
+  {k:'submitted',   label:'Submitted',              color:'#375D8A'},
+  {k:'evaluation',  label:'Under Evaluation',       color:'#6B5490'},
+  {k:'won',         label:'Awarded',                color:'#2F6F62'},
+  {k:'lost',        label:'Not Awarded',            color:'#AE4A3C'}
+];
+const ENGAGEMENT_STAGES = [
+  {k:'new',        label:'New Request',        color:'#8B93A0'},
+  {k:'assigned',   label:'Assigned to Dept',   color:'#B4802A'},
+  {k:'engaging',   label:'Engagement',          color:'#375D8A'},
+  {k:'proposal',   label:'Proposal Sent',       color:'#6B5490'},
+  {k:'won',        label:'Won',                 color:'#2F6F62'},
+  {k:'closed',     label:'Closed — Not Won',    color:'#AE4A3C'}
+];
+const PROJECT_STAGES = [
+  {k:'onboarding', label:'Onboarding & Contract', color:'#8B93A0'},
+  {k:'inprogress', label:'In Progress',            color:'#B4802A'},
+  {k:'delivery',   label:'Delivery / QA',          color:'#375D8A'},
+  {k:'invoicing',  label:'Invoicing',              color:'#6B5490'},
+  {k:'payment',    label:'Payment Collection',     color:'#2F6F62'},
+  {k:'closed',     label:'Closed',                 color:'#5B6470'}
+];
+
+let idc = 1000;
+const nid = (p)=> p + (idc++);
+
+function mkLog(entries){ return entries.map(e=>({type:e[0],who:e[1],text:e[2],when:e[3]})); }
+
+const DB = {
+  tenders:[
+    {id:nid('TND-'), title:'County Government — Bulk Payroll System Tender', issuer:'Nairobi County Government', value:8200000, deadline:'2026-08-02', dept:'payroll', owner:'JK', stage:'evaluation', log:mkLog([['email','John K.','Clarification email sent to procurement office.','Jul 09'],['note','John K.','Bid bond secured from underwriter.','Jul 05']])},
+    {id:nid('TND-'), title:'KRA Staff Outsourcing Framework', issuer:'Kenya Revenue Authority', value:14500000, deadline:'2026-07-28', dept:'hr', owner:'AN', stage:'submitted', log:mkLog([['note','Amina N.','Technical proposal submitted via tender portal.','Jul 11']])},
+    {id:nid('TND-'), title:'Parastatal Recruitment Drive — 3yr Framework', issuer:'State Dept. of Housing', value:5100000, deadline:'2026-08-14', dept:'hr', owner:'AN', stage:'identified', log:mkLog([['note','Amina N.','Flagged on MyGov tender portal — reviewing eligibility.','Jul 12']])},
+    {id:nid('TND-'), title:'University HR Systems Advisory', issuer:'Pan-Africa University', value:2300000, deadline:'2026-07-20', dept:'it', owner:'DO', stage:'applying', log:mkLog([['note','Daniel O.','Drafting technical response with IT team.','Jul 10']])},
+    {id:nid('TND-'), title:'Ministry Payroll Audit Tender', issuer:'Ministry of Labour', value:3900000, deadline:'2026-06-30', dept:'compliance', owner:'RW', stage:'won', log:mkLog([['note','Rita W.','Notification of award received.','Jul 02'],['meeting','Rita W.','Award debrief meeting with ministry.','Jul 03']]), converted:false},
+    {id:nid('TND-'), title:'NGO Consortium Staffing Tender', issuer:'East Africa NGO Consortium', value:1750000, deadline:'2026-06-18', dept:'hr', owner:'AN', stage:'lost', log:mkLog([['note','Amina N.','Debrief: lost on price. Feedback logged for next bid.','Jun 20']])}
+  ],
+  engagements:[
+    {id:nid('ENG-'), client:'Two Rivers Mall Ltd', service:'Recruitment & Payroll Outsourcing', dept:'hr', contact:'Grace M. (HR Director)', value:1200000, stage:'engaging', outcome:null, owner:'BK', log:mkLog([['meeting','Brian K.','Site visit at Two Rivers offices completed.','Jul 08'],['email','Brian K.','Sent capability statement and past projects.','Jul 06']])},
+    {id:nid('ENG-'), client:'Java House Africa', service:'HR Compliance Audit', dept:'compliance', contact:'Peter I. (Ops Manager)', value:650000, stage:'proposal', outcome:null, owner:'RW', log:mkLog([['note','Rita W.','Proposal sent — awaiting sign-off from board.','Jul 09']])},
+    {id:nid('ENG-'), client:'Bidco Africa', service:'Payroll System Migration', dept:'payroll', contact:'Susan A. (Finance Lead)', value:3100000, stage:'won', outcome:'won', owner:'JK', log:mkLog([['meeting','John K.','Contract signed — kickoff scheduled.','Jul 07']]), converted:false},
+    {id:nid('ENG-'), client:'Villa Rosa Kempinski', service:'Recruitment Drive — 40 staff', dept:'hr', contact:'Mark L. (GM)', value:980000, stage:'assigned', outcome:null, owner:'AN', log:mkLog([['note','Ops Desk','Forwarded to HR & Recruitment for engagement.','Jul 11']])},
+    {id:nid('ENG-'), client:'Twiga Foods', service:'Statutory Compliance Review', dept:'compliance', contact:'Ian M. (Legal)', value:540000, stage:'new', outcome:null, owner:'—', log:mkLog([['note','Ops Desk','Inbound request received via website form.','Jul 12']])},
+    {id:nid('ENG-'), client:'Sarova Hotels Group', service:'Payroll Outsourcing', dept:'payroll', contact:'Faith N. (Finance)', value:1600000, stage:'closed', outcome:'lost', owner:'JK', log:mkLog([['note','John K.','Client chose incumbent provider — feedback logged.','Jun 25']])},
+    {id:nid('ENG-'), client:'Chandarana Foodplus', service:'HR Advisory Retainer', dept:'hr', contact:'—', value:420000, stage:'closed', outcome:'nofeedback', owner:'BK', log:mkLog([['email','Brian K.','Two follow-ups sent, no response in 30 days.','Jun 30']])}
+  ],
+  projects:[
+    {id:nid('PRJ-'), name:'Ministry Payroll Audit — Delivery', source:'Tender', sourceRef:'TND-1004', dept:'compliance', value:3900000, stage:'inprogress', owner:'Rita W.', invoice:{issued:1500000,paid:1500000,outstanding:2400000}, log:mkLog([['meeting','Rita W.','Kickoff meeting with ministry audit team.','Jul 04'],['note','Rita W.','Fieldwork phase 1 underway.','Jul 10']])},
+    {id:nid('PRJ-'), name:'Bidco Payroll System Migration', source:'Client', sourceRef:'ENG-1002', dept:'payroll', value:3100000, stage:'onboarding', owner:'John K.', invoice:{issued:0,paid:0,outstanding:3100000}, log:mkLog([['meeting','John K.','Contract signed, onboarding checklist shared.','Jul 07']])},
+    {id:nid('PRJ-'), name:'Equity Group Staffing Framework', source:'Tender', sourceRef:'TND-0996', dept:'hr', value:9800000, stage:'delivery', owner:'Amina N.', invoice:{issued:4900000,paid:2900000,outstanding:6900000}, log:mkLog([['note','Amina N.','60 staff deployed across 12 branches.','Jul 06'],['meeting','Amina N.','Monthly review with client HR team.','Jul 12']])},
+    {id:nid('PRJ-'), name:'NCBA Bank Payroll Retainer', source:'Client', sourceRef:'ENG-0988', dept:'payroll', value:5200000, stage:'invoicing', owner:'John K.', invoice:{issued:5200000,paid:2600000,outstanding:2600000}, log:mkLog([['note','Finance','Invoice #INV-2245 raised for Q2 services.','Jul 05']])},
+    {id:nid('PRJ-'), name:'Safaricom Foundation Recruitment', source:'Tender', sourceRef:'TND-0975', dept:'hr', value:2100000, stage:'payment', owner:'Brian K.', invoice:{issued:2100000,paid:1400000,outstanding:700000}, log:mkLog([['note','Finance','Follow-up on outstanding balance sent.','Jul 09']])},
+    {id:nid('PRJ-'), name:'KCB Foundation HR Audit', source:'Client', sourceRef:'ENG-0971', dept:'compliance', value:870000, stage:'closed', owner:'Rita W.', invoice:{issued:870000,paid:870000,outstanding:0}, log:mkLog([['note','Finance','Final payment received — project closed.','Jun 28']])}
+  ]
+};
+
+/* ============================================================
+   HELPERS
+============================================================ */
+function money(n){ return 'KES ' + n.toLocaleString('en-KE'); }
+function deptChip(deptKey){
+  const d = DEPTS[deptKey];
+  return `<span class="chip" style="background:${d.bg};color:${d.text}">${d.name}</span>`;
+}
+function initials(str){
+  if(!str || str==='—') return '—';
+  return str.split(' ').map(s=>s[0]).join('').slice(0,2).toUpperCase();
+}
+function toast(msg){
+  const wrap = document.getElementById('toast-wrap');
+  const t = document.createElement('div');
+  t.className='toast';
+  t.innerHTML = `<span class="dot"></span>${msg}`;
+  wrap.appendChild(t);
+  setTimeout(()=>{ t.style.transition='opacity .3s'; t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 3200);
+}
+function stageIndex(stages,k){ return stages.findIndex(s=>s.k===k); }
+
+/* ============================================================
+   NAV
+============================================================ */
+document.getElementById('modtabs').addEventListener('click', e=>{
+  const btn = e.target.closest('.modtab');
+  if(!btn) return;
+  document.querySelectorAll('.modtab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+btn.dataset.view).classList.add('active');
+  if(btn.dataset.view==='dashboard') renderDashboard();
+});
+
+/* ============================================================
+   SPINE (signature flow diagram)
+============================================================ */
+function renderSpine(svgId, stages, list){
+  const svg = document.getElementById(svgId);
+  const n = stages.length;
+  const w = 1000, pad=60, gap=(w-pad*2)/(n-1);
+  let html = '';
+  // connecting dashed line
+  html += `<line x1="${pad}" y1="26" x2="${w-pad}" y2="26" stroke="#D8DCD3" stroke-width="2" stroke-dasharray="1 7" stroke-linecap="round"/>`;
+  stages.forEach((s,i)=>{
+    const x = pad + gap*i;
+    const count = list.filter(c=>c.stage===s.k).length;
+    html += `<circle cx="${x}" cy="26" r="11" fill="#fff" stroke="${s.color}" stroke-width="2.5"/>`;
+    html += `<text x="${x}" y="30" text-anchor="middle" class="spine-stage-count" fill="${s.color}">${count}</text>`;
+    html += `<text x="${x}" y="52" text-anchor="middle" class="spine-stage-label">${s.label}</text>`;
+  });
+  svg.innerHTML = html;
+}
+
+/* ============================================================
+   BOARD RENDERING
+============================================================ */
+function cardHTML(item, kind){
+  const isTender = kind==='tender', isEngagement = kind==='engagement', isProject = kind==='project';
+  const title = isProject ? item.name : (isTender ? item.title : item.client);
+  const value = item.value;
+  const meta1 = isTender ? item.issuer : (isEngagement ? item.service : DEPTS[item.dept].name);
+  const owner = isProject ? item.owner : item.owner;
+  const logCount = item.log ? item.log.length : 0;
+
+  let flag = '';
+  if(isTender && item.stage==='won') flag = `<span class="card-flag flag-won">Awarded</span>`;
+  if(isTender && item.stage==='lost') flag = `<span class="card-flag flag-lost">Not Awarded</span>`;
+  if(isEngagement && item.stage==='won') flag = `<span class="card-flag flag-won">Won</span>`;
+  if(isEngagement && item.stage==='closed' && item.outcome==='lost') flag = `<span class="card-flag flag-lost">Lost</span>`;
+  if(isEngagement && item.stage==='closed' && item.outcome==='nofeedback') flag = `<span class="card-flag flag-nofeedback">No Feedback</span>`;
+
+  let convertBtn = '';
+  if(isTender && item.stage==='won'){
+    convertBtn = item.converted
+      ? `<div class="converted-badge">&#10003; Forwarded to ${DEPTS[item.dept].name}</div>`
+      : `<button class="convert-btn" onclick="convertToProject(event,'tender','${item.id}')">Forward to Department →</button>`;
+  }
+  if(isEngagement && item.stage==='won'){
+    convertBtn = item.converted
+      ? `<div class="converted-badge">&#10003; Onboarded as client project</div>`
+      : `<button class="convert-btn" onclick="convertToProject(event,'engagement','${item.id}')">Onboard as Client →</button>`;
+  }
+
+  return `
+  <div class="card" draggable="true" data-kind="${kind}" data-id="${item.id}" onclick="openDetail(event,'${kind}','${item.id}')">
+    <div class="card-top">
+      <span class="card-id">${item.id}</span>
+      ${deptChip(item.dept)}
+    </div>
+    <div class="card-title">${title}</div>
+    <div class="card-meta"><span>${meta1}</span></div>
+    <div class="card-meta"><span class="val">${money(value)}</span>${flag}</div>
+    <div class="card-foot">
+      <div style="display:flex;align-items:center;gap:7px;">
+        <div class="mini-avatar">${initials(owner)}</div>
+        <span style="font-size:11px;color:var(--slate);">${owner && owner!=='—' ? owner : 'Unassigned'}</span>
+      </div>
+      <div class="log-count">&#9998; ${logCount}</div>
+    </div>
+    ${convertBtn}
+  </div>`;
+}
+
+function renderBoard(boardId, stages, list, kind){
+  const board = document.getElementById(boardId);
+  board.innerHTML = stages.map(s=>{
+    const items = list.filter(c=>c.stage===s.k);
+    const cards = items.length ? items.map(it=>cardHTML(it,kind)).join('') : `<div class="empty-col">No cards</div>`;
+    return `
+    <div class="column" data-stage="${s.k}" data-kind="${kind}">
+      <div class="column-head">
+        <div class="column-title"><span class="column-dot" style="background:${s.color}"></span>${s.label}</div>
+        <div class="column-count">${items.length}</div>
+      </div>
+      <div class="cardstack">${cards}</div>
+    </div>`;
+  }).join('');
+  attachDnD(board);
+}
+
+function renderTenders(){
+  renderBoard('board-tenders', TENDER_STAGES, DB.tenders, 'tender');
+  renderSpine('spine-tenders', TENDER_STAGES, DB.tenders);
+  document.getElementById('tab-count-tenders').textContent = DB.tenders.filter(t=>!['won','lost'].includes(t.stage)).length;
+}
+function renderEngagements(){
+  renderBoard('board-engagements', ENGAGEMENT_STAGES, DB.engagements, 'engagement');
+  renderSpine('spine-engagements', ENGAGEMENT_STAGES, DB.engagements);
+  document.getElementById('tab-count-engagements').textContent = DB.engagements.filter(e=>!['won','closed'].includes(e.stage)).length;
+}
+function renderProjects(){
+  const filter = document.getElementById('dept-filter').value;
+  const list = filter==='all' ? DB.projects : DB.projects.filter(p=>p.dept===filter);
+  renderBoard('board-projects', PROJECT_STAGES, list, 'project');
+  renderSpine('spine-projects', PROJECT_STAGES, list);
+  document.getElementById('tab-count-projects').textContent = DB.projects.filter(p=>p.stage!=='closed').length;
+}
+function initDeptFilter(){
+  const sel = document.getElementById('dept-filter');
+  sel.innerHTML = `<option value="all">All departments</option>` + Object.keys(DEPTS).map(k=>`<option value="${k}">${DEPTS[k].name}</option>`).join('');
+}
+
+/* ============================================================
+   DRAG & DROP
+============================================================ */
+let dragItem = null;
+function attachDnD(board){
+  board.querySelectorAll('.card').forEach(card=>{
+    card.addEventListener('dragstart', e=>{
+      dragItem = {kind:card.dataset.kind, id:card.dataset.id};
+      card.classList.add('dragging');
+    });
+    card.addEventListener('dragend', ()=> card.classList.remove('dragging'));
+  });
+  board.querySelectorAll('.column').forEach(col=>{
+    col.addEventListener('dragover', e=>{ e.preventDefault(); col.classList.add('dragover'); });
+    col.addEventListener('dragleave', ()=> col.classList.remove('dragover'));
+    col.addEventListener('drop', e=>{
+      e.preventDefault();
+      col.classList.remove('dragover');
+      if(!dragItem) return;
+      moveCard(dragItem.kind, dragItem.id, col.dataset.stage);
+      dragItem = null;
+    });
+  });
+}
+function listFor(kind){ return kind==='tender' ? DB.tenders : kind==='engagement' ? DB.engagements : DB.projects; }
+function stagesFor(kind){ return kind==='tender' ? TENDER_STAGES : kind==='engagement' ? ENGAGEMENT_STAGES : PROJECT_STAGES; }
+
+function moveCard(kind, id, newStage){
+  const list = listFor(kind);
+  const item = list.find(x=>x.id===id);
+  if(!item || item.stage===newStage) return;
+  const stages = stagesFor(kind);
+  const label = stages.find(s=>s.k===newStage).label;
+  item.stage = newStage;
+  if(!item.log) item.log = [];
+  item.log.unshift({type:'note', who:'You', text:`Moved to "${label}".`, when:'Just now'});
+  if(kind==='tender') renderTenders();
+  else if(kind==='engagement') renderEngagements();
+  else renderProjects();
+  toast(`${id} moved to ${label}`);
+}
+
+/* ============================================================
+   CONVERT TENDER/ENGAGEMENT -> PROJECT
+============================================================ */
+function convertToProject(e, kind, id){
+  e.stopPropagation();
+  const list = listFor(kind);
+  const item = list.find(x=>x.id===id);
+  if(!item || item.converted) return;
+  item.converted = true;
+  const proj = {
+    id: nid('PRJ-'),
+    name: kind==='tender' ? item.title : (item.client + ' — ' + item.service),
+    source: kind==='tender' ? 'Tender' : 'Client',
+    sourceRef: item.id,
+    dept: item.dept,
+    value: item.value,
+    stage: 'onboarding',
+    owner: item.owner==='—' ? 'Unassigned' : item.owner,
+    invoice:{issued:0,paid:0,outstanding:item.value},
+    log: mkLog([['note','You', kind==='tender' ? 'Tender awarded and forwarded to delivery department.' : 'Client won — onboarding as active project.', 'Just now']])
+  };
+  DB.projects.unshift(proj);
+  if(kind==='tender') renderTenders(); else renderEngagements();
+  renderProjects();
+  toast(`${proj.id} created in Projects & Delivery`);
+  closeSlideover();
+}
+
+/* ============================================================
+   SLIDE-OVER DETAIL
+============================================================ */
+let currentDetail = null;
+
+function openDetail(e, kind, id){
+  if(e.target.closest('.convert-btn')) return;
+  currentDetail = {kind, id};
+  const item = listFor(kind).find(x=>x.id===id);
+  const stages = stagesFor(kind);
+  document.getElementById('so-id').textContent = item.id;
+  document.getElementById('so-title').textContent = kind==='project' ? item.name : (kind==='tender' ? item.title : item.client);
+
+  let tags = deptChip(item.dept);
+  const stageLabel = stages.find(s=>s.k===item.stage).label;
+  tags += `<span class="chip" style="background:#EDEEE7;color:#5B6470">${stageLabel}</span>`;
+  document.getElementById('so-tags').innerHTML = tags;
+
+  // Overview pane
+  let kv = '';
+  if(kind==='tender'){
+    kv = `
+    <div class="kv-grid">
+      <div class="kv"><div class="k">Issuer</div><div class="v">${item.issuer}</div></div>
+      <div class="kv"><div class="k">Est. Value</div><div class="v">${money(item.value)}</div></div>
+      <div class="kv"><div class="k">Deadline</div><div class="v">${item.deadline}</div></div>
+      <div class="kv"><div class="k">Owner</div><div class="v">${item.owner}</div></div>
+    </div>`;
+  } else if(kind==='engagement'){
+    kv = `
+    <div class="kv-grid">
+      <div class="kv"><div class="k">Client</div><div class="v">${item.client}</div></div>
+      <div class="kv"><div class="k">Service Requested</div><div class="v">${item.service}</div></div>
+      <div class="kv"><div class="k">Contact</div><div class="v">${item.contact}</div></div>
+      <div class="kv"><div class="k">Est. Value</div><div class="v">${money(item.value)}</div></div>
+    </div>`;
+  } else {
+    kv = `
+    <div class="kv-grid">
+      <div class="kv"><div class="k">Source</div><div class="v">${item.source} — ${item.sourceRef}</div></div>
+      <div class="kv"><div class="k">Contract Value</div><div class="v">${money(item.value)}</div></div>
+      <div class="kv"><div class="k">Owner</div><div class="v">${item.owner}</div></div>
+      <div class="kv"><div class="k">Department</div><div class="v">${DEPTS[item.dept].name}</div></div>
+    </div>`;
+  }
+
+  const idx = stageIndex(stages, item.stage);
+  const tracker = stages.map((s,i)=>`<div class="stage-dot-track ${i<idx?'done':i===idx?'current':''}"></div>`).join('');
+
+  let invoiceBlock = '';
+  if(kind==='project'){
+    invoiceBlock = `
+    <div class="section-label">Invoicing &amp; Payment</div>
+    <div class="invoice-box">
+      <div class="invoice-row"><span>Contract value</span><b>${money(item.value)}</b></div>
+      <div class="invoice-row"><span>Invoiced to date</span><b>${money(item.invoice.issued)}</b></div>
+      <div class="invoice-row"><span>Paid to date</span><b style="color:var(--teal)">${money(item.invoice.paid)}</b></div>
+      <div class="invoice-row"><span>Outstanding</span><b style="color:var(--coral)">${money(item.invoice.outstanding)}</b></div>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn btn-sm" onclick="raiseInvoice()">Raise invoice</button>
+        <button class="btn btn-sm" onclick="recordPayment()">Record payment</button>
+      </div>
+    </div>`;
+  }
+
+  document.getElementById('pane-overview').innerHTML = `${kv}<div class="section-label">Stage progress</div><div class="stage-tracker">${tracker}</div>${invoiceBlock}`;
+
+  renderActivityPane(item);
+  renderDocsPane(item, kind);
+
+  // footer actions
+  let footer = '';
+  if(kind==='tender' && item.stage==='won' && !item.converted){
+    footer = `<button class="btn btn-primary" style="flex:1" onclick="convertToProject(event,'tender','${item.id}')">Forward to ${DEPTS[item.dept].name} →</button>`;
+  } else if(kind==='engagement' && item.stage==='won' && !item.converted){
+    footer = `<button class="btn btn-primary" style="flex:1" onclick="convertToProject(event,'engagement','${item.id}')">Onboard as Client Project →</button>`;
+  } else {
+    footer = `<button class="btn" style="flex:1" onclick="closeSlideover()">Close</button>`;
+  }
+  document.getElementById('so-footer').innerHTML = footer;
+
+  soTab('overview');
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('slideover').classList.add('show');
+}
+
+function renderActivityPane(item){
+  const icons = {meeting:'&#128197;', email:'&#9993;', note:'&#128221;', call:'&#128222;', visit:'&#128205;'};
+  const colors = {meeting:'var(--blue-soft)', email:'var(--teal-soft)', note:'var(--paper)', call:'var(--purple-soft)', visit:'var(--gold-soft)'};
+  const log = item.log || [];
+  const entries = log.map(l=>`
+    <div class="log-entry">
+      <div class="log-icon" style="background:${colors[l.type]||'var(--paper)'}">${icons[l.type]||'&#8226;'}</div>
+      <div class="log-body">
+        <div class="lb-top"><span class="who">${l.who}</span><span class="when">${l.when}</span></div>
+        <div class="text">${l.text}</div>
+      </div>
+    </div>`).join('') || `<div class="empty-col">No activity logged yet</div>`;
+
+  document.getElementById('pane-activity').innerHTML = `
+    ${entries}
+    <div class="add-log">
+      <select id="log-type">
+        <option value="note">Note</option>
+        <option value="meeting">Meeting</option>
+        <option value="email">Email</option>
+        <option value="call">Call</option>
+        <option value="visit">Site Visit</option>
+      </select>
+      <input id="log-text" placeholder="Log an update…" onkeydown="if(event.key==='Enter')addLogEntry()">
+      <button class="btn btn-sm btn-primary" onclick="addLogEntry()">Add</button>
+    </div>`;
+}
+
+function addLogEntry(){
+  const type = document.getElementById('log-type').value;
+  const text = document.getElementById('log-text').value.trim();
+  if(!text) return;
+  const item = listFor(currentDetail.kind).find(x=>x.id===currentDetail.id);
+  if(!item.log) item.log=[];
+  item.log.unshift({type, who:'You', text, when:'Just now'});
+  renderActivityPane(item);
+  if(currentDetail.kind==='tender') renderTenders();
+  else if(currentDetail.kind==='engagement') renderEngagements();
+  else renderProjects();
+  toast('Activity logged');
+}
+
+function renderDocsPane(item, kind){
+  const docs = kind==='tender'
+    ? ['Tender Notice.pdf','Bid Bond Confirmation.pdf','Technical Proposal.docx']
+    : kind==='engagement'
+    ? ['Capability Statement.pdf','Client Brief.docx']
+    : ['Signed Contract.pdf','Project Charter.docx','Invoice Log.xlsx'];
+  document.getElementById('pane-docs').innerHTML = docs.map(d=>`
+    <div class="doc-item"><div class="doc-ico">&#128196;</div><div style="flex:1">${d}</div><button class="btn btn-sm btn-ghost">View</button></div>
+  `).join('') + `<button class="btn btn-sm" style="margin-top:12px;">+ Upload document</button>`;
+}
+
+function soTab(pane){
+  document.querySelectorAll('.so-tab').forEach(t=>t.classList.toggle('active', t.dataset.pane===pane));
+  document.querySelectorAll('.so-pane').forEach(p=>p.classList.toggle('active', p.id==='pane-'+pane));
+}
+function closeSlideover(){
+  document.getElementById('overlay').classList.remove('show');
+  document.getElementById('slideover').classList.remove('show');
+  currentDetail = null;
+}
+
+function raiseInvoice(){
+  const item = listFor('project').find(x=>x.id===currentDetail.id);
+  const amt = Math.round(item.invoice.outstanding * 0.5 / 1000)*1000;
+  if(amt<=0){ toast('Nothing left to invoice'); return; }
+  item.invoice.issued += amt;
+  if(!item.log) item.log=[];
+  item.log.unshift({type:'note', who:'Finance', text:`Invoice raised for ${money(amt)}.`, when:'Just now'});
+  openDetail({target:{closest:()=>null}}, 'project', item.id);
+  renderProjects();
+  toast('Invoice raised');
+}
+function recordPayment(){
+  const item = listFor('project').find(x=>x.id===currentDetail.id);
+  const amt = Math.min(item.invoice.issued - item.invoice.paid, Math.round(item.invoice.outstanding*0.6/1000)*1000);
+  if(amt<=0){ toast('No invoiced balance to record against'); return; }
+  item.invoice.paid += amt;
+  item.invoice.outstanding -= amt;
+  if(!item.log) item.log=[];
+  item.log.unshift({type:'note', who:'Finance', text:`Payment received: ${money(amt)}.`, when:'Just now'});
+  if(item.invoice.outstanding<=0 && item.stage!=='closed'){ item.stage='payment'; }
+  openDetail({target:{closest:()=>null}}, 'project', item.id);
+  renderProjects();
+  toast('Payment recorded');
+}
+
+/* ============================================================
+   NEW CARD MODAL
+============================================================ */
+function openNewModal(kind){
+  document.getElementById('modal-back').classList.add('show');
+  const title = document.getElementById('modal-title');
+  const sub = document.getElementById('modal-sub');
+  const body = document.getElementById('modal-body');
+  const deptOptions = Object.keys(DEPTS).map(k=>`<option value="${k}">${DEPTS[k].name}</option>`).join('');
+
+  if(kind==='tender'){
+    title.textContent = 'New tender';
+    sub.textContent = 'Log a new opportunity into the tender pipeline.';
+    body.innerHTML = `
+      <div class="field"><label>Tender title</label><input id="f-title" placeholder="e.g. County Payroll Services Tender"></div>
+      <div class="field"><label>Issuing organisation</label><input id="f-issuer" placeholder="e.g. Nairobi County Government"></div>
+      <div class="field-row">
+        <div class="field"><label>Estimated value (KES)</label><input id="f-value" type="number" placeholder="2500000"></div>
+        <div class="field"><label>Submission deadline</label><input id="f-deadline" type="date"></div>
+      </div>
+      <div class="field"><label>Likely department</label><select id="f-dept">${deptOptions}</select></div>
+      <div class="field"><label>Owner</label><input id="f-owner" placeholder="e.g. Amina N."></div>`;
+    document.getElementById('modal-save').onclick = ()=>{
+      const t = document.getElementById('f-title').value.trim();
+      if(!t){ toast('Add a tender title'); return; }
+      DB.tenders.unshift({
+        id:nid('TND-'), title:t,
+        issuer:document.getElementById('f-issuer').value||'—',
+        value:Number(document.getElementById('f-value').value)||0,
+        deadline:document.getElementById('f-deadline').value||'—',
+        dept:document.getElementById('f-dept').value,
+        owner:document.getElementById('f-owner').value||'—',
+        stage:'identified', log:mkLog([['note','You','Tender identified and logged.','Just now']])
+      });
+      renderTenders(); closeNewModal(); toast('Tender added to pipeline');
+    };
+  } else {
+    title.textContent = 'New client request';
+    sub.textContent = 'Log an inbound request from the operations desk.';
+    body.innerHTML = `
+      <div class="field"><label>Client / business name</label><input id="f-client" placeholder="e.g. Two Rivers Mall Ltd"></div>
+      <div class="field"><label>Service requested</label><input id="f-service" placeholder="e.g. Payroll Outsourcing"></div>
+      <div class="field-row">
+        <div class="field"><label>Contact person</label><input id="f-contact" placeholder="e.g. Grace M. (HR Director)"></div>
+        <div class="field"><label>Estimated value (KES)</label><input id="f-value2" type="number" placeholder="800000"></div>
+      </div>
+      <div class="field"><label>Forward to department</label><select id="f-dept2">${deptOptions}</select></div>`;
+    document.getElementById('modal-save').onclick = ()=>{
+      const c = document.getElementById('f-client').value.trim();
+      if(!c){ toast('Add a client name'); return; }
+      DB.engagements.unshift({
+        id:nid('ENG-'), client:c,
+        service:document.getElementById('f-service').value||'—',
+        contact:document.getElementById('f-contact').value||'—',
+        value:Number(document.getElementById('f-value2').value)||0,
+        dept:document.getElementById('f-dept2').value,
+        owner:'—', stage:'new', outcome:null,
+        log:mkLog([['note','Ops Desk','Request received and logged.','Just now']])
+      });
+      renderEngagements(); closeNewModal(); toast('Request added to engagement board');
+    };
+  }
+}
+function closeNewModal(){ document.getElementById('modal-back').classList.remove('show'); }
+
+/* ============================================================
+   DASHBOARD
+============================================================ */
+function renderDashboard(){
+  const activeTenders = DB.tenders.filter(t=>!['won','lost'].includes(t.stage)).length;
+  const activeEngagements = DB.engagements.filter(e=>!['won','closed'].includes(e.stage)).length;
+  const activeProjects = DB.projects.filter(p=>p.stage!=='closed').length;
+  const pipelineValue = DB.tenders.filter(t=>!['won','lost'].includes(t.stage)).reduce((a,b)=>a+b.value,0)
+                      + DB.engagements.filter(e=>!['won','closed'].includes(e.stage)).reduce((a,b)=>a+b.value,0);
+
+  document.getElementById('dash-stats').innerHTML = `
+    <div class="stat-card"><div class="label">Active Tenders</div><div class="num">${activeTenders}</div><div class="sub">in identification → evaluation</div></div>
+    <div class="stat-card"><div class="label">Active Engagements</div><div class="num">${activeEngagements}</div><div class="sub">being engaged by departments</div></div>
+    <div class="stat-card"><div class="label">Live Projects</div><div class="num">${activeProjects}</div><div class="sub">in delivery, invoicing or payment</div></div>
+    <div class="stat-card"><div class="label">Pipeline Value</div><div class="num" style="font-size:24px;">${money(pipelineValue)}</div><div class="sub">not yet won or lost</div></div>
+  `;
+
+  // feed: combine most recent log entries across everything
+  const all = [];
+  DB.tenders.forEach(t=> (t.log||[]).forEach(l=> all.push({...l, ref:t.id, title:t.title})));
+  DB.engagements.forEach(t=> (t.log||[]).forEach(l=> all.push({...l, ref:t.id, title:t.client})));
+  DB.projects.forEach(t=> (t.log||[]).forEach(l=> all.push({...l, ref:t.id, title:t.name})));
+  const colorFor = {meeting:'var(--blue)', email:'var(--teal)', note:'var(--slate-light)', call:'var(--purple)', visit:'var(--gold)'};
+  document.getElementById('dash-feed').innerHTML = all.slice(0,9).map(f=>`
+    <div class="feed-item">
+      <div class="feed-dot" style="background:${colorFor[f.type]||'var(--slate-light)'}"></div>
+      <div>
+        <div class="feed-text"><b>${f.ref}</b> · ${f.title} — ${f.text}</div>
+        <div class="feed-time">${f.when} · ${f.who}</div>
+      </div>
+    </div>`).join('');
+
+  const deptCounts = {};
+  Object.keys(DEPTS).forEach(k=>deptCounts[k]=0);
+  DB.tenders.forEach(t=>{ if(!['won','lost'].includes(t.stage)) deptCounts[t.dept]++; });
+  DB.engagements.forEach(t=>{ if(!['won','closed'].includes(t.stage)) deptCounts[t.dept]++; });
+  DB.projects.forEach(t=>{ if(t.stage!=='closed') deptCounts[t.dept]++; });
+  const max = Math.max(1, ...Object.values(deptCounts));
+  document.getElementById('dash-depts').innerHTML = Object.keys(DEPTS).map(k=>`
+    <div class="dept-bar-row">
+      <div class="dept-bar-label">${DEPTS[k].name}</div>
+      <div class="dept-bar-track"><div class="dept-bar-fill" style="width:${(deptCounts[k]/max*100)}%;background:${DEPTS[k].text}"></div></div>
+      <div class="dept-bar-num">${deptCounts[k]}</div>
+    </div>`).join('');
+}
+
+/* ============================================================
+   INIT
+============================================================ */
+initDeptFilter();
+renderDashboard();
+renderTenders();
+renderEngagements();
+renderProjects();
+</script>
+</body>
+</html>

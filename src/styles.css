@@ -1,0 +1,1023 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * AIMS — Amsol Integrated Management System
+ * Brand palette (from documentation §12):
+ *   Navy       #085599  (primary)
+ *   Dark Navy  #063D70
+ *   Gray       #8C8C8C / #595959
+ *   Light Gray #F2F2F2
+ *   Orange     #F5821F  (accent, CTAs, alerts)
+ *   Green      #2E9E4F  (positive/approved, solid)
+ *   Red        #D64545  (overdue/at-risk, solid)
+ *
+ * Rules: solid fills only. No gradients. No purple.
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-dark: var(--primary-dark);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* Second step of the large-screen scale below (paired with the html { font-size } clamp) —
+     built-in 2xl is 1536px, this adds a 2560px+ tier for ultrawide/4K. */
+  --breakpoint-3xl: 2560px;
+}
+
+:root {
+  --radius: 0.5rem;
+
+  /* Base surfaces */
+  --background: oklch(1 0 0); /* white */
+  --foreground: oklch(0.28 0.02 250); /* near dark gray #333 */
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.28 0.02 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.28 0.02 250);
+
+  /* Amsol Navy #085599 */
+  --primary: oklch(0.44 0.14 245);
+  --primary-foreground: oklch(1 0 0);
+  /* Dark navy #063D70 */
+  --primary-dark: oklch(0.34 0.12 250);
+
+  /* Light gray secondary */
+  --secondary: oklch(0.96 0.005 240); /* #F2F2F2 */
+  --secondary-foreground: oklch(0.28 0.02 250);
+
+  --muted: oklch(0.96 0.005 240);
+  --muted-foreground: oklch(0.5 0.01 250); /* #8C8C8C */
+
+  /* Orange accent #F5821F */
+  --accent: oklch(0.7 0.18 55);
+  --accent-foreground: oklch(1 0 0);
+
+  /* Status Red #D64545 */
+  --destructive: oklch(0.6 0.19 25);
+  --destructive-foreground: oklch(1 0 0);
+
+  /* Status Green #2E9E4F */
+  --success: oklch(0.62 0.16 145);
+  --success-foreground: oklch(1 0 0);
+
+  /* Orange used as warning too */
+  --warning: oklch(0.7 0.18 55);
+  --warning-foreground: oklch(1 0 0);
+
+  --border: oklch(0.9 0.005 250);
+  --input: oklch(0.9 0.005 250);
+  --ring: oklch(0.44 0.14 245);
+
+  /* Chart palette — solid colors, no purple, no gradients */
+  --chart-1: oklch(0.44 0.14 245); /* navy */
+  --chart-2: oklch(0.7 0.18 55); /* orange */
+  --chart-3: oklch(0.34 0.12 250); /* dark navy */
+  --chart-4: oklch(0.62 0.16 145); /* green */
+  --chart-5: oklch(0.5 0.01 250); /* gray */
+
+  /* Sidebar — dark navy with white text */
+  --sidebar: oklch(0.34 0.12 250); /* #063D70 dark navy */
+  --sidebar-foreground: oklch(0.98 0.005 240);
+  --sidebar-primary: oklch(0.7 0.18 55); /* orange highlight */
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.44 0.14 245); /* navy hover */
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.44 0.14 245 / 0.4);
+  --sidebar-ring: oklch(0.7 0.18 55);
+}
+
+.dark {
+  --background: oklch(0.2 0.02 250);
+  --foreground: oklch(0.98 0.005 240);
+  --card: oklch(0.26 0.03 250);
+  --card-foreground: oklch(0.98 0.005 240);
+  --popover: oklch(0.26 0.03 250);
+  --popover-foreground: oklch(0.98 0.005 240);
+  --primary: oklch(0.6 0.15 245);
+  --primary-foreground: oklch(1 0 0);
+  --primary-dark: oklch(0.44 0.14 245);
+  --secondary: oklch(0.3 0.03 250);
+  --secondary-foreground: oklch(0.98 0.005 240);
+  --muted: oklch(0.3 0.03 250);
+  --muted-foreground: oklch(0.72 0.02 250);
+  --accent: oklch(0.7 0.18 55);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.6 0.19 25);
+  --destructive-foreground: oklch(1 0 0);
+  --success: oklch(0.62 0.16 145);
+  --success-foreground: oklch(1 0 0);
+  --warning: oklch(0.7 0.18 55);
+  --warning-foreground: oklch(1 0 0);
+  --border: oklch(1 0 0 / 0.12);
+  --input: oklch(1 0 0 / 0.15);
+  --ring: oklch(0.6 0.15 245);
+  --sidebar: oklch(0.28 0.03 250);
+  --sidebar-foreground: oklch(0.98 0.005 240);
+  --sidebar-primary: oklch(0.7 0.18 55);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.44 0.14 245);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(1 0 0 / 0.1);
+  --sidebar-ring: oklch(0.7 0.18 55);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    font-size: 100%; /* 16px — unchanged below 1536px (laptop/mobile untouched) */
+  }
+
+  /* Large-screen scaling only. Below 1536px this block doesn't apply at all, so laptop and
+     mobile see zero change. 1536px is Tailwind's built-in 2xl breakpoint, chosen so the
+     clamp evaluates to exactly 16px right at the threshold — no visible seam. Scales up to
+     18px (+12.5%) at 2560px+ and holds flat beyond so 4K/ultrawide don't over-scale. Since
+     Tailwind's spacing scale is rem-based too, this also grows buttons/padding/table rows —
+     intentional, not just text. */
+  @media (min-width: 1536px) {
+    html {
+      font-size: clamp(16px, 13px + 0.1953vw, 18px);
+    }
+  }
+
+  html,
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Utility: solid brand tints without gradients */
+@utility bg-brand-navy {
+  background-color: oklch(0.44 0.14 245);
+  color: #fff;
+}
+@utility bg-brand-navy-dark {
+  background-color: oklch(0.34 0.12 250);
+  color: #fff;
+}
+@utility bg-brand-orange {
+  background-color: oklch(0.7 0.18 55);
+  color: #fff;
+}
+@utility text-brand-navy {
+  color: oklch(0.44 0.14 245);
+}
+@utility text-brand-orange {
+  color: oklch(0.7 0.18 55);
+}
+
+/*
+ * ============================================================================
+ * Pipeline module (Tender Pipeline / Client Engagement / Projects & Delivery)
+ * and the Project Workspace (amsol_project_workspace.html prototype).
+ * Scoped under .pipeline-scope so it never leaks into the rest of AIMS's navy/
+ * orange design system — this is a deliberate, requested exception lifting the
+ * AMSOL prototypes' own palette (including purple, which the rest of the app
+ * avoids) and Fraunces/IBM Plex type system 1:1 for these modules only. Both
+ * prototypes share the identical token set, so one scope class covers both.
+ * ============================================================================
+ */
+.pipeline-scope {
+  --pipeline-ink: #16233f;
+  --pipeline-ink-2: #1f3157;
+  --pipeline-paper: #f1f2ec;
+  --pipeline-paper-2: #ffffff;
+  --pipeline-line: #dbded2;
+  --pipeline-line-soft: #e8e9e2;
+  --pipeline-slate: #5b6470;
+  --pipeline-slate-light: #8b93a0;
+  --pipeline-gold: #b4802a;
+  --pipeline-gold-soft: #f3e4c6;
+  --pipeline-teal: #2f6f62;
+  --pipeline-teal-soft: #dceae5;
+  --pipeline-coral: #ae4a3c;
+  --pipeline-coral-soft: #f5deda;
+  --pipeline-blue: #375d8a;
+  --pipeline-blue-soft: #dce5f0;
+  --pipeline-purple: #6b5490;
+  --pipeline-purple-soft: #e6e0ef;
+  --pipeline-amber: #c08a2e;
+  --pipeline-amber-soft: #f3e9ce;
+  --pipeline-font-display: "Fraunces", serif;
+  --pipeline-font-body: "IBM Plex Sans", sans-serif;
+  --pipeline-font-mono: "IBM Plex Mono", monospace;
+  --pipeline-shadow-card: 0 1px 2px rgba(22, 35, 63, 0.06), 0 1px 1px rgba(22, 35, 63, 0.04);
+  --pipeline-shadow-float: 0 12px 32px rgba(22, 35, 63, 0.18);
+
+  font-family: var(--pipeline-font-body);
+  color: var(--pipeline-ink);
+}
+.pipeline-scope .p-title {
+  font-family: var(--pipeline-font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.pipeline-scope .p-mono {
+  font-family: var(--pipeline-font-mono);
+}
+
+.pipeline-scope .spine-wrap {
+  margin: 14px 0 18px;
+  padding: 18px 20px 14px;
+  background: var(--pipeline-paper-2);
+  border: 1px solid var(--pipeline-line);
+  border-radius: 14px;
+}
+
+.pipeline-scope .board {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 20px;
+  align-items: flex-start;
+}
+.pipeline-scope .column {
+  flex: 0 0 268px;
+  background: rgba(219, 222, 210, 0.28);
+  border-radius: 14px;
+  padding: 12px 10px 14px;
+  min-height: 120px;
+}
+.pipeline-scope .column.dragover {
+  outline: 2px dashed var(--pipeline-gold);
+  outline-offset: -2px;
+  background: rgba(180, 128, 42, 0.06);
+}
+.pipeline-scope .cardstack {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-height: 40px;
+}
+
+.pipeline-scope .p-card {
+  background: var(--pipeline-paper-2);
+  border: 1px solid var(--pipeline-line);
+  border-radius: 11px;
+  padding: 12px 13px 11px;
+  cursor: grab;
+  box-shadow: var(--pipeline-shadow-card);
+  transition: box-shadow 0.15s;
+}
+.pipeline-scope .p-card:hover {
+  box-shadow: 0 4px 14px rgba(22, 35, 63, 0.12);
+}
+.pipeline-scope .p-card.dragging {
+  opacity: 0.35;
+}
+.pipeline-scope .p-card .t {
+  font-weight: 600;
+  margin-bottom: 6px;
+  line-height: 1.35;
+  font-size: 12.3px;
+}
+.pipeline-scope .kcard-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+.pipeline-scope .p-chip {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 0.2px;
+}
+.pipeline-scope .mini-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--pipeline-ink-2);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--pipeline-font-mono);
+  flex: none;
+}
+.pipeline-scope .empty-col {
+  text-align: center;
+  color: var(--pipeline-slate-light);
+  font-size: 11.5px;
+  padding: 16px 6px;
+  border: 1px dashed var(--pipeline-line);
+  border-radius: 9px;
+}
+
+.pipeline-scope .p-panel {
+  background: var(--pipeline-paper-2);
+  border: 1px solid var(--pipeline-line);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+.pipeline-scope .stat-card {
+  background: var(--pipeline-paper-2);
+  border: 1px solid var(--pipeline-line);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+
+.pipeline-scope .so-tab.active {
+  color: var(--pipeline-ink);
+  border-color: var(--pipeline-gold) !important;
+}
+.pipeline-scope .stage-dot-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 4px;
+  background: var(--pipeline-line-soft);
+}
+.pipeline-scope .stage-dot-track.done {
+  background: var(--pipeline-teal);
+}
+.pipeline-scope .stage-dot-track.current {
+  background: var(--pipeline-gold);
+}
+
+/*
+ * ----------------------------------------------------------------------------
+ * Project Workspace tab content — ported 1:1 from amsol_project_workspace.html.
+ * Kanban board reuses .board/.column/.p-card/.cardstack/.empty-col/.mini-avatar
+ * already defined above for the Pipeline module.
+ * ----------------------------------------------------------------------------
+ */
+.pipeline-scope .ws-projhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.pipeline-scope .ws-projhead h1 {
+  font-family: var(--pipeline-font-display);
+  font-size: 24px;
+  margin: 0 0 6px;
+}
+.pipeline-scope .ws-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 12.5px;
+  color: var(--pipeline-slate);
+}
+.pipeline-scope .health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.pipeline-scope .ws-stats {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.pipeline-scope .ws-stat {
+  background: var(--pipeline-paper-2);
+  border: 1px solid var(--pipeline-line);
+  border-radius: 12px;
+  padding: 10px 16px;
+  text-align: center;
+  min-width: 88px;
+}
+.pipeline-scope .ws-stat .n {
+  font-family: var(--pipeline-font-mono);
+  font-size: 18px;
+  font-weight: 600;
+}
+.pipeline-scope .ws-stat .l {
+  font-size: 10px;
+  color: var(--pipeline-slate-light);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+.pipeline-scope .ring-wrap {
+  position: relative;
+  width: 64px;
+  height: 64px;
+}
+.pipeline-scope .ring-wrap svg {
+  transform: rotate(-90deg);
+}
+.pipeline-scope .ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--pipeline-font-mono);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pipeline-scope .ws-tabbar {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--pipeline-line);
+  overflow-x: auto;
+}
+.pipeline-scope .ws-tabbtn {
+  background: none;
+  border: none;
+  padding: 11px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pipeline-slate);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.pipeline-scope .ws-tabbtn.active {
+  color: var(--pipeline-ink);
+  border-color: var(--pipeline-gold);
+}
+.pipeline-scope .ws-tabbtn:hover {
+  color: var(--pipeline-ink);
+}
+
+.pipeline-scope .ws-panel {
+  background: var(--pipeline-paper-2);
+  border: 1px solid var(--pipeline-line);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+.pipeline-scope .ws-panel + .ws-panel {
+  margin-top: 14px;
+}
+.pipeline-scope .ws-panel h3 {
+  font-family: var(--pipeline-font-display);
+  font-size: 16px;
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pipeline-scope .ws-section-label {
+  font-family: var(--pipeline-font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--pipeline-slate-light);
+  margin: 4px 0 10px;
+}
+.pipeline-scope .ws-seg {
+  display: flex;
+  background: var(--pipeline-paper);
+  border: 1px solid var(--pipeline-line);
+  border-radius: 9px;
+  padding: 2px;
+}
+.pipeline-scope .ws-seg button {
+  border: none;
+  background: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pipeline-slate);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.pipeline-scope .ws-seg button.active {
+  background: var(--pipeline-paper-2);
+  color: var(--pipeline-ink);
+  box-shadow: var(--pipeline-shadow-card);
+}
+
+/* Overview */
+.pipeline-scope .ws-ov-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.pipeline-scope .ws-metric-card {
+  background: var(--pipeline-paper-2);
+  border: 1px solid var(--pipeline-line);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.pipeline-scope .ws-metric-card .label {
+  font-family: var(--pipeline-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--pipeline-slate-light);
+}
+.pipeline-scope .ws-metric-card .num {
+  font-family: var(--pipeline-font-display);
+  font-size: 24px;
+  font-weight: 600;
+  margin: 6px 0 4px;
+}
+.pipeline-scope .ws-metric-card .sub {
+  font-size: 11.5px;
+  color: var(--pipeline-slate);
+}
+.pipeline-scope .ws-bar-track {
+  background: var(--pipeline-line-soft);
+  border-radius: 6px;
+  height: 8px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.pipeline-scope .ws-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+}
+.pipeline-scope .ws-two-col {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 14px;
+}
+.pipeline-scope .ws-milestone-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+.pipeline-scope .ws-ms-item {
+  flex: 0 0 168px;
+  background: var(--pipeline-paper);
+  border: 1px solid var(--pipeline-line);
+  border-radius: 12px;
+  padding: 12px 13px;
+}
+.pipeline-scope .ws-ms-item .d {
+  font-family: var(--pipeline-font-mono);
+  font-size: 10.5px;
+  color: var(--pipeline-slate-light);
+}
+.pipeline-scope .ws-ms-item .t {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin: 5px 0 8px;
+  line-height: 1.35;
+}
+.pipeline-scope .ws-ms-status {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  display: inline-block;
+}
+.pipeline-scope .ws-donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.pipeline-scope .ws-dl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--pipeline-slate);
+}
+.pipeline-scope .ws-dl-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.pipeline-scope .ws-dl-num {
+  margin-left: auto;
+  font-family: var(--pipeline-font-mono);
+  font-weight: 600;
+  color: var(--pipeline-ink);
+}
+
+/* Tasks */
+.pipeline-scope .wbs-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--pipeline-line-soft);
+  font-size: 12.8px;
+}
+.pipeline-scope .wbs-phase {
+  font-weight: 700;
+  background: var(--pipeline-paper);
+  padding: 8px 6px;
+  border-radius: 8px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--pipeline-ink-2);
+}
+.pipeline-scope .wbs-name {
+  flex: 1;
+  min-width: 0;
+}
+.pipeline-scope .wbs-name .sub {
+  font-size: 10.5px;
+  color: var(--pipeline-slate-light);
+  margin-top: 1px;
+}
+.pipeline-scope .status-pill {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.pipeline-scope .priority-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.pipeline-scope .prog-mini {
+  width: 70px;
+  background: var(--pipeline-line-soft);
+  border-radius: 5px;
+  height: 6px;
+  overflow: hidden;
+  flex: none;
+}
+.pipeline-scope .prog-mini-fill {
+  height: 100%;
+  background: var(--pipeline-teal);
+  border-radius: 5px;
+}
+
+/* Gantt */
+.pipeline-scope .gantt-wrap {
+  overflow-x: auto;
+}
+.pipeline-scope .gantt {
+  min-width: 900px;
+}
+.pipeline-scope .gantt-header {
+  display: flex;
+  border-bottom: 1px solid var(--pipeline-line);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  position: relative;
+  margin-left: 220px;
+}
+.pipeline-scope .gantt-header span {
+  flex: 1;
+  text-align: center;
+  font-family: var(--pipeline-font-mono);
+  font-size: 10px;
+  color: var(--pipeline-slate-light);
+}
+.pipeline-scope .grow {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--pipeline-line-soft);
+  height: 34px;
+}
+.pipeline-scope .grow-label {
+  flex: 0 0 220px;
+  font-size: 12px;
+  padding-right: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pipeline-scope .grow-label.phase {
+  font-weight: 700;
+  color: var(--pipeline-ink-2);
+}
+.pipeline-scope .gtrack {
+  position: relative;
+  flex: 1;
+  height: 100%;
+}
+.pipeline-scope .gbar {
+  position: absolute;
+  top: 8px;
+  height: 18px;
+  border-radius: 5px;
+  font-size: 9.5px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pipeline-scope .gmilestone {
+  position: absolute;
+  top: 6px;
+  width: 14px;
+  height: 14px;
+  background: var(--pipeline-gold);
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 2px;
+}
+.pipeline-scope .gtoday {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--pipeline-coral);
+  z-index: 2;
+}
+.pipeline-scope .gtoday-label {
+  position: absolute;
+  top: -16px;
+  font-size: 9px;
+  font-family: var(--pipeline-font-mono);
+  color: var(--pipeline-coral);
+  transform: translateX(-50%);
+}
+.pipeline-scope .crit {
+  box-shadow: 0 0 0 2px var(--pipeline-coral) inset;
+}
+
+/* Team */
+.pipeline-scope .team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.pipeline-scope .team-card {
+  background: var(--pipeline-paper);
+  border: 1px solid var(--pipeline-line);
+  border-radius: 12px;
+  padding: 14px;
+}
+.pipeline-scope .team-top {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.pipeline-scope .team-av {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: #fff;
+  font-family: var(--pipeline-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.pipeline-scope .team-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.pipeline-scope .team-role {
+  font-size: 11px;
+  color: var(--pipeline-slate);
+}
+.pipeline-scope .alloc-track {
+  background: var(--pipeline-line-soft);
+  height: 7px;
+  border-radius: 5px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+.pipeline-scope .alloc-fill {
+  height: 100%;
+  border-radius: 5px;
+}
+.pipeline-scope table.raci {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.pipeline-scope table.raci th,
+.pipeline-scope table.raci td {
+  border: 1px solid var(--pipeline-line);
+  padding: 8px 10px;
+  text-align: center;
+}
+.pipeline-scope table.raci th {
+  background: var(--pipeline-paper);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--pipeline-slate);
+}
+.pipeline-scope table.raci td:first-child,
+.pipeline-scope table.raci th:first-child {
+  text-align: left;
+  font-weight: 600;
+}
+
+/* Financials */
+.pipeline-scope .ws-fin-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+.pipeline-scope .evm-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+.pipeline-scope .evm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pipeline-scope .evm-label {
+  width: 150px;
+  font-size: 12px;
+  color: var(--pipeline-slate);
+  flex: none;
+}
+.pipeline-scope .evm-track {
+  flex: 1;
+  background: var(--pipeline-line-soft);
+  height: 14px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.pipeline-scope .evm-fill {
+  height: 100%;
+  border-radius: 6px;
+}
+.pipeline-scope .evm-val {
+  width: 110px;
+  text-align: right;
+  font-family: var(--pipeline-font-mono);
+  font-size: 12px;
+  flex: none;
+}
+.pipeline-scope table.ws-costs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-top: 6px;
+}
+.pipeline-scope table.ws-costs th,
+.pipeline-scope table.ws-costs td {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--pipeline-line-soft);
+  text-align: left;
+}
+.pipeline-scope table.ws-costs th {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  color: var(--pipeline-slate-light);
+  font-family: var(--pipeline-font-mono);
+  font-weight: 500;
+}
+.pipeline-scope table.ws-costs td.num,
+.pipeline-scope table.ws-costs th.num {
+  text-align: right;
+  font-family: var(--pipeline-font-mono);
+}
+
+/* Calendar */
+.pipeline-scope .cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.pipeline-scope .cal-dow {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  color: var(--pipeline-slate-light);
+  text-align: center;
+  font-family: var(--pipeline-font-mono);
+  padding-bottom: 4px;
+}
+.pipeline-scope .cal-cell {
+  min-height: 78px;
+  border: 1px solid var(--pipeline-line-soft);
+  border-radius: 8px;
+  padding: 5px 6px;
+  font-size: 10.5px;
+  background: var(--pipeline-paper);
+}
+.pipeline-scope .cal-cell.today {
+  border-color: var(--pipeline-gold);
+  background: var(--pipeline-gold-soft);
+}
+.pipeline-scope .cal-cell .dnum {
+  font-family: var(--pipeline-font-mono);
+  color: var(--pipeline-slate-light);
+  font-size: 10px;
+}
+.pipeline-scope .cal-ev {
+  margin-top: 3px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* RAID */
+.pipeline-scope table.raid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.3px;
+}
+.pipeline-scope table.raid th,
+.pipeline-scope table.raid td {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--pipeline-line-soft);
+  text-align: left;
+  vertical-align: top;
+}
+.pipeline-scope table.raid th {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  color: var(--pipeline-slate-light);
+  font-family: var(--pipeline-font-mono);
+  font-weight: 500;
+}
+.pipeline-scope .raid-type {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.pipeline-scope .sev-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .pipeline-scope .ws-ov-grid,
+  .pipeline-scope .ws-fin-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .pipeline-scope .ws-two-col {
+    grid-template-columns: 1fr;
+  }
+  .pipeline-scope .ws-stats {
+    flex-wrap: wrap;
+  }
+}
