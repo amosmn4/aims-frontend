@@ -137,7 +137,7 @@ const DEPT_OPTIONS = [
   { value: "finance", label: "Finance" },
   { value: "hr", label: "HR" },
   { value: "it", label: "IT" },
-  { value: "marketing_ops", label: "Marketing & Ops" },
+  { value: "marketing", label: "Marketing" },
   { value: "tender", label: "Tender" },
 ];
 

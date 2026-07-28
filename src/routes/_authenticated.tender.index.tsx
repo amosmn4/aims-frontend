@@ -69,7 +69,9 @@ const FUNNEL_COLORS: Record<string, string> = {
   withdrawn: "#94a3b8",
 };
 
-function TenderWorkspace() {
+// Exported so the Tender department hub (_authenticated.tender.tsx) can embed this same
+// workspace as a tab, without a second `/tender`-shaped URL — see that file for the hub layout.
+export function TenderWorkspace() {
   const navigate = useNavigate();
   const [departmentId, setDepartmentId] = useState("all");
   const [serviceLineId, setServiceLineId] = useState("all");

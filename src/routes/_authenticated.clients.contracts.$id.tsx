@@ -1,7 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
-  ArrowLeft,
   Loader2,
   Upload,
   FileText,
@@ -31,6 +30,8 @@ import {
 } from "@/features/clients/use-clients-contracts";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
+import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
+import { EntityBreadcrumb, type BreadcrumbSegment } from "@/components/entity-breadcrumb";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -44,6 +45,45 @@ import { useQueryClient } from "@tanstack/react-query";
 export const Route = createFileRoute("/_authenticated/clients/contracts/$id")({
   component: ContractDetail,
 });
+
+function buildContractRelated(
+  c: NonNullable<ReturnType<typeof useContract>["data"]>,
+  clientName: string | null,
+): RelatedRecordItem[] {
+  const items: RelatedRecordItem[] = [];
+  if (c.tender_id) {
+    items.push({ label: "Originating Tender", title: c.tender_title ?? "Tender", to: `/tender/${c.tender_id}` });
+  }
+  if (c.client_request_id) {
+    items.push({
+      label: "Originating Request",
+      title: c.client_request_title ?? "Client Request",
+      to: `/requests/${c.client_request_id}`,
+    });
+  }
+  for (const p of c.project_ids) {
+    items.push({ label: "Project", title: p.name, to: `/projects/${p.id}` });
+  }
+  if (clientName) {
+    items.push({ label: "Client", title: clientName, to: "/clients" });
+  }
+  return items;
+}
+
+function buildContractBreadcrumb(c: NonNullable<ReturnType<typeof useContract>["data"]>): BreadcrumbSegment[] {
+  const segments: BreadcrumbSegment[] = [];
+  if (c.tender_id) {
+    segments.push({ label: "Tender Records", to: "/tender" });
+    segments.push({ label: c.tender_title ?? "Tender", to: `/tender/${c.tender_id}` });
+  } else if (c.client_request_id) {
+    segments.push({ label: "Client Requests", to: "/requests" });
+    segments.push({ label: c.client_request_title ?? "Request", to: `/requests/${c.client_request_id}` });
+  } else {
+    segments.push({ label: "Contracts", to: "/clients/contracts" });
+  }
+  segments.push({ label: c.title });
+  return segments;
+}
 
 function ContractDetail() {
   const { id } = Route.useParams();
@@ -134,12 +174,7 @@ function ContractDetail() {
 
   return (
     <div className="space-y-4">
-      <Link
-        to="/clients/contracts"
-        className="text-xs text-muted-foreground inline-flex items-center gap-1 hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" /> Back to contracts
-      </Link>
+      <EntityBreadcrumb segments={buildContractBreadcrumb(c)} />
 
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -199,6 +234,8 @@ function ContractDetail() {
           </div>
         )}
       </div>
+
+      <RelatedRecords items={buildContractRelated(c, client?.name ?? null)} engagementTo={`/engagements/contract/${c.id}`} />
 
       {/* Renewal / expiry timeline */}
       <RenewalTimeline startDate={c.start_date} endDate={c.end_date} autoRenew={c.auto_renew} />

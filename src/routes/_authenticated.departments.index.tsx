@@ -10,6 +10,7 @@ import {
   Loader2,
   Briefcase,
   Lock,
+  ClipboardList,
 } from "lucide-react";
 import { useDepartments } from "@/features/clients/use-clients-contracts";
 import { useAuth, type AppRole } from "@/lib/auth";
@@ -22,6 +23,13 @@ const KNOWN: Record<
   string,
   { icon: typeof Users; to: string; role: AppRole; accent: string; description: string }
 > = {
+  operations: {
+    icon: ClipboardList,
+    to: "/operations",
+    role: "operations",
+    accent: "bg-secondary text-secondary-foreground",
+    description: "Client-request intake, routing & tracking.",
+  },
   finance: {
     icon: Wallet,
     to: "/finance",
@@ -43,19 +51,19 @@ const KNOWN: Record<
     accent: "bg-warning/10 text-warning",
     description: "Systems, HRMS product, infrastructure.",
   },
-  "marketing-ops": {
+  marketing: {
     icon: Megaphone,
-    to: "/marketing-ops",
-    role: "marketing_ops",
+    to: "/marketing",
+    role: "marketing",
     accent: "bg-accent/10 text-accent",
-    description: "Growth, brand, delivery ops.",
+    description: "Leads, campaigns, website & brand.",
   },
   tender: {
     icon: FileText,
     to: "/tender",
     role: "tender",
     accent: "bg-destructive/10 text-destructive",
-    description: "Bid pipeline, proposals, win rate.",
+    description: "Bid pipeline plus client-request intake.",
   },
 };
 

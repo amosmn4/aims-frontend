@@ -1,28 +1,57 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { ModulePlaceholder } from "@/components/app-shell";
+import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
+import { PageHeader } from "@/components/app-shell";
 import { RequireRole } from "@/components/require-role";
+import { cn } from "@/lib/utils";
+
+const TABS = [
+  { to: "/it", label: "Overview", exact: true },
+  { to: "/it/systems-sites", label: "Systems & Sites" },
+  { to: "/it/tickets", label: "Tickets" },
+  { to: "/it/hrms-clients", label: "HRMS Clients" },
+];
 
 export const Route = createFileRoute("/_authenticated/it")({
   head: () => ({
     meta: [{ title: "Information Technology — AIMS" }, { name: "robots", content: "noindex" }],
   }),
-  component: () => (
+  component: ItLayout,
+});
+
+function ItLayout() {
+  const location = useLocation();
+  return (
     <RequireRole
       roles={["it"]}
       message="The IT workspace is restricted to the IT team, CEO and System Administrator."
     >
-      <ModulePlaceholder
-        title="Information Technology"
-        description="Manage the HRMS product sold/licensed to client companies and the development of all internal systems."
-        bullets={[
-          "HRMS client & license registry (tier, active users, renewals, uptime)",
-          "HRMS usage analytics feeding the CEO dashboard",
-          "Internal software development tracking (AIMS, recruitment systems, tools)",
-          "IT support ticketing for internal and HRMS client issues",
-          "IT asset and infrastructure register",
-          "Security & access management oversight (RBAC)",
-        ]}
-      />
+      <div>
+        <PageHeader
+          title="Information Technology"
+          description="Website & systems work runs through Projects — this is what IT maintains."
+        />
+        <div className="border-b mb-4 flex gap-1 overflow-x-auto">
+          {TABS.map((t) => {
+            const active = t.exact
+              ? location.pathname === t.to
+              : location.pathname.startsWith(t.to);
+            return (
+              <Link
+                key={t.to}
+                to={t.to}
+                className={cn(
+                  "px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap",
+                  active
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {t.label}
+              </Link>
+            );
+          })}
+        </div>
+        <Outlet />
+      </div>
     </RequireRole>
-  ),
-});
+  );
+}

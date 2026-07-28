@@ -86,6 +86,8 @@ export interface ClientRequestRow {
   converted_project_name: string | null;
   converted_contract_id: string | null;
   converted_contract_number: string | null;
+  converted_from_lead_id: string | null;
+  converted_from_lead_name: string | null;
 }
 
 export interface ClientRequestPipelineStage {
@@ -141,6 +143,7 @@ type BackendRequest = {
   updatedAt: string;
   convertedProject?: { id: string; name: string } | null;
   convertedContract?: { id: string; contractNumber: string } | null;
+  convertedFromLead?: { id: string; name: string } | null;
 };
 
 function mapRequest(r: BackendRequest): ClientRequestRow {
@@ -179,6 +182,8 @@ function mapRequest(r: BackendRequest): ClientRequestRow {
     converted_project_name: r.convertedProject?.name ?? null,
     converted_contract_id: r.convertedContract?.id ?? null,
     converted_contract_number: r.convertedContract?.contractNumber ?? null,
+    converted_from_lead_id: r.convertedFromLead?.id ?? null,
+    converted_from_lead_name: r.convertedFromLead?.name ?? null,
   };
 }
 

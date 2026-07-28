@@ -42,7 +42,7 @@ export function FunnelChart({ stages, formatValue, winRate }: FunnelChartProps) 
         <span>Hover a stage for details</span>
         <span>Conv. {overallConversion.toFixed(0)}%</span>
       </div>
-      <div className="relative flex flex-col items-center gap-1.5 py-1">
+      <div className="relative flex flex-col items-center gap-1.5 py-1 max-h-56 overflow-y-auto pr-0.5">
         {funnel.map((f, i) => {
           const widthPct = 40 + (f.value / funnelMax) * 60;
           const isHover = hoverStage === i;

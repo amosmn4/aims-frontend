@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useTenders } from "@/features/tender/use-tender";
 import { useClientRequests } from "@/features/client-requests/use-client-requests";
 import { usePipelineProjects } from "@/features/pipeline/use-pipeline";
@@ -7,8 +7,14 @@ import { formatCurrency } from "@/features/finance/finance";
 import { DEPT_COLORS, DEPT_COLOR_FALLBACK } from "@/features/pipeline/pipeline-theme";
 import { useAuth } from "@/lib/auth";
 
+// Pipeline's in-page tabs are kanban-only now (see _authenticated.pipeline.tsx) — this overview
+// dashboard is kept intact but no longer part of that tab set, so the bare /pipeline URL (what
+// the top-nav link points to) redirects straight to the first kanban instead of landing here.
 export const Route = createFileRoute("/_authenticated/pipeline/")({
   head: () => ({ meta: [{ title: "Pipeline — AIMS" }] }),
+  beforeLoad: () => {
+    throw redirect({ to: "/pipeline/engagements" });
+  },
   component: PipelineOverview,
 });
 
@@ -47,10 +53,10 @@ function PipelineOverview() {
 
   return (
     <div>
-      <h1 className="p-title text-[27px]">
+      <h1 className="p-title text-lg">
         Good {timeOfDay()}, {(profile?.fullName || "there").split(" ")[0]}
       </h1>
-      <div className="mt-1 text-[13.5px]" style={{ color: "var(--pipeline-slate)" }}>
+      <div className="mt-1 text-xs" style={{ color: "var(--pipeline-slate)" }}>
         Here's where every tender, client request and live project stands today.
       </div>
 

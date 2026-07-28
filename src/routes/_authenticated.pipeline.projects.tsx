@@ -35,12 +35,18 @@ export const Route = createFileRoute("/_authenticated/pipeline/projects")({
   component: ProjectsDeliveryBoard,
 });
 
-function ProjectsDeliveryBoard() {
+// Exported so a department hub (e.g. _authenticated.hr.projects.tsx) can embed this same board
+// locked to its own department — projects routed to that department from a won tender, a
+// converted client request, or created directly, with delivery-stage updates shared with the
+// central Pipeline's own Delivery Board since both read/write through the same usePipelineProjects
+// query.
+export function ProjectsDeliveryBoard({ fixedDepartmentId }: { fixedDepartmentId?: string } = {}) {
   const { isAdminOrCeo, hasRole } = useAuth();
-  const canManage = isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing_ops", "tender"]);
+  const canManage = isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing", "tender", "operations"]);
   const [deptFilter, setDeptFilter] = useState("all");
   const departmentsQ = useDepartments();
-  const projectsQ = usePipelineProjects(deptFilter === "all" ? undefined : deptFilter);
+  const effectiveDeptFilter = fixedDepartmentId ?? deptFilter;
+  const projectsQ = usePipelineProjects(effectiveDeptFilter === "all" ? undefined : effectiveDeptFilter);
   const updateProject = useUpdateProject();
   const [openId, setOpenId] = useState<string | null>(null);
   const [tab, setTab] = useState<"overview" | "activity" | "docs">("overview");
@@ -65,24 +71,37 @@ function ProjectsDeliveryBoard() {
     <div>
       <div className="mb-1 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="p-title text-[27px]">Projects & Delivery</h1>
-          <div className="text-[13.5px]" style={{ color: "var(--pipeline-slate)" }}>
-            Won tenders and onboarded clients, tracked through delivery, invoicing and payment.
+          <h1 className="p-title text-lg">{fixedDepartmentId ? "Work & Projects" : "Delivery Board"}</h1>
+          <div className="text-xs" style={{ color: "var(--pipeline-slate)" }}>
+            {fixedDepartmentId
+              ? "Projects routed here from a won tender, a converted client request, or created directly — move them through delivery, invoicing and payment."
+              : (
+                <>
+                  Won tenders and onboarded clients, tracked through delivery, invoicing and payment —
+                  same projects as{" "}
+                  <Link to="/projects" className="underline underline-offset-2">
+                    Projects & Tasks
+                  </Link>
+                  , grouped by delivery stage instead of status.
+                </>
+              )}
           </div>
         </div>
-        <Select value={deptFilter} onValueChange={setDeptFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All departments</SelectItem>
-            {(departmentsQ.data ?? []).map((d) => (
-              <SelectItem key={d.id} value={d.id}>
-                {d.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {!fixedDepartmentId && (
+          <Select value={deptFilter} onValueChange={setDeptFilter}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All departments</SelectItem>
+              {(departmentsQ.data ?? []).map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <Spine stages={PROJECT_PIPELINE_STAGES} counts={counts} />
@@ -379,7 +398,7 @@ function RaiseInvoiceDialog({
         style={{ background: "var(--pipeline-paper-2)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-title mb-3 text-[17px]">Raise invoice</div>
+        <div className="p-title mb-3 text-base">Raise invoice</div>
         <div className="space-y-3">
           <div>
             <Label>Amount (KES)</Label>
@@ -451,7 +470,7 @@ function RecordPaymentDialog({
         style={{ background: "var(--pipeline-paper-2)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-title mb-3 text-[17px]">Record payment</div>
+        <div className="p-title mb-3 text-base">Record payment</div>
         <div className="mb-3 text-xs" style={{ color: "var(--pipeline-slate)" }}>
           Outstanding: {formatCurrency(maxAmount)}
         </div>

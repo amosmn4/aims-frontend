@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Plus } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { useAuth, type AppRole } from "@/lib/auth";
 import {
   useClientRequest,
@@ -24,6 +24,8 @@ import { useDepartments, useProfilesLite } from "@/features/clients/use-clients-
 import { useClients } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
 import { AttachmentsPanel } from "@/features/documents/attachments-panel";
+import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
+import { EntityBreadcrumb, type BreadcrumbSegment } from "@/components/entity-breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,6 +53,41 @@ export const Route = createFileRoute("/_authenticated/requests/$requestId")({
   component: ClientRequestDetail,
 });
 
+function buildRequestRelated(request: ReturnType<typeof useClientRequest>["data"]): RelatedRecordItem[] {
+  if (!request) return [];
+  const items: RelatedRecordItem[] = [];
+  if (request.converted_from_lead_id) {
+    items.push({ label: "Source Lead", title: request.converted_from_lead_name ?? "Lead", to: "/marketing/leads" });
+  }
+  if (request.converted_project_id) {
+    items.push({
+      label: "Converted Project",
+      title: request.converted_project_name ?? "Project",
+      to: `/projects/${request.converted_project_id}`,
+    });
+  }
+  if (request.converted_contract_id) {
+    items.push({
+      label: "Converted Contract",
+      title: request.converted_contract_number ?? "Contract",
+      to: `/clients/contracts/${request.converted_contract_id}`,
+    });
+  }
+  return items;
+}
+
+function buildRequestBreadcrumb(request: ReturnType<typeof useClientRequest>["data"]): BreadcrumbSegment[] {
+  if (!request) return [];
+  const segments: BreadcrumbSegment[] = [];
+  if (request.converted_from_lead_id) {
+    segments.push({ label: "Leads", to: "/marketing/leads" });
+    segments.push({ label: request.converted_from_lead_name ?? "Lead", to: "/marketing/leads" });
+  }
+  segments.push({ label: "Client Requests", to: "/requests" });
+  segments.push({ label: request.title });
+  return segments;
+}
+
 function ClientRequestDetail() {
   const { requestId } = Route.useParams();
   const { hasRole, isAdminOrCeo } = useAuth();
@@ -68,7 +105,7 @@ function ClientRequestDetail() {
   const request = requestQ.data;
   if (!request) return <div className="text-sm text-muted-foreground">Request not found.</div>;
 
-  const isIntake = isAdminOrCeo || hasRole("marketing_ops");
+  const isIntake = isAdminOrCeo || hasRole("operations");
   const departmentCode = departmentsQ.data?.find((d) => d.id === request.department_id)?.code;
   const canManage =
     isAdminOrCeo || (request.department_id ? !!departmentCode && hasRole(departmentCode as AppRole) : isIntake);
@@ -90,12 +127,7 @@ function ClientRequestDetail() {
 
   return (
     <div className="space-y-4">
-      <Link
-        to="/requests"
-        className="text-xs text-muted-foreground inline-flex items-center gap-1 hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" /> Back to Client Requests
-      </Link>
+      <EntityBreadcrumb segments={buildRequestBreadcrumb(request)} />
 
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -163,9 +195,25 @@ function ClientRequestDetail() {
 
         {request.stage === "won" && (
           <div className="mt-3 pt-3 border-t text-xs text-success space-y-0.5">
-            {request.converted_project_id && <div>Converted to project {request.converted_project_name}</div>}
+            {request.converted_project_id && (
+              <div>
+                Converted to project{" "}
+                <Link to="/projects/$projectId" params={{ projectId: request.converted_project_id }} className="underline hover:opacity-80">
+                  {request.converted_project_name}
+                </Link>
+              </div>
+            )}
             {request.converted_contract_id && (
-              <div>Converted to contract {request.converted_contract_number ?? request.converted_contract_id}</div>
+              <div>
+                Converted to contract{" "}
+                <Link
+                  to="/clients/contracts/$id"
+                  params={{ id: request.converted_contract_id }}
+                  className="underline hover:opacity-80"
+                >
+                  {request.converted_contract_number ?? request.converted_contract_id}
+                </Link>
+              </div>
             )}
           </div>
         )}
@@ -187,6 +235,8 @@ function ClientRequestDetail() {
             </div>
           )}
       </div>
+
+      <RelatedRecords items={buildRequestRelated(request)} engagementTo={`/engagements/request/${request.id}`} />
 
       <Tabs defaultValue="activity">
         <TabsList>
@@ -246,11 +296,13 @@ function RouteDialog({ requestId }: { requestId: string }) {
                 <SelectValue placeholder="Select…" />
               </SelectTrigger>
               <SelectContent>
-                {(departmentsQ.data ?? []).map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
+                {(departmentsQ.data ?? [])
+                  .filter((d) => d.code !== "operations")
+                  .map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>

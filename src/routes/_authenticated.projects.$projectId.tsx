@@ -1,7 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
-import { ArrowLeft, Loader2, Plus } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   useProject,
@@ -22,6 +22,7 @@ import { TaskDetailDialog } from "@/features/projects/task-detail-dialog";
 import { AttachmentsPanel } from "@/features/documents/attachments-panel";
 import { ActivityPane } from "@/components/pipeline/activity-pane";
 import { WorkspaceHeader } from "@/components/project-workspace/workspace-header";
+import { EntityBreadcrumb, type BreadcrumbSegment } from "@/components/entity-breadcrumb";
 import { OverviewTab } from "@/components/project-workspace/overview-tab";
 import { TasksTab } from "@/components/project-workspace/tasks-tab";
 import { GanttTab } from "@/components/project-workspace/gantt-tab";
@@ -81,6 +82,22 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
   component: ProjectDetail,
 });
 
+function buildProjectBreadcrumb(project: ReturnType<typeof useProject>["data"]): BreadcrumbSegment[] {
+  if (!project) return [];
+  const segments: BreadcrumbSegment[] = [];
+  if (project.tender_id) {
+    segments.push({ label: "Tender Records", to: "/tender" });
+    segments.push({ label: project.tender_title ?? "Tender", to: `/tender/${project.tender_id}` });
+  } else if (project.client_request_id) {
+    segments.push({ label: "Client Requests", to: "/requests" });
+    segments.push({ label: project.client_request_title ?? "Request", to: `/requests/${project.client_request_id}` });
+  } else {
+    segments.push({ label: "Projects", to: "/projects" });
+  }
+  segments.push({ label: project.name });
+  return segments;
+}
+
 function ProjectDetail() {
   const { projectId } = Route.useParams();
   const { view } = Route.useSearch();
@@ -128,13 +145,7 @@ function ProjectDetail() {
 
   return (
     <div className="pipeline-scope space-y-3">
-      <Link
-        to="/projects"
-        className="text-xs inline-flex items-center gap-1 hover:opacity-80"
-        style={{ color: "var(--pipeline-slate)" }}
-      >
-        <ArrowLeft className="h-3 w-3" /> Back to projects
-      </Link>
+      <EntityBreadcrumb segments={buildProjectBreadcrumb(project)} />
 
       <WorkspaceHeader project={project} tasks={tasks} actualCost={actualCost} />
 

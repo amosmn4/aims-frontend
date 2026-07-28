@@ -8,6 +8,8 @@ import {
   Briefcase,
   Users,
   FileText,
+  FolderKanban,
+  ArrowRight,
 } from "lucide-react";
 import {
   useContracts,
@@ -20,7 +22,17 @@ import {
 } from "@/features/clients/use-clients-contracts";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
+import { useProjects, PROJECT_STATUS_LABELS, type ProjectStatus } from "@/features/projects/use-projects";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+
+const PROJECT_STATUS_STYLES: Record<ProjectStatus, string> = {
+  planning: "bg-secondary text-secondary-foreground",
+  active: "bg-primary/10 text-primary",
+  on_hold: "bg-warning/15 text-warning",
+  completed: "bg-success/15 text-success",
+  cancelled: "bg-destructive/15 text-destructive",
+};
 
 export const Route = createFileRoute("/_authenticated/departments/$deptId")({
   component: DepartmentWorkspace,
@@ -28,12 +40,20 @@ export const Route = createFileRoute("/_authenticated/departments/$deptId")({
 
 function DepartmentWorkspace() {
   const { deptId } = Route.useParams();
+  return <DepartmentWorkspaceContent deptId={deptId} />;
+}
+
+// Split out from the route component so the Tender hub (and future department hubs) can embed
+// this same Clients/Contracts/Projects workspace as a tab, passing a resolved department id
+// directly instead of requiring a `/departments/$deptId` route match.
+export function DepartmentWorkspaceContent({ deptId }: { deptId: string }) {
   const deptsQ = useDepartments();
   const clientsQ = useClients();
   const linesQ = useServiceLines();
   const profilesQ = useProfilesLite();
   const contractsQ = useContracts({ departmentId: deptId });
-  const [tab, setTab] = useState<"clients" | "contracts">("contracts");
+  const projectsQ = useProjects({ departmentId: deptId });
+  const [tab, setTab] = useState<"clients" | "contracts" | "projects">("contracts");
   const [search, setSearch] = useState("");
 
   const dept = deptsQ.data?.find((d) => d.id === deptId);
@@ -169,17 +189,62 @@ function DepartmentWorkspace() {
           >
             <Users className="h-3 w-3" /> Clients ({deptClients.length})
           </button>
+          <button
+            onClick={() => setTab("projects")}
+            className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded border ${tab === "projects" ? "bg-primary text-primary-foreground border-primary" : "bg-card"}`}
+          >
+            <FolderKanban className="h-3 w-3" /> Projects ({(projectsQ.data ?? []).length})
+          </button>
         </div>
         <div className="flex-1" />
-        <Input
-          placeholder={tab === "clients" ? "Search clients…" : "Search contracts…"}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs h-9"
-        />
+        {tab !== "projects" && (
+          <Input
+            placeholder={tab === "clients" ? "Search clients…" : "Search contracts…"}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-xs h-9"
+          />
+        )}
       </div>
 
-      {contractsQ.isLoading ? (
+      {tab === "projects" ? (
+        projectsQ.isLoading ? (
+          <div className="py-8 flex justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
+        ) : (projectsQ.data ?? []).length === 0 ? (
+          <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">
+            No projects for this department yet.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {(projectsQ.data ?? []).map((p) => (
+              <Link
+                key={p.id}
+                to="/projects/$projectId"
+                params={{ projectId: p.id }}
+                className="rounded-lg border bg-card p-4 flex flex-col gap-2 hover:border-primary/50 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-semibold text-sm">{p.name}</div>
+                  <Badge className={PROJECT_STATUS_STYLES[p.status]} variant="secondary">
+                    {PROJECT_STATUS_LABELS[p.status]}
+                  </Badge>
+                </div>
+                {p.client_name && (
+                  <div className="text-xs text-muted-foreground">Client: {p.client_name}</div>
+                )}
+                <div className="mt-auto pt-2 border-t flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">{p.task_count ?? 0} tasks</span>
+                  <span className="text-primary inline-flex items-center gap-1">
+                    Open <ArrowRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )
+      ) : contractsQ.isLoading ? (
         <div className="py-8 flex justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>

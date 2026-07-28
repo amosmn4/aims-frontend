@@ -1,4 +1,5 @@
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/app-shell";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +23,14 @@ function ProjectsLayout() {
 
   return (
     <div>
+      {!isDetail && (
+        <Link
+          to="/dashboard"
+          className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-3 w-3" /> Back to Dashboard
+        </Link>
+      )}
       <PageHeader
         title="Projects & Tasks"
         description="Track projects from won tenders and new client engagements through delivery."

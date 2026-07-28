@@ -28,7 +28,9 @@ const FUNNEL_COLORS: Record<string, string> = {
   withdrawn: "#94a3b8",
 };
 
-function TenderReport() {
+// Exported so the Tender department hub (_authenticated.tender.tsx) can embed this report as a
+// tab alongside the rest of the tender workflow.
+export function TenderReport() {
   return (
     <RequireRole
       roles={["tender"]}

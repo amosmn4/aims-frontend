@@ -5,6 +5,27 @@ export type ProjectStatus = "planning" | "active" | "on_hold" | "completed" | "c
 export type ProjectHealth = "green" | "amber" | "red";
 export type TaskStatus = "not_started" | "in_progress" | "review" | "blocked" | "completed";
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
+export type SdlcStage = "requirements" | "design" | "development" | "testing" | "deployment" | "maintenance";
+
+export const SYSTEM_DEVELOPMENT_METHODOLOGY = "system_development";
+
+export const SDLC_STAGES: SdlcStage[] = [
+  "requirements",
+  "design",
+  "development",
+  "testing",
+  "deployment",
+  "maintenance",
+];
+
+export const SDLC_STAGE_LABELS: Record<SdlcStage, string> = {
+  requirements: "Requirements",
+  design: "Design",
+  development: "Development",
+  testing: "Testing",
+  deployment: "Deployment",
+  maintenance: "Maintenance",
+};
 
 export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: "Planning",
@@ -57,10 +78,16 @@ export type Project = {
   client_id: string | null;
   client_name: string | null;
   contract_id: string | null;
+  contract_number: string | null;
+  tender_id: string | null;
+  tender_title: string | null;
+  client_request_id: string | null;
+  client_request_title: string | null;
   department_id: string;
   department_name: string;
   status: ProjectStatus;
   methodology: string | null;
+  sdlc_stage: SdlcStage | null;
   health: ProjectHealth;
   budget: number | null;
   start_date: string | null;
@@ -150,10 +177,16 @@ type BackendProject = {
   clientId: string | null;
   client?: { name: string } | null;
   contractId: string | null;
+  contract?: { id: string; contractNumber: string } | null;
+  tenderId?: string | null;
+  tender?: { id: string; referenceNumber: string | null; title: string } | null;
+  clientRequestId?: string | null;
+  clientRequest?: { id: string; referenceNumber: string | null; title: string } | null;
   departmentId: string;
   department?: { name: string } | null;
   status: ProjectStatus;
   methodology: string | null;
+  sdlcStage: SdlcStage | null;
   health: ProjectHealth;
   budget: string | number | null;
   startDate: string | null;
@@ -211,10 +244,16 @@ function mapProject(p: BackendProject): Project {
     client_id: p.clientId,
     client_name: p.client?.name ?? null,
     contract_id: p.contractId,
+    contract_number: p.contract?.contractNumber ?? null,
+    tender_id: p.tender?.id ?? null,
+    tender_title: p.tender ? (p.tender.referenceNumber ?? p.tender.title) : null,
+    client_request_id: p.clientRequest?.id ?? null,
+    client_request_title: p.clientRequest ? (p.clientRequest.referenceNumber ?? p.clientRequest.title) : null,
     department_id: p.departmentId,
     department_name: p.department?.name ?? "—",
     status: p.status,
     methodology: p.methodology,
+    sdlc_stage: p.sdlcStage,
     health: p.health,
     budget: p.budget == null ? null : Number(p.budget),
     start_date: p.startDate ? p.startDate.slice(0, 10) : null,

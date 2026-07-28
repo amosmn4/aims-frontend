@@ -56,6 +56,12 @@ function ProjectsIndex() {
 
   return (
     <div className="space-y-4">
+      <div className="text-xs text-muted-foreground">
+        See the delivery-stage board in{" "}
+        <Link to="/pipeline/projects" className="text-primary hover:underline">
+          Pipeline →
+        </Link>
+      </div>
       <div className="flex flex-wrap items-end gap-3 justify-between">
         <div className="flex flex-wrap gap-3">
           <div className="w-52">

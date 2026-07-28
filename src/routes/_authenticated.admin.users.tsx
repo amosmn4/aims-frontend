@@ -33,7 +33,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, Plus, ShieldOff } from "lucide-react";
+import { Loader2, Plus, ShieldOff, Mail } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin/users")({
   head: () => ({
@@ -48,7 +48,7 @@ const ALL_ROLES: AppRole[] = [
   "finance",
   "hr",
   "it",
-  "marketing_ops",
+  "marketing",
   "tender",
   "department_head",
   "account_manager",
@@ -66,11 +66,11 @@ type AdminUser = {
   departmentId: string | null;
   officeId: string | null;
   roles: { role: AppRole }[];
+  hasPassword: boolean;
 };
 
 const emptyCreateForm = {
   email: "",
-  password: "",
   fullName: "",
   departmentId: "",
   officeId: "",
@@ -108,22 +108,31 @@ function UsersAdmin() {
 
   const createUserMutation = useMutation({
     mutationFn: (dto: typeof emptyCreateForm) =>
-      apiJson("/users", {
+      apiJson<{ inviteSent: boolean }>("/users", {
         method: "POST",
         body: JSON.stringify({
           email: dto.email,
-          password: dto.password,
           fullName: dto.fullName || undefined,
           departmentId: dto.departmentId || undefined,
           officeId: dto.officeId || undefined,
           roles: dto.roles,
         }),
       }),
-    onSuccess: () => {
-      toast.success("User created");
+    onSuccess: (res) => {
+      toast.success(
+        res.inviteSent
+          ? "User created — invite email sent"
+          : "User created — email not sent (SMTP not configured); share the setup link manually",
+      );
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Could not create user"),
+  });
+
+  const resendInviteMutation = useMutation({
+    mutationFn: (id: string) => apiJson<{ inviteSent: boolean }>(`/users/${id}/resend-invite`, { method: "POST" }),
+    onSuccess: (res) => toast.success(res.inviteSent ? "Invite resent" : "Invite issued — email not sent (SMTP not configured)"),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Could not resend invite"),
   });
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -162,8 +171,8 @@ function UsersAdmin() {
   };
 
   const submitCreate = () => {
-    if (!createForm.email || createForm.password.length < 8 || createForm.roles.length === 0) {
-      toast.error("Email, an 8+ character password, and at least one role are required");
+    if (!createForm.email || createForm.roles.length === 0) {
+      toast.error("Email and at least one role are required");
       return;
     }
     createUserMutation.mutate(createForm, {
@@ -199,15 +208,10 @@ function UsersAdmin() {
                     onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
                   />
                 </div>
-                <div>
-                  <Label>Temporary password</Label>
-                  <Input
-                    type="text"
-                    value={createForm.password}
-                    onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-                    placeholder="At least 8 characters"
-                  />
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  An email will be sent to this address with a link to verify their email and set
+                  their own password.
+                </p>
                 <div>
                   <Label>Full name</Label>
                   <Input
@@ -300,6 +304,7 @@ function UsersAdmin() {
                 <TableHead>Department</TableHead>
                 <TableHead>Roles</TableHead>
                 <TableHead className="w-56">Grant role</TableHead>
+                <TableHead className="w-36">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -370,6 +375,21 @@ function UsersAdmin() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </TableCell>
+                    <TableCell>
+                      {u.hasPassword ? (
+                        <span className="text-xs text-muted-foreground">Active</span>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          disabled={resendInviteMutation.isPending}
+                          onClick={() => resendInviteMutation.mutate(u.id)}
+                        >
+                          <Mail className="h-3 w-3 mr-1" /> Resend invite
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 );

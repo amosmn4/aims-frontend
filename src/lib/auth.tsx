@@ -7,8 +7,9 @@ export type AppRole =
   | "finance"
   | "hr"
   | "it"
-  | "marketing_ops"
+  | "marketing"
   | "tender"
+  | "operations"
   | "department_head"
   | "account_manager"
   | "general_staff";
@@ -36,6 +37,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, password: string) => Promise<AppRole[]>;
   demoLogin: (role: "system_admin" | "ceo" | "finance") => Promise<AppRole[]>;
+  setPassword: (token: string, password: string) => Promise<AppRole[]>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   hasRole: (role: AppRole | AppRole[]) => boolean;
@@ -99,6 +101,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(body.accessToken);
       return loadProfile();
     },
+    setPassword: async (token, password) => {
+      const body = await apiJson<{ accessToken: string }>("/auth/set-password", {
+        method: "POST",
+        body: JSON.stringify({ token, password }),
+      });
+      setAccessToken(body.accessToken);
+      return loadProfile();
+    },
     signOut: async () => {
       await apiFetch("/auth/logout", { method: "POST" });
       resetSession();
@@ -134,8 +144,9 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   finance: "Finance",
   hr: "Human Resources",
   it: "Information Technology",
-  marketing_ops: "Marketing & Operations",
+  marketing: "Marketing",
   tender: "Tender",
+  operations: "Operations",
   department_head: "Department Head",
   account_manager: "Account Manager",
   general_staff: "General Staff",

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { RequireRole } from "@/components/require-role";
 import { useAuth } from "@/lib/auth";
 import {
@@ -50,6 +50,8 @@ import { useProfilesLite } from "@/features/clients/use-clients-contracts";
 import { formatCurrency } from "@/features/finance/finance";
 import { AttachmentsPanel } from "@/features/documents/attachments-panel";
 import { useDocuments } from "@/features/documents/use-documents";
+import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
+import { EntityBreadcrumb, type BreadcrumbSegment } from "@/components/entity-breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -92,6 +94,27 @@ export const Route = createFileRoute("/_authenticated/tender/$tenderId")({
   ),
 });
 
+function buildTenderRelated(tender: ReturnType<typeof useTender>["data"]): RelatedRecordItem[] {
+  if (!tender) return [];
+  const items: RelatedRecordItem[] = [];
+  if (tender.contract_id) {
+    items.push({
+      label: "Converted Contract",
+      title: tender.contract_number ?? "Contract",
+      to: `/clients/contracts/${tender.contract_id}`,
+    });
+  }
+  if (tender.project_id) {
+    items.push({ label: "Delivery Project", title: tender.project_name ?? "Project", to: `/projects/${tender.project_id}` });
+  }
+  return items;
+}
+
+function buildTenderBreadcrumb(tender: ReturnType<typeof useTender>["data"]): BreadcrumbSegment[] {
+  if (!tender) return [];
+  return [{ label: "Tender Records", to: "/tender" }, { label: tender.title }];
+}
+
 function TenderDetail() {
   const { tenderId } = Route.useParams();
   const { hasRole, isAdminOrCeo } = useAuth();
@@ -108,7 +131,7 @@ function TenderDetail() {
   const tender = tenderQ.data;
   if (!tender) return <div className="text-sm text-muted-foreground">Tender not found.</div>;
 
-  const canManage = isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing_ops", "tender"]);
+  const canManage = isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing", "tender"]);
 
   const changeStage = (stage: TenderStage) => {
     if (stage === "lost") {
@@ -127,12 +150,7 @@ function TenderDetail() {
 
   return (
     <div className="space-y-4">
-      <Link
-        to="/tender"
-        className="text-xs text-muted-foreground inline-flex items-center gap-1 hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" /> Back to Tender
-      </Link>
+      <EntityBreadcrumb segments={buildTenderBreadcrumb(tender)} />
 
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -181,15 +199,21 @@ function TenderDetail() {
         {tender.stage === "won" && canManage && (
           <div className="mt-3 pt-3 border-t">
             {tender.contract_id ? (
-              <div className="text-xs text-success">
-                Converted to contract {tender.contract_number ?? tender.contract_id}
-              </div>
+              <Link
+                to="/clients/contracts/$id"
+                params={{ id: tender.contract_id }}
+                className="text-xs text-success underline hover:opacity-80"
+              >
+                Converted to contract {tender.contract_number ?? tender.contract_id} →
+              </Link>
             ) : (
               <ConvertToContractDialog tenderId={tender.id} defaultValue={tender.estimated_value} />
             )}
           </div>
         )}
       </div>
+
+      <RelatedRecords items={buildTenderRelated(tender)} engagementTo={`/engagements/tender/${tender.id}`} />
 
       <Tabs defaultValue="resources">
         <TabsList>

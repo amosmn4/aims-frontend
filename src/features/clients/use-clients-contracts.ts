@@ -140,6 +140,12 @@ export interface ContractRow {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  tender_id: string | null;
+  tender_title: string | null;
+  client_request_id: string | null;
+  client_request_title: string | null;
+  project_ids: { id: string; name: string }[];
+  invoice_count: number | null;
 }
 
 export interface ContractDocumentRow {
@@ -191,6 +197,10 @@ type BackendContract = {
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
+  tender?: { id: string; referenceNumber: string | null; title: string } | null;
+  clientRequest?: { id: string; referenceNumber: string | null; title: string } | null;
+  projects?: { id: string; name: string }[];
+  _count?: { invoices: number };
 };
 
 const toDateOnly = (iso: string) => iso.slice(0, 10);
@@ -217,6 +227,12 @@ function mapContract(c: BackendContract): ContractRow {
     created_by: c.createdBy,
     created_at: c.createdAt,
     updated_at: c.updatedAt,
+    tender_id: c.tender?.id ?? null,
+    tender_title: c.tender ? (c.tender.referenceNumber ?? c.tender.title) : null,
+    client_request_id: c.clientRequest?.id ?? null,
+    client_request_title: c.clientRequest ? (c.clientRequest.referenceNumber ?? c.clientRequest.title) : null,
+    project_ids: c.projects ?? [],
+    invoice_count: c._count?.invoices ?? null,
   };
 }
 

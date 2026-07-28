@@ -21,6 +21,7 @@ import { ActivityPane } from "@/components/pipeline/activity-pane";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -37,14 +38,85 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+/**
+ * Discoverable "mark as not proceeding" shortcut — usable from any stage (the backend never
+ * enforced sequential stage order). Exists alongside the generic "Move stage" select above
+ * because that path never sends a lostReason, silently dropping the "why" once a tender is
+ * marked lost/withdrawn from the board.
+ */
+function DropOutAction({
+  currentStage,
+  isPending,
+  onSubmit,
+}: {
+  currentStage: TenderStage;
+  isPending: boolean;
+  onSubmit: (stage: "lost" | "withdrawn", reason: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [stage, setStage] = useState<"lost" | "withdrawn">("lost");
+  const [reason, setReason] = useState("");
+
+  if (currentStage === "lost" || currentStage === "withdrawn") return null;
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-2 text-xs"
+        style={{ color: "var(--pipeline-coral)" }}
+      >
+        Mark as not proceeding →
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-lg border p-2.5" style={{ borderColor: "var(--pipeline-line)" }}>
+      <Select value={stage} onValueChange={(v) => setStage(v as "lost" | "withdrawn")}>
+        <SelectTrigger className="h-8 w-full text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="lost">Not Awarded (Lost)</SelectItem>
+          <SelectItem value="withdrawn">Withdrawn</SelectItem>
+        </SelectContent>
+      </Select>
+      <Textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Reason for not proceeding (required)"
+        className="min-h-[60px] text-xs"
+      />
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          className="flex-1"
+          style={{ background: "var(--pipeline-coral)" }}
+          disabled={isPending || !reason.trim()}
+          onClick={() => onSubmit(stage, reason)}
+        >
+          Confirm
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export const Route = createFileRoute("/_authenticated/pipeline/tenders")({
   head: () => ({ meta: [{ title: "Tender Pipeline — AIMS" }] }),
   component: TenderPipelineBoard,
 });
 
-function TenderPipelineBoard() {
+// Exported so the Tender department hub (_authenticated.tender.tsx) can embed this board as a
+// tab alongside the rest of the tender workflow, without duplicating this route's URL.
+export function TenderPipelineBoard() {
   const { isAdminOrCeo, hasRole } = useAuth();
-  const canManage = isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing_ops", "tender"]);
+  const canManage = isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing", "tender"]);
   const tendersQ = useTenders();
   const updateStage = useUpdateTenderStage();
   const convertToProject = useConvertTenderToProject();
@@ -82,8 +154,8 @@ function TenderPipelineBoard() {
     <div>
       <div className="mb-1 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="p-title text-[27px]">Tender Pipeline</h1>
-          <div className="text-[13.5px]" style={{ color: "var(--pipeline-slate)" }}>
+          <h1 className="p-title text-lg">Tender Pipeline</h1>
+          <div className="text-xs" style={{ color: "var(--pipeline-slate)" }}>
             From identifying an opportunity to award — then handed to the delivering department.
           </div>
         </div>
@@ -129,6 +201,10 @@ function TenderPipelineBoard() {
 function TenderCard({ t, onClick, onForward }: { t: TenderRow; onClick: () => void; onForward: () => void }) {
   const c = deptColor(t.department_code);
   const stageDef = TENDER_PIPELINE_STAGES.find((s) => s.key === t.stage);
+  const showRequirementsProgress = t.stage === "applying" && !!t.requirements_total;
+  const requirementsPct = showRequirementsProgress
+    ? Math.round(((t.requirements_done ?? 0) / t.requirements_total!) * 100)
+    : 0;
   return (
     <div onClick={onClick}>
       <div className="mb-1.5 flex items-start justify-between gap-2">
@@ -162,6 +238,25 @@ function TenderCard({ t, onClick, onForward }: { t: TenderRow; onClick: () => vo
           </span>
         )}
       </div>
+      {showRequirementsProgress && (
+        <div className="mt-2">
+          <div className="flex items-center justify-between text-[10.5px]" style={{ color: "var(--pipeline-slate)" }}>
+            <span>Requirements checklist</span>
+            <span className="p-mono font-medium">
+              {t.requirements_done}/{t.requirements_total} ({requirementsPct}%)
+            </span>
+          </div>
+          <div className="prog-mini mt-1" style={{ width: "100%" }}>
+            <div
+              className="prog-mini-fill"
+              style={{
+                width: `${requirementsPct}%`,
+                background: requirementsPct === 100 ? "var(--pipeline-teal)" : "var(--pipeline-gold)",
+              }}
+            />
+          </div>
+        </div>
+      )}
       <div className="mt-2 flex items-center justify-between border-t pt-2" style={{ borderColor: "var(--pipeline-line)", borderStyle: "dashed" }}>
         <div className="flex items-center gap-1.5">
           <div className="mini-avatar">{initials(t.account_manager_name)}</div>
@@ -184,9 +279,15 @@ function TenderCard({ t, onClick, onForward }: { t: TenderRow; onClick: () => vo
         </button>
       )}
       {t.stage === "won" && t.contract_id && (
-        <div className="mt-2.5 flex items-center gap-1 text-[11px] font-semibold" style={{ color: "var(--pipeline-teal)" }}>
-          ✓ Forwarded to {t.department_name}
-        </div>
+        <Link
+          to="/clients/contracts/$id"
+          params={{ id: t.contract_id }}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-2.5 flex items-center gap-1 text-[11px] font-semibold hover:underline"
+          style={{ color: "var(--pipeline-teal)" }}
+        >
+          ✓ Forwarded to {t.department_name} →
+        </Link>
       )}
     </div>
   );
@@ -243,6 +344,28 @@ function TenderDetail({
           />
           <SectionLabel>Stage progress</SectionLabel>
           <StageTracker total={TENDER_PIPELINE_STAGES.length} doneCount={idx} currentIndex={idx} />
+          {!!tender.requirements_total && (
+            <div className="mt-2">
+              <div className="flex items-center justify-between text-[11px]" style={{ color: "var(--pipeline-slate)" }}>
+                <span>Requirements checklist</span>
+                <span className="p-mono font-medium">
+                  {tender.requirements_done}/{tender.requirements_total} resolved
+                </span>
+              </div>
+              <div className="prog-mini mt-1" style={{ width: "100%" }}>
+                <div
+                  className="prog-mini-fill"
+                  style={{
+                    width: `${Math.round(((tender.requirements_done ?? 0) / tender.requirements_total) * 100)}%`,
+                    background:
+                      tender.requirements_done === tender.requirements_total
+                        ? "var(--pipeline-teal)"
+                        : "var(--pipeline-gold)",
+                  }}
+                />
+              </div>
+            </div>
+          )}
           {canManage && (
             <div>
               <SectionLabel>Move stage</SectionLabel>
@@ -266,6 +389,16 @@ function TenderDetail({
                   ))}
                 </SelectContent>
               </Select>
+              <DropOutAction
+                currentStage={tender.stage}
+                isPending={updateStage.isPending}
+                onSubmit={(stage, reason) =>
+                  updateStage.mutate(
+                    { id: tender.id, stage, lost_reason: reason || undefined },
+                    { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed") },
+                  )
+                }
+              />
             </div>
           )}
           <div className="mt-4">

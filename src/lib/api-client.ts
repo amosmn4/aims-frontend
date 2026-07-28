@@ -92,7 +92,13 @@ export async function apiFetch(
 
   const res = await fetch(`${API_URL}${path}`, { ...init, headers, credentials: "include" });
 
-  if (res.status === 401 && !_retried && path !== "/auth/refresh" && path !== "/auth/login") {
+  if (
+    res.status === 401 &&
+    !_retried &&
+    path !== "/auth/refresh" &&
+    path !== "/auth/login" &&
+    path !== "/auth/set-password"
+  ) {
     const refreshed = await refreshAccessToken();
     if (refreshed) return apiFetch(path, init, true);
   }

@@ -3,16 +3,15 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   useClientRequests,
-  useSaveClientRequest,
   useUpdateClientRequestStage,
   useConvertToProject,
   useConvertClientRequestToContract,
   useClientRequestActivities,
   useLogActivity,
-  SOURCE_LABELS,
   type ClientRequestRow,
   type ClientRequestStage,
 } from "@/features/client-requests/use-client-requests";
+import { NewRequestDialog } from "@/features/client-requests/new-request-dialog";
 import { useDepartments } from "@/features/clients/use-clients-contracts";
 import { useClients } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
@@ -25,13 +24,13 @@ import { ActivityPane } from "@/components/pipeline/activity-pane";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -42,20 +41,93 @@ import {
 } from "@/components/ui/select";
 
 export const Route = createFileRoute("/_authenticated/pipeline/engagements")({
-  head: () => ({ meta: [{ title: "Client Engagement — AIMS" }] }),
+  head: () => ({ meta: [{ title: "Client Requests — AIMS" }] }),
   component: EngagementBoard,
 });
 
-function EngagementBoard() {
+/**
+ * Discoverable "mark as not proceeding" shortcut — usable from any routed stage (the backend
+ * never enforced sequential stage order). Exists alongside the generic "Move stage" select above
+ * because that path never sends a lostReason, silently dropping the "why" once a request is
+ * marked lost/withdrawn from the board.
+ */
+function DropOutAction({
+  currentStage,
+  isPending,
+  onSubmit,
+}: {
+  currentStage: ClientRequestStage;
+  isPending: boolean;
+  onSubmit: (stage: "lost" | "withdrawn", reason: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [stage, setStage] = useState<"lost" | "withdrawn">("lost");
+  const [reason, setReason] = useState("");
+
+  if (currentStage === "lost" || currentStage === "withdrawn") return null;
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-2 text-xs"
+        style={{ color: "var(--pipeline-coral)" }}
+      >
+        Mark as not proceeding →
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-lg border p-2.5" style={{ borderColor: "var(--pipeline-line)" }}>
+      <Select value={stage} onValueChange={(v) => setStage(v as "lost" | "withdrawn")}>
+        <SelectTrigger className="h-8 w-full text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="lost">Lost</SelectItem>
+          <SelectItem value="withdrawn">Withdrawn</SelectItem>
+        </SelectContent>
+      </Select>
+      <Textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Reason for not proceeding (required)"
+        className="min-h-[60px] text-xs"
+      />
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          className="flex-1"
+          style={{ background: "var(--pipeline-coral)" }}
+          disabled={isPending || !reason.trim()}
+          onClick={() => onSubmit(stage, reason)}
+        >
+          Confirm
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Exported so the Tender and Operations department hubs can embed this board as a tab —
+// Operations is this board's primary intake owner (see canCreateRequest below).
+export function EngagementBoard() {
   const { isAdminOrCeo, hasRole } = useAuth();
-  const canManage = isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing_ops", "tender"]);
+  const canManage = isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing", "tender", "operations"]);
+  // Creating a new request (intake) is Operations' job specifically, not every department that
+  // might later be routed one — narrower than canManage, which governs already-routed requests.
+  const canCreateRequest = isAdminOrCeo || hasRole("operations");
   const requestsQ = useClientRequests();
   const updateStage = useUpdateClientRequestStage();
   const convertToProject = useConvertToProject();
   const convertToContract = useConvertClientRequestToContract();
   const [openId, setOpenId] = useState<string | null>(null);
   const [tab, setTab] = useState<"overview" | "activity" | "docs">("overview");
-  const [newOpen, setNewOpen] = useState(false);
   const [onboardOpen, setOnboardOpen] = useState<ClientRequestRow | null>(null);
 
   const requests = requestsQ.data ?? [];
@@ -78,20 +150,17 @@ function EngagementBoard() {
     <div>
       <div className="mb-1 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="p-title text-[27px]">Client Engagement</h1>
-          <div className="text-[13.5px]" style={{ color: "var(--pipeline-slate)" }}>
+          <h1 className="p-title text-lg">Client Requests</h1>
+          <div className="text-xs" style={{ color: "var(--pipeline-slate)" }}>
             Inbound requests from the operations desk through to won/lost decisions.
           </div>
         </div>
-        {canManage && (
-          <Dialog open={newOpen} onOpenChange={setNewOpen}>
-            <DialogTrigger asChild>
-              <Button style={{ background: "var(--pipeline-ink)" }}>+ New request</Button>
-            </DialogTrigger>
-            <DialogContent className="pipeline-scope">
-              <NewRequestForm onDone={() => setNewOpen(false)} />
-            </DialogContent>
-          </Dialog>
+        {canCreateRequest && (
+          <NewRequestDialog
+            trigger={<Button style={{ background: "var(--pipeline-ink)" }}>+ New request</Button>}
+            defaultSource="operations"
+            successMessage="Request added to engagement board"
+          />
         )}
       </div>
 
@@ -278,6 +347,16 @@ function EngagementDetail({
                   ))}
                 </SelectContent>
               </Select>
+              <DropOutAction
+                currentStage={request.stage}
+                isPending={updateStage.isPending}
+                onSubmit={(stage, reason) =>
+                  updateStage.mutate(
+                    { id: request.id, stage, lost_reason: reason || undefined },
+                    { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed") },
+                  )
+                }
+              />
             </div>
           )}
           {!request.department_id && (
@@ -322,70 +401,6 @@ function EngagementDetail({
         )
       }
     />
-  );
-}
-
-function NewRequestForm({ onDone }: { onDone: () => void }) {
-  const [client, setClient] = useState("");
-  const [service, setService] = useState("");
-  const [contact, setContact] = useState("");
-  const [value, setValue] = useState("");
-  const save = useSaveClientRequest();
-
-  const submit = () => {
-    if (!client.trim()) {
-      toast.error("Add a client / business name");
-      return;
-    }
-    save.mutate(
-      {
-        title: service.trim() || client.trim(),
-        prospect_client_name: client.trim(),
-        contact_name: contact || undefined,
-        estimated_value: value ? Number(value) : undefined,
-        source: "operations",
-      },
-      {
-        onSuccess: () => {
-          toast.success("Request added to engagement board");
-          onDone();
-        },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save"),
-      },
-    );
-  };
-
-  return (
-    <div>
-      <DialogHeader>
-        <DialogTitle className="p-title">New client request</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-3 py-2">
-        <div>
-          <Label>Client / business name</Label>
-          <Input value={client} onChange={(e) => setClient(e.target.value)} placeholder="e.g. Two Rivers Mall Ltd" />
-        </div>
-        <div>
-          <Label>Service requested</Label>
-          <Input value={service} onChange={(e) => setService(e.target.value)} placeholder="e.g. Payroll Outsourcing" />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Contact person</Label>
-            <Input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="e.g. Grace M. (HR Director)" />
-          </div>
-          <div>
-            <Label>Estimated value (KES)</Label>
-            <Input type="number" value={value} onChange={(e) => setValue(e.target.value)} />
-          </div>
-        </div>
-      </div>
-      <DialogFooter>
-        <Button onClick={submit} disabled={save.isPending} style={{ background: "var(--pipeline-ink)" }}>
-          Save
-        </Button>
-      </DialogFooter>
-    </div>
   );
 }
 

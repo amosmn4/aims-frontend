@@ -1,7 +1,24 @@
-import type { Project, Task, Milestone, TaskStatus } from "@/features/projects/use-projects";
-import { TASK_STATUS_LABELS } from "@/features/projects/use-projects";
+import { toast } from "sonner";
+import type { Project, Task, Milestone, TaskStatus, SdlcStage } from "@/features/projects/use-projects";
+import {
+  TASK_STATUS_LABELS,
+  useUpdateProject,
+  SYSTEM_DEVELOPMENT_METHODOLOGY,
+  SDLC_STAGES,
+  SDLC_STAGE_LABELS,
+} from "@/features/projects/use-projects";
 import { TASK_STATUS_COLORS, MILESTONE_STATUS_STYLES, money, fmtDate } from "@/features/project-workspace/workspace-theme";
 import { computePercentComplete, computeEvm } from "@/features/project-workspace/workspace-calcs";
+import { StageTracker, SectionLabel } from "@/components/pipeline/detail-sheet";
+import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function milestoneStatus(m: Milestone): "done" | "atrisk" | "upcoming" {
   if (m.is_complete) return "done";
@@ -71,8 +88,31 @@ export function OverviewTab({
   );
   for (const k of Object.keys(TASK_STATUS_LABELS) as TaskStatus[]) statusCounts[k] ??= 0;
 
+  const related: RelatedRecordItem[] = [];
+  if (project.tender_id) {
+    related.push({ label: "Originating Tender", title: project.tender_title ?? "Tender", to: `/tender/${project.tender_id}` });
+  }
+  if (project.client_request_id) {
+    related.push({
+      label: "Originating Request",
+      title: project.client_request_title ?? "Client Request",
+      to: `/requests/${project.client_request_id}`,
+    });
+  }
+  if (project.contract_id) {
+    related.push({
+      label: "Contract",
+      title: project.contract_number ?? "Contract",
+      to: `/clients/contracts/${project.contract_id}`,
+    });
+  }
+  if (project.client_id) {
+    related.push({ label: "Client", title: project.client_name ?? "Client", to: "/clients" });
+  }
+
   return (
     <>
+      <RelatedRecords items={related} engagementTo={`/engagements/project/${project.id}`} />
       <div className="ws-ov-grid">
         <div className="ws-metric-card">
           <div className="label">Overall Progress</div>
@@ -186,6 +226,77 @@ export function OverviewTab({
           </div>
         </div>
       </div>
+
+      <SdlcPanel project={project} />
     </>
+  );
+}
+
+// Only relevant once a project is flagged as system-development work — the toggle below sets
+// methodology to SYSTEM_DEVELOPMENT_METHODOLOGY and initializes the stage; tasks/milestones
+// above still work normally underneath this, it's just an extra layer showing SDLC progress.
+function SdlcPanel({ project }: { project: Project }) {
+  const updateProject = useUpdateProject();
+  const isSystemDevelopment = project.methodology === SYSTEM_DEVELOPMENT_METHODOLOGY;
+
+  if (!isSystemDevelopment) {
+    return (
+      <div className="ws-panel">
+        <h3>System Development</h3>
+        <p className="ws-section-label" style={{ margin: "8px 0 12px" }}>
+          Not tracked as a system-development project.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={updateProject.isPending}
+          onClick={() =>
+            updateProject.mutate(
+              { id: project.id, methodology: SYSTEM_DEVELOPMENT_METHODOLOGY, sdlcStage: "requirements" },
+              {
+                onSuccess: () => toast.success("Now tracking as a system-development project"),
+                onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update"),
+              },
+            )
+          }
+        >
+          Track as System Development project
+        </Button>
+      </div>
+    );
+  }
+
+  const stage = project.sdlc_stage ?? "requirements";
+  const idx = SDLC_STAGES.indexOf(stage);
+
+  return (
+    <div className="ws-panel">
+      <h3>System Development — SDLC Stage</h3>
+      <SectionLabel>Stage progress</SectionLabel>
+      <StageTracker total={SDLC_STAGES.length} doneCount={idx} currentIndex={idx} />
+      <div className="ws-section-label" style={{ marginTop: 4 }}>
+        Move stage
+      </div>
+      <Select
+        value={stage}
+        onValueChange={(v) =>
+          updateProject.mutate(
+            { id: project.id, sdlcStage: v as SdlcStage },
+            { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to update") },
+          )
+        }
+      >
+        <SelectTrigger className="w-full max-w-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SDLC_STAGES.map((s) => (
+            <SelectItem key={s} value={s}>
+              {SDLC_STAGE_LABELS[s]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

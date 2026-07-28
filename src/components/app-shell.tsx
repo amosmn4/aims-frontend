@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
@@ -17,12 +17,15 @@ import {
   PanelLeft,
   PanelTop,
   Workflow,
+  Compass,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth, homeRouteFor, ROLE_LABELS, type AppRole } from "@/lib/auth";
 import { useLayoutPreference } from "@/lib/layout-preference";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notification-bell";
+import { HeaderSearch } from "@/components/header-search";
 
 interface NavChild {
   to: string;
@@ -41,21 +44,49 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
+  { to: "/guide", label: "How It Works", icon: Compass, match: ["/guide"] },
   {
     to: "/departments",
     label: "Departments",
     icon: Building2,
-    match: ["/departments", "/finance", "/hr", "/it", "/marketing-ops"],
+    match: ["/departments", "/operations", "/finance", "/hr", "/it", "/marketing", "/tender"],
+    children: [
+      { to: "/departments", label: "All Departments" },
+      { to: "/operations", label: "Operations", role: "operations" },
+      { to: "/finance", label: "Finance", role: "finance" },
+      { to: "/hr", label: "Human Resources", role: "hr" },
+      { to: "/it", label: "Information Technology", role: "it" },
+      { to: "/marketing", label: "Marketing", role: "marketing" },
+      { to: "/tender", label: "Tender", role: "tender" },
+    ],
   },
   {
     to: "/pipeline",
     label: "Pipeline",
     icon: Workflow,
-    match: ["/pipeline", "/requests", "/tender"],
+    match: ["/pipeline"],
   },
-  { to: "/clients", label: "Clients & Contracts", icon: Briefcase },
-  { to: "/projects", label: "Projects & Tasks", icon: FolderKanban },
+  {
+    to: "/clients",
+    label: "Clients & Contracts",
+    icon: Briefcase,
+    children: [
+      { to: "/clients", label: "Clients" },
+      { to: "/clients/contracts", label: "Contracts" },
+    ],
+  },
+  {
+    to: "/projects",
+    label: "Projects & Tasks",
+    icon: FolderKanban,
+    children: [
+      { to: "/projects", label: "All Projects" },
+      { to: "/projects/mine", label: "My Tasks" },
+      { to: "/projects/department", label: "Department Board" },
+    ],
+  },
   { to: "/documents", label: "Documents", icon: FolderArchive },
+  { to: "/calendar", label: "Calendar", icon: CalendarClock },
   {
     to: "/reports",
     label: "Reports",
@@ -70,15 +101,26 @@ const NAV: NavItem[] = [
       { to: "/reports/departments/hr", label: "Human Resources", role: "hr" },
       { to: "/reports/departments/it", label: "Information Technology", role: "it" },
       {
-        to: "/reports/departments/marketing-ops",
-        label: "Marketing & Operations",
-        role: "marketing_ops",
+        to: "/reports/departments/marketing",
+        label: "Marketing",
+        role: "marketing",
       },
       { to: "/reports/departments/tender", label: "Tender", role: "tender" },
       { to: "/reports/projects", label: "Projects — All submissions" },
     ],
   },
-  { to: "/admin/users", label: "Admin", icon: Shield, adminOnly: true, match: ["/admin"] },
+  {
+    to: "/admin/users",
+    label: "Admin",
+    icon: Shield,
+    adminOnly: true,
+    match: ["/admin"],
+    children: [
+      { to: "/admin/users", label: "Users" },
+      { to: "/admin/departments", label: "Departments" },
+      { to: "/admin/audit", label: "Audit Log" },
+    ],
+  },
 ];
 
 function LiveClock() {
@@ -108,10 +150,22 @@ function LiveClock() {
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const { profile, roles, signOut, isAdminOrCeo, hasRole } = useAuth();
   const { mode, setMode } = useLayoutPreference();
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
 
   const visibleChildren = (item: NavItem) =>
     (item.children ?? []).filter((c) => !c.role || isAdminOrCeo || hasRole(c.role));
@@ -126,6 +180,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     const paths = item.match ?? [item.to];
     return paths.some((p) => location.pathname === p || location.pathname.startsWith(p + "/"));
   };
+  const isChildActive = (child: NavChild) =>
+    location.pathname === child.to || location.pathname.startsWith(child.to + "/");
 
   const visibleNav = NAV.filter((i) => !i.adminOnly || isAdminOrCeo);
 
@@ -146,6 +202,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const UserBlock = (
     <div className="flex items-center gap-3">
+      <HeaderSearch inputRef={searchInputRef} />
       <LiveClock />
       <NotificationBell />
       {LayoutToggle}
@@ -310,13 +367,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                       <ChevronDown className="h-3 w-3 opacity-60" />
                     </button>
                     {open && (
-                      <div className="absolute left-0 top-full mt-1 min-w-[260px] rounded-md border bg-popover text-popover-foreground shadow-lg py-1 z-40">
+                      <div className="absolute left-0 top-full mt-1 min-w-65 rounded-md border bg-popover text-popover-foreground shadow-lg py-1 z-40">
                         {visibleChildren(item).map((c) => (
                           <Link
                             key={c.to}
                             to={c.to}
                             onClick={() => setOpenMenu(null)}
-                            className="block px-3 py-2 text-sm hover:bg-secondary"
+                            className={cn(
+                              "block px-3 py-2 text-sm hover:bg-secondary",
+                              isChildActive(c) && "bg-secondary font-medium text-primary",
+                            )}
                           >
                             {c.label}
                           </Link>
@@ -369,8 +429,11 @@ function MobileDrawer({
   isActive: (i: NavItem) => boolean;
 }) {
   const { isAdminOrCeo, hasRole } = useAuth();
+  const location = useLocation();
   const visibleChildren = (item: NavItem) =>
     (item.children ?? []).filter((c) => !c.role || isAdminOrCeo || hasRole(c.role));
+  const isChildActive = (child: NavChild) =>
+    location.pathname === child.to || location.pathname.startsWith(child.to + "/");
 
   return (
     <div className="fixed inset-0 z-40 lg:hidden">
@@ -407,7 +470,10 @@ function MobileDrawer({
                         key={c.to}
                         to={c.to}
                         onClick={onClose}
-                        className="block px-3 py-1.5 rounded text-xs text-sidebar-foreground/80 hover:bg-white/10"
+                        className={cn(
+                          "block px-3 py-1.5 rounded text-xs text-sidebar-foreground/80 hover:bg-white/10",
+                          isChildActive(c) && "bg-white/10 font-medium text-sidebar-foreground",
+                        )}
                       >
                         {c.label}
                       </Link>

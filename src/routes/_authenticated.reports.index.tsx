@@ -26,10 +26,10 @@ function ReportsIndex() {
       hint: "Systems, HRMS uptime",
     },
     {
-      to: "/reports/departments/marketing-ops",
-      label: "Marketing & Operations",
+      to: "/reports/departments/marketing",
+      label: "Marketing",
       icon: Megaphone,
-      hint: "Pipeline, campaigns",
+      hint: "Leads, campaigns, website",
     },
     {
       to: "/reports/departments/tender",

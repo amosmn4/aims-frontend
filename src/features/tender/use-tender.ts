@@ -62,6 +62,14 @@ export interface TenderRow {
   updated_at: string;
   contract_id: string | null;
   contract_number: string | null;
+  /** Present only on rows from `GET /tenders/:id` (findOne includes the `project` relation;
+   * the list endpoint doesn't). */
+  project_id: string | null;
+  project_name: string | null;
+  /** Present only on rows from the list endpoint (`GET /tenders`), which embeds a lightweight
+   * requirements-status array for this. Null on rows from `GET /tenders/:id`, which doesn't. */
+  requirements_total: number | null;
+  requirements_done: number | null;
 }
 
 export interface TenderPipelineStage {
@@ -129,7 +137,15 @@ type BackendTender = {
   createdAt: string;
   updatedAt: string;
   contract?: { id: string; contractNumber: string } | null;
+  project?: { id: string; name: string } | null;
+  requirements?: { status: TenderRequirementStatus }[];
 };
+
+// A requirement is "resolved" once it's no longer outstanding — obtained (done) or explicitly
+// marked not applicable. pending/in_progress still count as work remaining.
+function isRequirementResolved(status: TenderRequirementStatus): boolean {
+  return status === "obtained" || status === "not_applicable";
+}
 
 function mapTender(t: BackendTender): TenderRow {
   return {
@@ -150,7 +166,7 @@ function mapTender(t: BackendTender): TenderRow {
     stage: t.stage,
     estimated_value: t.estimatedValue != null ? Number(t.estimatedValue) : null,
     currency: t.currency,
-    submission_deadline: t.submissionDeadline,
+    submission_deadline: t.submissionDeadline ? t.submissionDeadline.slice(0, 10) : null,
     submitted_at: t.submittedAt,
     won_at: t.wonAt,
     lost_at: t.lostAt,
@@ -161,6 +177,10 @@ function mapTender(t: BackendTender): TenderRow {
     updated_at: t.updatedAt,
     contract_id: t.contract?.id ?? null,
     contract_number: t.contract?.contractNumber ?? null,
+    project_id: t.project?.id ?? null,
+    project_name: t.project?.name ?? null,
+    requirements_total: t.requirements ? t.requirements.length : null,
+    requirements_done: t.requirements ? t.requirements.filter((r) => isRequirementResolved(r.status)).length : null,
   };
 }
 
