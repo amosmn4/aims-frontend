@@ -19,6 +19,7 @@ import {
   type LeadActivityType,
 } from "@/features/marketing/use-leads";
 import { useCampaigns } from "@/features/marketing/use-campaigns";
+import { useDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -127,7 +128,9 @@ function LeadsBoard() {
                 </div>
                 <div className="space-y-2">
                   {columnLeads.length === 0 ? (
-                    <div className="py-6 text-center text-[11px] text-muted-foreground">No leads</div>
+                    <div className="py-6 text-center text-[11px] text-muted-foreground">
+                      No leads
+                    </div>
                   ) : (
                     columnLeads.map((l) => (
                       <div
@@ -141,14 +144,20 @@ function LeadsBoard() {
                         }`}
                       >
                         <div className="text-[13px] font-medium leading-snug">{l.name}</div>
-                        {l.company && <div className="text-[11px] text-muted-foreground">{l.company}</div>}
+                        {l.company && (
+                          <div className="text-[11px] text-muted-foreground">{l.company}</div>
+                        )}
                         <div className="mt-1.5 flex items-center justify-between">
                           <Badge variant="secondary" className="text-[10px]">
                             {LEAD_SOURCE_LABELS[l.source]}
                           </Badge>
                           {(l.contact_email || l.contact_phone) && (
                             <span className="text-muted-foreground">
-                              {l.contact_email ? <Mail className="h-3 w-3" /> : <Phone className="h-3 w-3" />}
+                              {l.contact_email ? (
+                                <Mail className="h-3 w-3" />
+                              ) : (
+                                <Phone className="h-3 w-3" />
+                              )}
                             </span>
                           )}
                         </div>
@@ -212,8 +221,12 @@ function LeadDetailSheet({
         <div className="mt-4 space-y-4">
           <div className="space-y-1 text-sm">
             {lead.company && <div>{lead.company}</div>}
-            {lead.contact_email && <div className="text-muted-foreground">{lead.contact_email}</div>}
-            {lead.contact_phone && <div className="text-muted-foreground">{lead.contact_phone}</div>}
+            {lead.contact_email && (
+              <div className="text-muted-foreground">{lead.contact_email}</div>
+            )}
+            {lead.contact_phone && (
+              <div className="text-muted-foreground">{lead.contact_phone}</div>
+            )}
             <div className="flex items-center gap-2 pt-1">
               <Badge variant="secondary">{LEAD_SOURCE_LABELS[lead.source]}</Badge>
               <Badge variant="secondary">{LEAD_STAGE_LABELS[lead.stage]}</Badge>
@@ -230,7 +243,9 @@ function LeadDetailSheet({
                 onValueChange={(v) =>
                   updateStage.mutate(
                     { id: lead.id, stage: v as LeadStage },
-                    { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed") },
+                    {
+                      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed"),
+                    },
                   )
                 }
               >
@@ -255,20 +270,7 @@ function LeadDetailSheet({
                   ✓ Converted to client request →
                 </Link>
               ) : (
-                <Button
-                  size="sm"
-                  className="w-full"
-                  disabled={convert.isPending}
-                  onClick={() =>
-                    convert.mutate(lead.id, {
-                      onSuccess: () => toast.success("Converted — now in Tender's intake queue"),
-                      onError: (err) => toast.error(err instanceof Error ? err.message : "Conversion failed"),
-                    })
-                  }
-                >
-                  {convert.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Convert to client request
-                </Button>
+                <ConvertToRequestDialog leadId={lead.id} convert={convert} />
               )}
             </div>
           )}
@@ -301,7 +303,10 @@ function LeadDetailSheet({
             )}
             {canManage && (
               <div className="mt-2.5 flex gap-2">
-                <Select value={activityType} onValueChange={(v) => setActivityType(v as LeadActivityType)}>
+                <Select
+                  value={activityType}
+                  onValueChange={(v) => setActivityType(v as LeadActivityType)}
+                >
                   <SelectTrigger className="w-[110px] shrink-0">
                     <SelectValue />
                   </SelectTrigger>
@@ -319,7 +324,11 @@ function LeadDetailSheet({
                   onKeyDown={(e) => e.key === "Enter" && submitActivity()}
                   placeholder="Log a follow-up…"
                 />
-                <Button size="sm" onClick={submitActivity} disabled={logActivity.isPending || !activityText.trim()}>
+                <Button
+                  size="sm"
+                  onClick={submitActivity}
+                  disabled={logActivity.isPending || !activityText.trim()}
+                >
                   Add
                 </Button>
               </div>
@@ -328,6 +337,95 @@ function LeadDetailSheet({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+// Lets the converting marketer route the new request straight to a department (skipping the
+// separate Operations/Tender "Route" step) when they already know who owns it — leaving the
+// department blank keeps today's behavior of an unrouted request for Tender/Ops to triage.
+function ConvertToRequestDialog({
+  leadId,
+  convert,
+}: {
+  leadId: string;
+  convert: ReturnType<typeof useConvertLeadToRequest>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [departmentId, setDepartmentId] = useState("");
+  const [assignedToId, setAssignedToId] = useState("");
+  const departmentsQ = useDepartments();
+  const profilesQ = useProfilesLite();
+
+  const submit = () => {
+    convert.mutate(
+      { leadId, departmentId: departmentId || undefined, assignedToId: assignedToId || undefined },
+      {
+        onSuccess: () => {
+          toast.success(
+            departmentId
+              ? "Converted and routed to department"
+              : "Converted — now in Tender's intake queue",
+          );
+          setOpen(false);
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Conversion failed"),
+      },
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" className="w-full">
+          Convert to client request
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Convert to client request</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Department (optional)</Label>
+            <Select value={departmentId} onValueChange={setDepartmentId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Leave unrouted for Tender/Operations to triage" />
+              </SelectTrigger>
+              <SelectContent>
+                {(departmentsQ.data ?? []).map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {departmentId && (
+            <div>
+              <Label>Assign to (optional)</Label>
+              <Select value={assignedToId} onValueChange={setAssignedToId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(profilesQ.data ?? []).map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.full_name ?? p.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button onClick={submit} disabled={convert.isPending}>
+            {convert.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Convert
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -375,7 +473,11 @@ function NewLeadForm({ onDone }: { onDone: () => void }) {
       <div className="space-y-3 py-2">
         <div>
           <Label>Name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Contact name" />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Contact name"
+          />
         </div>
         <div>
           <Label>Company (optional)</Label>
@@ -384,7 +486,11 @@ function NewLeadForm({ onDone }: { onDone: () => void }) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Email</Label>
-            <Input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
+            <Input
+              type="email"
+              value={contactEmail}
+              onChange={(e) => setContactEmail(e.target.value)}
+            />
           </div>
           <div>
             <Label>Phone</Label>

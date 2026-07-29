@@ -28,16 +28,6 @@ function DepartmentBoard() {
     if (!departmentId && profile?.departmentId) setDepartmentId(profile.departmentId);
   }, [departmentId, profile?.departmentId]);
 
-  const tasksQ = useTasks({ departmentId: departmentId || undefined });
-  const updateTask = useUpdateTask();
-
-  const handleStatusChange = (taskId: string, status: TaskStatus) => {
-    updateTask.mutate(
-      { id: taskId, status },
-      { onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed") },
-    );
-  };
-
   return (
     <div className="space-y-4">
       <div className="w-56">
@@ -57,17 +47,36 @@ function DepartmentBoard() {
       </div>
 
       {departmentId ? (
-        <KanbanBoard
-          tasks={tasksQ.data ?? []}
-          loading={tasksQ.isLoading}
-          showProject
-          onStatusChange={handleStatusChange}
-        />
+        <DepartmentTaskBoard departmentId={departmentId} />
       ) : (
         <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">
           Select a department to see its task board.
         </div>
       )}
     </div>
+  );
+}
+
+// Exported so every department hub can embed this same task board as a "Tasks" tab, with the
+// department id already fixed (no picker) instead of the standalone `/projects/department` page's
+// "choose a department" flow above.
+export function DepartmentTaskBoard({ departmentId }: { departmentId: string }) {
+  const tasksQ = useTasks({ departmentId });
+  const updateTask = useUpdateTask();
+
+  const handleStatusChange = (taskId: string, status: TaskStatus) => {
+    updateTask.mutate(
+      { id: taskId, status },
+      { onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed") },
+    );
+  };
+
+  return (
+    <KanbanBoard
+      tasks={tasksQ.data ?? []}
+      loading={tasksQ.isLoading}
+      showProject
+      onStatusChange={handleStatusChange}
+    />
   );
 }

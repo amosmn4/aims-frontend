@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
 
-export type ClientRequestStage = "new" | "assigned" | "engaging" | "proposal" | "won" | "lost" | "withdrawn";
+export type ClientRequestStage =
+  "new" | "assigned" | "engaging" | "proposal" | "won" | "lost" | "withdrawn";
 export type ClientRequestSource = "operations" | "marketing" | "referral" | "website" | "other";
 export type ClientRequestConversionType = "project" | "recurring_contract";
 export type ClientRequestActivityType = "note" | "call" | "email" | "meeting";
@@ -234,7 +235,8 @@ function buildQuery(filters: object): string {
 export function useClientRequests(filters: ClientRequestFilters = {}) {
   return useQuery({
     queryKey: ["client-requests", filters],
-    queryFn: async () => (await apiJson<BackendRequest[]>(`/client-requests${buildQuery(filters)}`)).map(mapRequest),
+    queryFn: async () =>
+      (await apiJson<BackendRequest[]>(`/client-requests${buildQuery(filters)}`)).map(mapRequest),
   });
 }
 
@@ -247,21 +249,30 @@ export function useClientRequest(id: string | undefined) {
 }
 
 export function useClientRequestPipelineSummary(
-  filters: Pick<ClientRequestFilters, "departmentId" | "serviceLineId" | "dateFrom" | "dateTo"> = {},
+  filters: Pick<
+    ClientRequestFilters,
+    "departmentId" | "serviceLineId" | "dateFrom" | "dateTo"
+  > = {},
 ) {
   return useQuery({
     queryKey: ["client-requests", "pipeline-summary", filters],
     queryFn: async () =>
-      apiJson<ClientRequestPipelineStage[]>(`/client-requests/pipeline-summary${buildQuery(filters)}`),
+      apiJson<ClientRequestPipelineStage[]>(
+        `/client-requests/pipeline-summary${buildQuery(filters)}`,
+      ),
   });
 }
 
 export function useLostBreakdown(
-  filters: Pick<ClientRequestFilters, "departmentId" | "serviceLineId" | "dateFrom" | "dateTo"> = {},
+  filters: Pick<
+    ClientRequestFilters,
+    "departmentId" | "serviceLineId" | "dateFrom" | "dateTo"
+  > = {},
 ) {
   return useQuery({
     queryKey: ["client-requests", "lost-breakdown", filters],
-    queryFn: async () => apiJson<LostBreakdownEntry[]>(`/client-requests/lost-breakdown${buildQuery(filters)}`),
+    queryFn: async () =>
+      apiJson<LostBreakdownEntry[]>(`/client-requests/lost-breakdown${buildQuery(filters)}`),
   });
 }
 
@@ -274,23 +285,30 @@ export interface TimeInStageEntry {
 }
 
 export function useClientRequestTimeInStage(
-  filters: Pick<ClientRequestFilters, "departmentId" | "serviceLineId" | "dateFrom" | "dateTo"> = {},
+  filters: Pick<
+    ClientRequestFilters,
+    "departmentId" | "serviceLineId" | "dateFrom" | "dateTo"
+  > = {},
 ) {
   return useQuery({
     queryKey: ["client-requests", "time-in-stage", filters],
     queryFn: async () => {
       const raw = await apiJson<
-        { stage: "new" | "assigned" | "engaging" | "proposal"; avgDays: number | null; sampleSize: number; stuckCount: number; oldestStuck: { id: string; title: string; days: number } | null }[]
+        {
+          stage: "new" | "assigned" | "engaging" | "proposal";
+          avgDays: number | null;
+          sampleSize: number;
+          stuckCount: number;
+          oldestStuck: { id: string; title: string; days: number } | null;
+        }[]
       >(`/client-requests/time-in-stage${buildQuery(filters)}`);
-      return raw.map(
-        (r): TimeInStageEntry => ({
-          stage: r.stage,
-          avg_days: r.avgDays,
-          sample_size: r.sampleSize,
-          stuck_count: r.stuckCount,
-          oldest_stuck: r.oldestStuck,
-        }),
-      );
+      return raw.map((r): TimeInStageEntry => ({
+        stage: r.stage,
+        avg_days: r.avgDays,
+        sample_size: r.sampleSize,
+        stuck_count: r.stuckCount,
+        oldest_stuck: r.oldestStuck,
+      }));
     },
   });
 }
@@ -300,7 +318,9 @@ export function useClientRequestActivities(requestId: string | undefined) {
     queryKey: ["client-requests", requestId, "activities"],
     enabled: !!requestId,
     queryFn: async () =>
-      (await apiJson<BackendActivity[]>(`/client-requests/${requestId}/activities`)).map(mapActivity),
+      (await apiJson<BackendActivity[]>(`/client-requests/${requestId}/activities`)).map(
+        mapActivity,
+      ),
   });
 }
 
@@ -309,9 +329,7 @@ export function useClientRequestActivities(requestId: string | undefined) {
 export function useSaveClientRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (
-      input: Partial<ClientRequestRow> & { title: string },
-    ) => {
+    mutationFn: async (input: Partial<ClientRequestRow> & { title: string }) => {
       const body = {
         title: input.title,
         description: input.description || undefined,
@@ -326,7 +344,10 @@ export function useSaveClientRequest() {
         currency: input.currency || undefined,
       };
       if (input.id) {
-        await apiJson(`/client-requests/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        await apiJson(`/client-requests/${input.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
         return input.id;
       }
       const created = await apiJson<BackendRequest>("/client-requests", {
@@ -346,7 +367,10 @@ export function useRouteClientRequest() {
       return mapRequest(
         await apiJson<BackendRequest>(`/client-requests/${input.id}/route`, {
           method: "PATCH",
-          body: JSON.stringify({ departmentId: input.department_id, assignedToId: input.assigned_to_id }),
+          body: JSON.stringify({
+            departmentId: input.department_id,
+            assignedToId: input.assigned_to_id,
+          }),
         }),
       );
     },
@@ -382,14 +406,20 @@ export function useDeleteClientRequest() {
 export function useConvertToProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { requestId: string; name?: string; clientId?: string; startDate?: string }) => {
+    mutationFn: async (input: {
+      requestId: string;
+      name?: string;
+      clientId?: string;
+      startDate?: string;
+    }) => {
       const { requestId, ...body } = input;
       return apiJson(`/client-requests/${requestId}/convert-to-project`, {
         method: "POST",
         body: JSON.stringify(body),
       });
     },
-    onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ["client-requests", vars.requestId] }),
+    onSuccess: (_d, vars) =>
+      qc.invalidateQueries({ queryKey: ["client-requests", vars.requestId] }),
   });
 }
 
@@ -413,20 +443,30 @@ export function useConvertClientRequestToContract() {
         body: JSON.stringify(body),
       });
     },
-    onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ["client-requests", vars.requestId] }),
+    onSuccess: (_d, vars) =>
+      qc.invalidateQueries({ queryKey: ["client-requests", vars.requestId] }),
   });
 }
 
 export function useLogActivity(requestId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { type?: ClientRequestActivityType; summary: string; occurred_at?: string }) => {
+    mutationFn: async (input: {
+      type?: ClientRequestActivityType;
+      summary: string;
+      occurred_at?: string;
+    }) => {
       await apiJson(`/client-requests/${requestId}/activities`, {
         method: "POST",
-        body: JSON.stringify({ type: input.type, summary: input.summary, occurredAt: input.occurred_at }),
+        body: JSON.stringify({
+          type: input.type,
+          summary: input.summary,
+          occurredAt: input.occurred_at,
+        }),
       });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["client-requests", requestId, "activities"] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["client-requests", requestId, "activities"] }),
   });
 }
 
@@ -436,6 +476,7 @@ export function useDeleteActivity(requestId: string) {
     mutationFn: async (activityId: string) => {
       await apiJson(`/client-requests/activities/${activityId}`, { method: "DELETE" });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["client-requests", requestId, "activities"] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["client-requests", requestId, "activities"] }),
   });
 }

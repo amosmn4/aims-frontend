@@ -66,9 +66,6 @@ import {
   ComposedChart,
 } from "recharts";
 
-// Every field falls back to a default via .catch(), so the route's search input is
-// optional (callers can navigate({ to: "/dashboard" }) with no search at all) while
-// Route.useSearch() still returns a fully-populated DashSearch.
 const dashSearchSchema = z.object({
   months: z
     .preprocess((v) => Number(v), z.union([z.literal(3), z.literal(6), z.literal(12)]))
@@ -334,7 +331,8 @@ function Dashboard() {
   const tenderTotal = tenderSummary.reduce((s, r) => s + r.count, 0);
   const tenderWon = tenderSummary.find((r) => r.stage === "won")?.count ?? 0;
   const tenderLost = tenderSummary.find((r) => r.stage === "lost")?.count ?? 0;
-  const tenderWinRate = tenderWon + tenderLost > 0 ? tenderWon / (tenderWon + tenderLost) : undefined;
+  const tenderWinRate =
+    tenderWon + tenderLost > 0 ? tenderWon / (tenderWon + tenderLost) : undefined;
   const TENDER_FUNNEL_STAGE_ORDER = [
     "identified",
     "applying",
@@ -367,7 +365,8 @@ function Dashboard() {
   const requestLost = requestSummary.find((r) => r.stage === "lost")?.count ?? 0;
   const requestWithdrawn = requestSummary.find((r) => r.stage === "withdrawn")?.count ?? 0;
   const requestResolved = requestConverted + requestLost + requestWithdrawn;
-  const requestConversionRate = requestResolved > 0 ? requestConverted / requestResolved : undefined;
+  const requestConversionRate =
+    requestResolved > 0 ? requestConverted / requestResolved : undefined;
   const REQUEST_FUNNEL_STAGE_ORDER = [
     "new",
     "assigned",
@@ -468,12 +467,15 @@ function Dashboard() {
   // Completion % per department, computed live from real Project/Task data — no fabricated
   // percentages. A department with no tasks yet reports "No data" rather than a made-up number.
   const deptStatus = (departmentsQ.data ?? []).map((d) => {
-    const deptProjectIds = new Set(allProjects.filter((p) => p.department_id === d.id).map((p) => p.id));
+    const deptProjectIds = new Set(
+      allProjects.filter((p) => p.department_id === d.id).map((p) => p.id),
+    );
     const deptTasks = allTasks.filter((t) => deptProjectIds.has(t.project_id));
     const total = deptTasks.length;
     const completed = deptTasks.filter((t) => t.status === "completed").length;
     const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
-    const status = total === 0 ? "No data" : progress >= 70 ? "On track" : progress >= 40 ? "At risk" : "Behind";
+    const status =
+      total === 0 ? "No data" : progress >= 70 ? "On track" : progress >= 40 ? "At risk" : "Behind";
     return { name: d.name, progress, status, hasData: total > 0 };
   });
 
@@ -579,8 +581,44 @@ function Dashboard() {
         </div>
       ) : (
         <>
+          {/* Executive Decision Support — moved here, right under the filters, so it's the first
+              thing read rather than something scrolled past two-thirds down the page. Same card,
+              same content as the original dashboard; only the position changed. */}
+          <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-semibold text-primary">Executive Decision Support</div>
+              <span className="text-[0.625rem] text-muted-foreground">Insights & Actions</span>
+            </div>
+            <ul className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+              {insights.slice(0, 6).map((it, i) => {
+                const Icon =
+                  it.type === "warn"
+                    ? AlertTriangle
+                    : it.type === "positive"
+                      ? CheckCircle
+                      : it.type === "action"
+                        ? Zap
+                        : Info;
+                const cls =
+                  it.type === "warn"
+                    ? "text-destructive"
+                    : it.type === "positive"
+                      ? "text-success"
+                      : it.type === "action"
+                        ? "text-accent"
+                        : "text-primary";
+                return (
+                  <li key={i} className="flex items-start gap-2 text-[0.6875rem] leading-snug">
+                    <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${cls}`} />
+                    <span className="min-w-0">{it.text}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
           {/* 10 KPIs single row from md+ */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-1.5">
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-1.5">
             <KpiCell
               label="Revenue MTD"
               value={formatCurrency(kpis.monthRevenue)}
@@ -903,14 +941,20 @@ function Dashboard() {
             </div>
           )}
 
-          {/* Second row: aging/project detail + insights */}
+          {/* Second row: aging/project detail — Executive Decision Support used to live here
+              alongside this card; now that it's been promoted to the top, this card takes the
+              full row instead of sharing it. */}
           <div className="mt-3 grid grid-cols-1 lg:grid-cols-12 gap-3">
             {view === "revenue" ? (
               /* Debtor aging */
-              <div className="lg:col-span-6 rounded-lg border bg-card p-3">
-                <div className="text-xs font-semibold text-primary">Debtor ageing</div>
-                <div className="text-[0.625rem] text-muted-foreground mb-1">
-                  {formatCurrency(kpis.aging.reduce((s, b) => s + b.amount, 0))} outstanding
+              <div className="lg:col-span-12 rounded-lg border bg-card p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold text-primary">Debtor ageing</div>
+                    <div className="text-[0.625rem] text-muted-foreground mb-1">
+                      {formatCurrency(kpis.aging.reduce((s, b) => s + b.amount, 0))} outstanding
+                    </div>
+                  </div>
                 </div>
                 <div className="h-44">
                   <ResponsiveContainer>
@@ -937,7 +981,7 @@ function Dashboard() {
               </div>
             ) : (
               /* By project — task breakdown for a selected project */
-              <div className="lg:col-span-6 rounded-lg border bg-card p-3">
+              <div className="lg:col-span-12 rounded-lg border bg-card p-3">
                 <div className="flex items-center justify-between mb-1">
                   <div className="text-xs font-semibold text-primary">Project progress</div>
                   {allProjects.length > 0 && (
@@ -983,40 +1027,6 @@ function Dashboard() {
                 </div>
               </div>
             )}
-
-            {/* Executive Decision Support */}
-            <div className="lg:col-span-6 rounded-lg border bg-card p-3">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold text-primary">Executive Decision Support</div>
-                <span className="text-[0.625rem] text-muted-foreground">Insights & Actions</span>
-              </div>
-              <ul className="mt-2 space-y-1.5">
-                {insights.slice(0, 6).map((it, i) => {
-                  const Icon =
-                    it.type === "warn"
-                      ? AlertTriangle
-                      : it.type === "positive"
-                        ? CheckCircle
-                        : it.type === "action"
-                          ? Zap
-                          : Info;
-                  const cls =
-                    it.type === "warn"
-                      ? "text-destructive"
-                      : it.type === "positive"
-                        ? "text-success"
-                        : it.type === "action"
-                          ? "text-accent"
-                          : "text-primary";
-                  return (
-                    <li key={i} className="flex items-start gap-2 text-[0.6875rem] leading-snug">
-                      <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${cls}`} />
-                      <span className="min-w-0">{it.text}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
           </div>
 
           {/* Third row: revenue/project detail + departments */}

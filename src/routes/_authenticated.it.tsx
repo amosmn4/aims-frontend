@@ -5,9 +5,14 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { to: "/it", label: "Overview", exact: true },
+  { to: "/it/pipeline", label: "Pipeline" },
+  { to: "/it/workspace", label: "Clients, Contracts & Projects" },
   { to: "/it/systems-sites", label: "Systems & Sites" },
   { to: "/it/tickets", label: "Tickets" },
   { to: "/it/hrms-clients", label: "HRMS Clients" },
+  { to: "/it/tasks", label: "Tasks" },
+  { to: "/it/calendar", label: "Calendar" },
+  { to: "/it/reports", label: "Reports to CEO" },
 ];
 
 export const Route = createFileRoute("/_authenticated/it")({

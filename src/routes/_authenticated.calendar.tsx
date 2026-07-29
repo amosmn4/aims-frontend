@@ -24,6 +24,20 @@ function toDateStr(d: Date) {
 }
 
 function DeadlineCalendar() {
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="Deadline Calendar"
+        description="Everything due, anywhere — tender submissions, bond expiries, contract renewals and task due dates, in one read-only view."
+      />
+      <DeadlineCalendarView />
+    </div>
+  );
+}
+
+// Exported so every department hub can embed this same calendar grid as a "Calendar" tab, scoped
+// via the optional `departmentId` prop — the central `/calendar` route renders it unfiltered.
+export function DeadlineCalendarView({ departmentId }: { departmentId?: string } = {}) {
   const [cursor, setCursor] = useState(() => {
     const d = new Date();
     d.setDate(1);
@@ -39,7 +53,7 @@ function DeadlineCalendar() {
 
   const from = toDateStr(firstDay);
   const to = toDateStr(lastDay);
-  const deadlinesQ = useDeadlines(from, to);
+  const deadlinesQ = useDeadlines(from, to, departmentId);
 
   const byDate = useMemo(() => {
     const map = new Map<string, DeadlineItem[]>();
@@ -56,34 +70,48 @@ function DeadlineCalendar() {
   const cells: { date: string | null; day: number | null }[] = [];
   for (let i = 0; i < startOffset; i++) cells.push({ date: null, day: null });
   for (let d = 1; d <= daysInMonth; d++) {
-    cells.push({ date: `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`, day: d });
+    cells.push({
+      date: `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
+      day: d,
+    });
   }
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Deadline Calendar"
-        description="Everything due, anywhere — tender submissions, bond expiries, contract renewals and task due dates, in one read-only view."
-      />
-
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Button size="icon" variant="outline" onClick={() => setCursor(new Date(year, month - 1, 1))}>
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={() => setCursor(new Date(year, month - 1, 1))}
+          >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <div className="text-sm font-semibold w-40 text-center">
             {firstDay.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
           </div>
-          <Button size="icon" variant="outline" onClick={() => setCursor(new Date(year, month + 1, 1))}>
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={() => setCursor(new Date(year, month + 1, 1))}
+          >
             <ChevronRight className="h-4 w-4" />
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setCursor(new Date(new Date().setDate(1)))}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setCursor(new Date(new Date().setDate(1)))}
+          >
             Today
           </Button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {Object.entries(DEADLINE_TYPE_LABELS).map(([type, label]) => (
-            <Badge key={type} variant="secondary" className={DEADLINE_TYPE_STYLES[type as keyof typeof DEADLINE_TYPE_LABELS]}>
+            <Badge
+              key={type}
+              variant="secondary"
+              className={DEADLINE_TYPE_STYLES[type as keyof typeof DEADLINE_TYPE_LABELS]}
+            >
               {label}
             </Badge>
           ))}
@@ -98,14 +126,20 @@ function DeadlineCalendar() {
         <div className="rounded-lg border bg-card overflow-hidden">
           <div className="grid grid-cols-7 border-b bg-muted/30">
             {DOW.map((d) => (
-              <div key={d} className="px-2 py-1.5 text-[11px] font-semibold text-muted-foreground text-center">
+              <div
+                key={d}
+                className="px-2 py-1.5 text-[11px] font-semibold text-muted-foreground text-center"
+              >
                 {d}
               </div>
             ))}
           </div>
           <div className="grid grid-cols-7">
             {cells.map((cell, i) => {
-              if (!cell.date) return <div key={`pad-${i}`} className="min-h-[100px] border-b border-r bg-muted/10" />;
+              if (!cell.date)
+                return (
+                  <div key={`pad-${i}`} className="min-h-[100px] border-b border-r bg-muted/10" />
+                );
               const items = byDate.get(cell.date) ?? [];
               const isToday = cell.date === todayStr;
               return (
@@ -116,7 +150,9 @@ function DeadlineCalendar() {
                     isToday && "bg-primary/5",
                   )}
                 >
-                  <div className={cn("text-xs font-medium", isToday && "text-primary font-semibold")}>
+                  <div
+                    className={cn("text-xs font-medium", isToday && "text-primary font-semibold")}
+                  >
                     {cell.day}
                   </div>
                   {items.map((item, idx) => (

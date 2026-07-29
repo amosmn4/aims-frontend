@@ -126,6 +126,15 @@ export function useClients() {
   });
 }
 
+export interface NewClientInput {
+  name: string;
+  code?: string;
+  country?: string;
+  currencyCode?: string;
+  industry?: string;
+  segment?: string;
+}
+
 export function useServiceLines() {
   return useQuery({
     queryKey: ["finance", "service_lines"],
@@ -157,11 +166,16 @@ export function paymentsByInvoice(payments: PaymentRow[]) {
   return m;
 }
 
+// Lets any of the departments onboarding a won request/tender/lead create the Client record
+// inline instead of forcing a context-switch to the Clients module first — backend role gate
+// relaxed to match (clients.controller.ts).
 export function useCreateClient() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { name: string; code?: string; country?: string; currencyCode?: string }) =>
-      apiJson<BackendClient>("/clients", { method: "POST", body: JSON.stringify(input) }),
+    mutationFn: async (input: NewClientInput) =>
+      mapClient(
+        await apiJson<BackendClient>("/clients", { method: "POST", body: JSON.stringify(input) }),
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "clients"] }),
   });
 }

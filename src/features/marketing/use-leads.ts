@@ -2,10 +2,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
 
 export type LeadStage = "new" | "contacted" | "qualified" | "nurturing" | "converted" | "lost";
-export type LeadSource = "website" | "referral" | "campaign" | "event" | "social" | "cold_outreach" | "other";
+export type LeadSource =
+  "website" | "referral" | "campaign" | "event" | "social" | "cold_outreach" | "other";
 export type LeadActivityType = "call" | "email" | "meeting" | "note";
 
-export const LEAD_STAGES: LeadStage[] = ["new", "contacted", "qualified", "nurturing", "converted", "lost"];
+export const LEAD_STAGES: LeadStage[] = [
+  "new",
+  "contacted",
+  "qualified",
+  "nurturing",
+  "converted",
+  "lost",
+];
 
 export const LEAD_STAGE_LABELS: Record<LeadStage, string> = {
   new: "New",
@@ -142,7 +150,8 @@ function buildQuery(filters: object): string {
 export function useLeads(filters: LeadFilters = {}) {
   return useQuery({
     queryKey: ["leads", filters],
-    queryFn: async () => (await apiJson<BackendLead[]>(`/leads${buildQuery(filters)}`)).map(mapLead),
+    queryFn: async () =>
+      (await apiJson<BackendLead[]>(`/leads${buildQuery(filters)}`)).map(mapLead),
   });
 }
 
@@ -158,7 +167,8 @@ export function useLeadActivities(leadId: string | undefined) {
   return useQuery({
     queryKey: ["leads", leadId, "activities"],
     enabled: !!leadId,
-    queryFn: async () => (await apiJson<BackendLeadActivity[]>(`/leads/${leadId}/activities`)).map(mapActivity),
+    queryFn: async () =>
+      (await apiJson<BackendLeadActivity[]>(`/leads/${leadId}/activities`)).map(mapActivity),
   });
 }
 
@@ -182,7 +192,10 @@ export function useSaveLead() {
         await apiJson(`/leads/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });
         return input.id;
       }
-      const created = await apiJson<BackendLead>("/leads", { method: "POST", body: JSON.stringify(body) });
+      const created = await apiJson<BackendLead>("/leads", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
       return created.id;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leads"] }),
@@ -217,10 +230,18 @@ export function useDeleteLead() {
 export function useLogLeadActivity(leadId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { type?: LeadActivityType; summary: string; occurred_at?: string }) => {
+    mutationFn: async (input: {
+      type?: LeadActivityType;
+      summary: string;
+      occurred_at?: string;
+    }) => {
       await apiJson(`/leads/${leadId}/activities`, {
         method: "POST",
-        body: JSON.stringify({ type: input.type, summary: input.summary, occurredAt: input.occurred_at }),
+        body: JSON.stringify({
+          type: input.type,
+          summary: input.summary,
+          occurredAt: input.occurred_at,
+        }),
       });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leads", leadId, "activities"] }),
@@ -230,12 +251,16 @@ export function useLogLeadActivity(leadId: string) {
 export function useConvertLeadToRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (leadId: string) => {
-      return apiJson(`/leads/${leadId}/convert-to-request`, { method: "POST" });
+    mutationFn: async (input: { leadId: string; departmentId?: string; assignedToId?: string }) => {
+      const { leadId, ...body } = input;
+      return apiJson(`/leads/${leadId}/convert-to-request`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
     },
-    onSuccess: (_d, leadId) => {
+    onSuccess: (_d, input) => {
       qc.invalidateQueries({ queryKey: ["leads"] });
-      qc.invalidateQueries({ queryKey: ["leads", leadId] });
+      qc.invalidateQueries({ queryKey: ["leads", input.leadId] });
       qc.invalidateQueries({ queryKey: ["client-requests"] });
     },
   });

@@ -41,7 +41,7 @@ export function HeaderSearch({ inputRef }: { inputRef: RefObject<HTMLInputElemen
   return (
     <div
       ref={containerRef}
-      className="relative hidden md:block w-72"
+      className="relative hidden lg:block w-48 xl:w-72 shrink-0"
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false);
       }}
@@ -107,7 +107,9 @@ export function HeaderSearch({ inputRef }: { inputRef: RefObject<HTMLInputElemen
                       )}
                     >
                       <span className="truncate w-full">{r.title}</span>
-                      <span className="truncate w-full text-xs text-muted-foreground">{r.subtitle}</span>
+                      <span className="truncate w-full text-xs text-muted-foreground">
+                        {r.subtitle}
+                      </span>
                     </button>
                   ))}
                 </div>

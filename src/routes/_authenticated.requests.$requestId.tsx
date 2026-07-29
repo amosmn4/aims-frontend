@@ -21,7 +21,7 @@ import {
   type ClientRequestActivityType,
 } from "@/features/client-requests/use-client-requests";
 import { useDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
-import { useClients } from "@/features/finance/use-finance-data";
+import { ClientPicker } from "@/features/clients/client-picker";
 import { formatCurrency } from "@/features/finance/finance";
 import { AttachmentsPanel } from "@/features/documents/attachments-panel";
 import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
@@ -53,11 +53,17 @@ export const Route = createFileRoute("/_authenticated/requests/$requestId")({
   component: ClientRequestDetail,
 });
 
-function buildRequestRelated(request: ReturnType<typeof useClientRequest>["data"]): RelatedRecordItem[] {
+function buildRequestRelated(
+  request: ReturnType<typeof useClientRequest>["data"],
+): RelatedRecordItem[] {
   if (!request) return [];
   const items: RelatedRecordItem[] = [];
   if (request.converted_from_lead_id) {
-    items.push({ label: "Source Lead", title: request.converted_from_lead_name ?? "Lead", to: "/marketing/leads" });
+    items.push({
+      label: "Source Lead",
+      title: request.converted_from_lead_name ?? "Lead",
+      to: "/marketing/leads",
+    });
   }
   if (request.converted_project_id) {
     items.push({
@@ -76,7 +82,9 @@ function buildRequestRelated(request: ReturnType<typeof useClientRequest>["data"
   return items;
 }
 
-function buildRequestBreadcrumb(request: ReturnType<typeof useClientRequest>["data"]): BreadcrumbSegment[] {
+function buildRequestBreadcrumb(
+  request: ReturnType<typeof useClientRequest>["data"],
+): BreadcrumbSegment[] {
   if (!request) return [];
   const segments: BreadcrumbSegment[] = [];
   if (request.converted_from_lead_id) {
@@ -108,11 +116,13 @@ function ClientRequestDetail() {
   const isIntake = isAdminOrCeo || hasRole("operations");
   const departmentCode = departmentsQ.data?.find((d) => d.id === request.department_id)?.code;
   const canManage =
-    isAdminOrCeo || (request.department_id ? !!departmentCode && hasRole(departmentCode as AppRole) : isIntake);
+    isAdminOrCeo ||
+    (request.department_id ? !!departmentCode && hasRole(departmentCode as AppRole) : isIntake);
 
   const changeStage = (stage: ClientRequestStage) => {
     if (stage === "lost" || stage === "withdrawn") {
-      const reason = window.prompt(`Reason the request was marked ${stage} (optional):`) ?? undefined;
+      const reason =
+        window.prompt(`Reason the request was marked ${stage} (optional):`) ?? undefined;
       updateStage.mutate(
         { id: request.id, stage, lost_reason: reason },
         { onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed") },
@@ -142,7 +152,9 @@ function ClientRequestDetail() {
             </div>
             {(request.contact_name || request.contact_email || request.contact_phone) && (
               <div className="text-xs text-muted-foreground mt-1">
-                {[request.contact_name, request.contact_email, request.contact_phone].filter(Boolean).join(" · ")}
+                {[request.contact_name, request.contact_email, request.contact_phone]
+                  .filter(Boolean)
+                  .join(" · ")}
               </div>
             )}
             {request.description && (
@@ -151,7 +163,10 @@ function ClientRequestDetail() {
           </div>
           <div className="flex flex-col items-end gap-2">
             {canManage && request.department_id ? (
-              <Select value={request.stage} onValueChange={(v) => changeStage(v as ClientRequestStage)}>
+              <Select
+                value={request.stage}
+                onValueChange={(v) => changeStage(v as ClientRequestStage)}
+              >
                 <SelectTrigger className="h-8 w-[160px] text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -174,7 +189,9 @@ function ClientRequestDetail() {
               </div>
             )}
             {request.assigned_to_name && (
-              <div className="text-xs text-muted-foreground">Assigned to {request.assigned_to_name}</div>
+              <div className="text-xs text-muted-foreground">
+                Assigned to {request.assigned_to_name}
+              </div>
             )}
           </div>
         </div>
@@ -185,20 +202,24 @@ function ClientRequestDetail() {
           </div>
         )}
 
-        {request.stage === "lost" || request.stage === "withdrawn" ? (
-          request.lost_reason && (
-            <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
-              Reason: {request.lost_reason}
-            </div>
-          )
-        ) : null}
+        {request.stage === "lost" || request.stage === "withdrawn"
+          ? request.lost_reason && (
+              <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
+                Reason: {request.lost_reason}
+              </div>
+            )
+          : null}
 
         {request.stage === "won" && (
           <div className="mt-3 pt-3 border-t text-xs text-success space-y-0.5">
             {request.converted_project_id && (
               <div>
                 Converted to project{" "}
-                <Link to="/projects/$projectId" params={{ projectId: request.converted_project_id }} className="underline hover:opacity-80">
+                <Link
+                  to="/projects/$projectId"
+                  params={{ projectId: request.converted_project_id }}
+                  className="underline hover:opacity-80"
+                >
                   {request.converted_project_name}
                 </Link>
               </div>
@@ -236,7 +257,10 @@ function ClientRequestDetail() {
           )}
       </div>
 
-      <RelatedRecords items={buildRequestRelated(request)} engagementTo={`/engagements/request/${request.id}`} />
+      <RelatedRecords
+        items={buildRequestRelated(request)}
+        engagementTo={`/engagements/request/${request.id}`}
+      />
 
       <Tabs defaultValue="activity">
         <TabsList>
@@ -247,7 +271,11 @@ function ClientRequestDetail() {
           <ActivityTab requestId={request.id} canManage={canManage} />
         </TabsContent>
         <TabsContent value="documents">
-          <AttachmentsPanel resourceType="client_request" resourceId={request.id} canManage={canManage} />
+          <AttachmentsPanel
+            resourceType="client_request"
+            resourceId={request.id}
+            canManage={canManage}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -344,7 +372,6 @@ function ConvertToProjectDialog({
   const [name, setName] = useState("");
   const [clientId, setClientId] = useState(defaultClientId ?? "");
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const clientsQ = useClients();
   const convert = useConvertToProject();
 
   const submit = () => {
@@ -376,23 +403,16 @@ function ConvertToProjectDialog({
         <div className="space-y-3">
           <div>
             <Label>Project name (optional)</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Defaults to request title" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Defaults to request title"
+            />
           </div>
           {!defaultClientId && (
             <div>
               <Label>Client</Label>
-              <Select value={clientId} onValueChange={setClientId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(clientsQ.data ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ClientPicker value={clientId} onChange={setClientId} />
             </div>
           )}
           <div>
@@ -422,12 +442,11 @@ function ConvertToContractDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [contractNumber, setContractNumber] = useState("");
-  const [billingFrequency, setBillingFrequency] = useState<"one_off" | "monthly" | "quarterly" | "annual">(
-    "monthly",
-  );
+  const [billingFrequency, setBillingFrequency] = useState<
+    "one_off" | "monthly" | "quarterly" | "annual"
+  >("monthly");
   const [clientId, setClientId] = useState(defaultClientId ?? "");
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const clientsQ = useClients();
   const convert = useConvertClientRequestToContract();
 
   const submit = () => {
@@ -476,24 +495,16 @@ function ConvertToContractDialog({
           {!defaultClientId && (
             <div>
               <Label>Client</Label>
-              <Select value={clientId} onValueChange={setClientId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(clientsQ.data ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ClientPicker value={clientId} onChange={setClientId} />
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Billing frequency</Label>
-              <Select value={billingFrequency} onValueChange={(v) => setBillingFrequency(v as typeof billingFrequency)}>
+              <Select
+                value={billingFrequency}
+                onValueChange={(v) => setBillingFrequency(v as typeof billingFrequency)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -512,7 +523,8 @@ function ConvertToContractDialog({
           </div>
           {defaultValue != null && (
             <p className="text-xs text-muted-foreground">
-              Contract value defaults to the request's estimated value ({formatCurrency(defaultValue)}).
+              Contract value defaults to the request's estimated value (
+              {formatCurrency(defaultValue)}).
             </p>
           )}
         </div>
@@ -566,7 +578,8 @@ function ActivityTab({ requestId, canManage }: { requestId: string; canManage: b
                   className="text-xs text-muted-foreground"
                   onClick={() =>
                     deleteActivity.mutate(a.id, {
-                      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                      onError: (err) =>
+                        toast.error(err instanceof Error ? err.message : "Failed to delete"),
                     })
                   }
                 >

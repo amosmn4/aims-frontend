@@ -2,6 +2,7 @@ import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-rout
 import { cn } from "@/lib/utils";
 
 const DEPTS = [
+  { key: "operations", label: "Operations" },
   { key: "finance", label: "Finance" },
   { key: "hr", label: "Human Resources" },
   { key: "it", label: "IT" },

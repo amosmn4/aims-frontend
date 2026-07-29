@@ -13,7 +13,8 @@ export const Route = createFileRoute("/_authenticated/reports/departments/market
 
 const ACTIVE_STAGES: LeadStage[] = ["new", "contacted", "qualified", "nurturing"];
 
-function MarketingReport() {
+// Exported so the Marketing department hub can embed this same report as a "Reports" tab.
+export function MarketingReport() {
   return (
     <RequireRole
       roles={["marketing"]}
@@ -47,7 +48,8 @@ function LeadsSummary() {
     const active = leads.filter((l) => ACTIVE_STAGES.includes(l.stage));
     const converted = leads.filter((l) => l.stage === "converted");
     const closed = leads.filter((l) => l.stage === "converted" || l.stage === "lost");
-    const conversionRate = closed.length > 0 ? Math.round((converted.length / closed.length) * 100) : null;
+    const conversionRate =
+      closed.length > 0 ? Math.round((converted.length / closed.length) * 100) : null;
     const byStage = new Map<LeadStage, number>();
     for (const l of leads) byStage.set(l.stage, (byStage.get(l.stage) ?? 0) + 1);
     return { total: leads.length, active: active.length, conversionRate, byStage };
@@ -137,11 +139,15 @@ function WebsiteSummary() {
         <div className="grid grid-cols-2 gap-3 mt-3">
           <div className="rounded-md border p-3 text-center">
             <div className="text-xs text-muted-foreground">Visitors (30d)</div>
-            <div className="text-xl font-semibold tabular-nums mt-1">{snapshot.visitors.toLocaleString()}</div>
+            <div className="text-xl font-semibold tabular-nums mt-1">
+              {snapshot.visitors.toLocaleString()}
+            </div>
           </div>
           <div className="rounded-md border p-3 text-center">
             <div className="text-xs text-muted-foreground">Page views (30d)</div>
-            <div className="text-xl font-semibold tabular-nums mt-1">{snapshot.page_views.toLocaleString()}</div>
+            <div className="text-xl font-semibold tabular-nums mt-1">
+              {snapshot.page_views.toLocaleString()}
+            </div>
           </div>
         </div>
       )}
@@ -189,16 +195,22 @@ function BlogSummary() {
             </div>
             <div className="rounded-md border p-3 text-center">
               <div className="text-xs text-muted-foreground">Total views</div>
-              <div className="text-xl font-semibold tabular-nums mt-1">{stats.totalViews.toLocaleString()}</div>
+              <div className="text-xl font-semibold tabular-nums mt-1">
+                {stats.totalViews.toLocaleString()}
+              </div>
             </div>
             <div className="rounded-md border p-3 text-center">
               <div className="text-xs text-muted-foreground">Total likes</div>
-              <div className="text-xl font-semibold tabular-nums mt-1">{stats.totalLikes.toLocaleString()}</div>
+              <div className="text-xl font-semibold tabular-nums mt-1">
+                {stats.totalLikes.toLocaleString()}
+              </div>
             </div>
           </div>
           {stats.topPosts.length > 0 && (
             <div>
-              <div className="text-xs font-semibold text-muted-foreground mb-2">Top posts by views</div>
+              <div className="text-xs font-semibold text-muted-foreground mb-2">
+                Top posts by views
+              </div>
               <div className="divide-y">
                 {stats.topPosts.map((p) => (
                   <Link

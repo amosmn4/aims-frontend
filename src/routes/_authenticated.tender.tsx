@@ -6,6 +6,8 @@ import { useDepartments } from "@/features/clients/use-clients-contracts";
 import { DepartmentWorkspaceContent } from "./_authenticated.departments.$deptId";
 import { TenderPipelineBoard } from "./_authenticated.pipeline.tenders";
 import { EngagementBoard } from "./_authenticated.pipeline.engagements";
+import { DepartmentTaskBoard } from "./_authenticated.projects.department";
+import { DeadlineCalendarView } from "./_authenticated.calendar";
 import { TenderReport } from "./_authenticated.reports.departments.tender";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
@@ -22,13 +24,15 @@ export const Route = createFileRoute("/_authenticated/tender")({
   component: TenderHub,
 });
 
-type HubTab = "overview" | "pipeline" | "requests" | "workspace" | "reports";
+type HubTab = "overview" | "pipeline" | "requests" | "workspace" | "tasks" | "calendar" | "reports";
 
 const TABS: { key: HubTab; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "pipeline", label: "Bid Pipeline" },
   { key: "requests", label: "Client Requests" },
   { key: "workspace", label: "Contracts, Clients & Projects" },
+  { key: "tasks", label: "Tasks" },
+  { key: "calendar", label: "Calendar" },
   { key: "reports", label: "Reports" },
 ];
 
@@ -80,16 +84,18 @@ function TenderHub() {
           <div className="pipeline-scope">
             <EngagementBoard />
           </div>
-        ) : tab === "workspace" ? (
-          tenderDept ? (
-            <DepartmentWorkspaceContent deptId={tenderDept.id} />
-          ) : (
-            <div className="py-12 flex justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            </div>
-          )
-        ) : (
+        ) : tab === "reports" ? (
           <TenderReport />
+        ) : !tenderDept ? (
+          <div className="py-12 flex justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : tab === "tasks" ? (
+          <DepartmentTaskBoard departmentId={tenderDept.id} />
+        ) : tab === "calendar" ? (
+          <DeadlineCalendarView departmentId={tenderDept.id} />
+        ) : (
+          <DepartmentWorkspaceContent deptId={tenderDept.id} />
         )}
       </div>
     </RequireRole>

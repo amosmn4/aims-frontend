@@ -5,10 +5,15 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { to: "/marketing", label: "Overview", exact: true },
+  { to: "/marketing/pipeline", label: "Pipeline" },
   { to: "/marketing/leads", label: "Leads" },
   { to: "/marketing/campaigns", label: "Campaigns" },
   { to: "/marketing/website-analytics", label: "Website Analytics" },
   { to: "/marketing/blog", label: "Blog" },
+  { to: "/marketing/workspace", label: "Clients, Contracts & Projects" },
+  { to: "/marketing/tasks", label: "Tasks" },
+  { to: "/marketing/calendar", label: "Calendar" },
+  { to: "/marketing/reports", label: "Reports to CEO" },
 ];
 
 export const Route = createFileRoute("/_authenticated/marketing")({

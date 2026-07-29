@@ -50,21 +50,40 @@ import { Route as AuthenticatedProjectsProjectIdRouteImport } from './routes/_au
 import { Route as AuthenticatedPipelineTendersRouteImport } from './routes/_authenticated.pipeline.tenders'
 import { Route as AuthenticatedPipelineProjectsRouteImport } from './routes/_authenticated.pipeline.projects'
 import { Route as AuthenticatedPipelineEngagementsRouteImport } from './routes/_authenticated.pipeline.engagements'
+import { Route as AuthenticatedMarketingWorkspaceRouteImport } from './routes/_authenticated.marketing.workspace'
 import { Route as AuthenticatedMarketingWebsiteAnalyticsRouteImport } from './routes/_authenticated.marketing.website-analytics'
+import { Route as AuthenticatedMarketingTasksRouteImport } from './routes/_authenticated.marketing.tasks'
+import { Route as AuthenticatedMarketingReportsRouteImport } from './routes/_authenticated.marketing.reports'
+import { Route as AuthenticatedMarketingPipelineRouteImport } from './routes/_authenticated.marketing.pipeline'
 import { Route as AuthenticatedMarketingLeadsRouteImport } from './routes/_authenticated.marketing.leads'
 import { Route as AuthenticatedMarketingCampaignsRouteImport } from './routes/_authenticated.marketing.campaigns'
+import { Route as AuthenticatedMarketingCalendarRouteImport } from './routes/_authenticated.marketing.calendar'
 import { Route as AuthenticatedMarketingBlogRouteImport } from './routes/_authenticated.marketing.blog'
+import { Route as AuthenticatedItWorkspaceRouteImport } from './routes/_authenticated.it.workspace'
 import { Route as AuthenticatedItTicketsRouteImport } from './routes/_authenticated.it.tickets'
+import { Route as AuthenticatedItTasksRouteImport } from './routes/_authenticated.it.tasks'
 import { Route as AuthenticatedItSystemsSitesRouteImport } from './routes/_authenticated.it.systems-sites'
+import { Route as AuthenticatedItReportsRouteImport } from './routes/_authenticated.it.reports'
+import { Route as AuthenticatedItPipelineRouteImport } from './routes/_authenticated.it.pipeline'
 import { Route as AuthenticatedItHrmsClientsRouteImport } from './routes/_authenticated.it.hrms-clients'
+import { Route as AuthenticatedItCalendarRouteImport } from './routes/_authenticated.it.calendar'
+import { Route as AuthenticatedHrWorkspaceRouteImport } from './routes/_authenticated.hr.workspace'
+import { Route as AuthenticatedHrTasksRouteImport } from './routes/_authenticated.hr.tasks'
+import { Route as AuthenticatedHrReportsRouteImport } from './routes/_authenticated.hr.reports'
 import { Route as AuthenticatedHrRecruitmentRouteImport } from './routes/_authenticated.hr.recruitment'
 import { Route as AuthenticatedHrProjectsRouteImport } from './routes/_authenticated.hr.projects'
+import { Route as AuthenticatedHrPipelineRouteImport } from './routes/_authenticated.hr.pipeline'
+import { Route as AuthenticatedHrCalendarRouteImport } from './routes/_authenticated.hr.calendar'
+import { Route as AuthenticatedFinanceWorkspaceRouteImport } from './routes/_authenticated.finance.workspace'
 import { Route as AuthenticatedFinanceUploadRouteImport } from './routes/_authenticated.finance.upload'
+import { Route as AuthenticatedFinanceTasksRouteImport } from './routes/_authenticated.finance.tasks'
 import { Route as AuthenticatedFinanceRevenueRouteImport } from './routes/_authenticated.finance.revenue'
 import { Route as AuthenticatedFinanceReportsRouteImport } from './routes/_authenticated.finance.reports'
+import { Route as AuthenticatedFinancePipelineRouteImport } from './routes/_authenticated.finance.pipeline'
 import { Route as AuthenticatedFinancePayrollComplianceRouteImport } from './routes/_authenticated.finance.payroll-compliance'
 import { Route as AuthenticatedFinanceInvoicesRouteImport } from './routes/_authenticated.finance.invoices'
 import { Route as AuthenticatedFinanceDebtorsRouteImport } from './routes/_authenticated.finance.debtors'
+import { Route as AuthenticatedFinanceCalendarRouteImport } from './routes/_authenticated.finance.calendar'
 import { Route as AuthenticatedFinanceBudgetsRouteImport } from './routes/_authenticated.finance.budgets'
 import { Route as AuthenticatedDepartmentsDeptIdRouteImport } from './routes/_authenticated.departments.$deptId'
 import { Route as AuthenticatedClientsContractsRouteImport } from './routes/_authenticated.clients.contracts'
@@ -75,6 +94,7 @@ import { Route as AuthenticatedMarketingBlogIndexRouteImport } from './routes/_a
 import { Route as AuthenticatedFinanceReportsIndexRouteImport } from './routes/_authenticated.finance.reports.index'
 import { Route as AuthenticatedClientsContractsIndexRouteImport } from './routes/_authenticated.clients.contracts.index'
 import { Route as AuthenticatedReportsDepartmentsTenderRouteImport } from './routes/_authenticated.reports.departments.tender'
+import { Route as AuthenticatedReportsDepartmentsOperationsRouteImport } from './routes/_authenticated.reports.departments.operations'
 import { Route as AuthenticatedReportsDepartmentsMarketingRouteImport } from './routes/_authenticated.reports.departments.marketing'
 import { Route as AuthenticatedReportsDepartmentsItRouteImport } from './routes/_authenticated.reports.departments.it'
 import { Route as AuthenticatedReportsDepartmentsHrRouteImport } from './routes/_authenticated.reports.departments.hr'
@@ -308,10 +328,34 @@ const AuthenticatedPipelineEngagementsRoute =
     path: '/engagements',
     getParentRoute: () => AuthenticatedPipelineRoute,
   } as any)
+const AuthenticatedMarketingWorkspaceRoute =
+  AuthenticatedMarketingWorkspaceRouteImport.update({
+    id: '/workspace',
+    path: '/workspace',
+    getParentRoute: () => AuthenticatedMarketingRoute,
+  } as any)
 const AuthenticatedMarketingWebsiteAnalyticsRoute =
   AuthenticatedMarketingWebsiteAnalyticsRouteImport.update({
     id: '/website-analytics',
     path: '/website-analytics',
+    getParentRoute: () => AuthenticatedMarketingRoute,
+  } as any)
+const AuthenticatedMarketingTasksRoute =
+  AuthenticatedMarketingTasksRouteImport.update({
+    id: '/tasks',
+    path: '/tasks',
+    getParentRoute: () => AuthenticatedMarketingRoute,
+  } as any)
+const AuthenticatedMarketingReportsRoute =
+  AuthenticatedMarketingReportsRouteImport.update({
+    id: '/reports',
+    path: '/reports',
+    getParentRoute: () => AuthenticatedMarketingRoute,
+  } as any)
+const AuthenticatedMarketingPipelineRoute =
+  AuthenticatedMarketingPipelineRouteImport.update({
+    id: '/pipeline',
+    path: '/pipeline',
     getParentRoute: () => AuthenticatedMarketingRoute,
   } as any)
 const AuthenticatedMarketingLeadsRoute =
@@ -326,15 +370,32 @@ const AuthenticatedMarketingCampaignsRoute =
     path: '/campaigns',
     getParentRoute: () => AuthenticatedMarketingRoute,
   } as any)
+const AuthenticatedMarketingCalendarRoute =
+  AuthenticatedMarketingCalendarRouteImport.update({
+    id: '/calendar',
+    path: '/calendar',
+    getParentRoute: () => AuthenticatedMarketingRoute,
+  } as any)
 const AuthenticatedMarketingBlogRoute =
   AuthenticatedMarketingBlogRouteImport.update({
     id: '/blog',
     path: '/blog',
     getParentRoute: () => AuthenticatedMarketingRoute,
   } as any)
+const AuthenticatedItWorkspaceRoute =
+  AuthenticatedItWorkspaceRouteImport.update({
+    id: '/workspace',
+    path: '/workspace',
+    getParentRoute: () => AuthenticatedItRoute,
+  } as any)
 const AuthenticatedItTicketsRoute = AuthenticatedItTicketsRouteImport.update({
   id: '/tickets',
   path: '/tickets',
+  getParentRoute: () => AuthenticatedItRoute,
+} as any)
+const AuthenticatedItTasksRoute = AuthenticatedItTasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
   getParentRoute: () => AuthenticatedItRoute,
 } as any)
 const AuthenticatedItSystemsSitesRoute =
@@ -343,12 +404,43 @@ const AuthenticatedItSystemsSitesRoute =
     path: '/systems-sites',
     getParentRoute: () => AuthenticatedItRoute,
   } as any)
+const AuthenticatedItReportsRoute = AuthenticatedItReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AuthenticatedItRoute,
+} as any)
+const AuthenticatedItPipelineRoute = AuthenticatedItPipelineRouteImport.update({
+  id: '/pipeline',
+  path: '/pipeline',
+  getParentRoute: () => AuthenticatedItRoute,
+} as any)
 const AuthenticatedItHrmsClientsRoute =
   AuthenticatedItHrmsClientsRouteImport.update({
     id: '/hrms-clients',
     path: '/hrms-clients',
     getParentRoute: () => AuthenticatedItRoute,
   } as any)
+const AuthenticatedItCalendarRoute = AuthenticatedItCalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => AuthenticatedItRoute,
+} as any)
+const AuthenticatedHrWorkspaceRoute =
+  AuthenticatedHrWorkspaceRouteImport.update({
+    id: '/workspace',
+    path: '/workspace',
+    getParentRoute: () => AuthenticatedHrRoute,
+  } as any)
+const AuthenticatedHrTasksRoute = AuthenticatedHrTasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
+  getParentRoute: () => AuthenticatedHrRoute,
+} as any)
+const AuthenticatedHrReportsRoute = AuthenticatedHrReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AuthenticatedHrRoute,
+} as any)
 const AuthenticatedHrRecruitmentRoute =
   AuthenticatedHrRecruitmentRouteImport.update({
     id: '/recruitment',
@@ -360,10 +452,32 @@ const AuthenticatedHrProjectsRoute = AuthenticatedHrProjectsRouteImport.update({
   path: '/projects',
   getParentRoute: () => AuthenticatedHrRoute,
 } as any)
+const AuthenticatedHrPipelineRoute = AuthenticatedHrPipelineRouteImport.update({
+  id: '/pipeline',
+  path: '/pipeline',
+  getParentRoute: () => AuthenticatedHrRoute,
+} as any)
+const AuthenticatedHrCalendarRoute = AuthenticatedHrCalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => AuthenticatedHrRoute,
+} as any)
+const AuthenticatedFinanceWorkspaceRoute =
+  AuthenticatedFinanceWorkspaceRouteImport.update({
+    id: '/workspace',
+    path: '/workspace',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
 const AuthenticatedFinanceUploadRoute =
   AuthenticatedFinanceUploadRouteImport.update({
     id: '/upload',
     path: '/upload',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
+const AuthenticatedFinanceTasksRoute =
+  AuthenticatedFinanceTasksRouteImport.update({
+    id: '/tasks',
+    path: '/tasks',
     getParentRoute: () => AuthenticatedFinanceRoute,
   } as any)
 const AuthenticatedFinanceRevenueRoute =
@@ -376,6 +490,12 @@ const AuthenticatedFinanceReportsRoute =
   AuthenticatedFinanceReportsRouteImport.update({
     id: '/reports',
     path: '/reports',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
+const AuthenticatedFinancePipelineRoute =
+  AuthenticatedFinancePipelineRouteImport.update({
+    id: '/pipeline',
+    path: '/pipeline',
     getParentRoute: () => AuthenticatedFinanceRoute,
   } as any)
 const AuthenticatedFinancePayrollComplianceRoute =
@@ -394,6 +514,12 @@ const AuthenticatedFinanceDebtorsRoute =
   AuthenticatedFinanceDebtorsRouteImport.update({
     id: '/debtors',
     path: '/debtors',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
+const AuthenticatedFinanceCalendarRoute =
+  AuthenticatedFinanceCalendarRouteImport.update({
+    id: '/calendar',
+    path: '/calendar',
     getParentRoute: () => AuthenticatedFinanceRoute,
   } as any)
 const AuthenticatedFinanceBudgetsRoute =
@@ -452,6 +578,12 @@ const AuthenticatedReportsDepartmentsTenderRoute =
   AuthenticatedReportsDepartmentsTenderRouteImport.update({
     id: '/tender',
     path: '/tender',
+    getParentRoute: () => AuthenticatedReportsDepartmentsRoute,
+  } as any)
+const AuthenticatedReportsDepartmentsOperationsRoute =
+  AuthenticatedReportsDepartmentsOperationsRouteImport.update({
+    id: '/operations',
+    path: '/operations',
     getParentRoute: () => AuthenticatedReportsDepartmentsRoute,
   } as any)
 const AuthenticatedReportsDepartmentsMarketingRoute =
@@ -529,21 +661,40 @@ export interface FileRoutesByFullPath {
   '/clients/contracts': typeof AuthenticatedClientsContractsRouteWithChildren
   '/departments/$deptId': typeof AuthenticatedDepartmentsDeptIdRoute
   '/finance/budgets': typeof AuthenticatedFinanceBudgetsRoute
+  '/finance/calendar': typeof AuthenticatedFinanceCalendarRoute
   '/finance/debtors': typeof AuthenticatedFinanceDebtorsRoute
   '/finance/invoices': typeof AuthenticatedFinanceInvoicesRoute
   '/finance/payroll-compliance': typeof AuthenticatedFinancePayrollComplianceRoute
+  '/finance/pipeline': typeof AuthenticatedFinancePipelineRoute
   '/finance/reports': typeof AuthenticatedFinanceReportsRouteWithChildren
   '/finance/revenue': typeof AuthenticatedFinanceRevenueRoute
+  '/finance/tasks': typeof AuthenticatedFinanceTasksRoute
   '/finance/upload': typeof AuthenticatedFinanceUploadRoute
+  '/finance/workspace': typeof AuthenticatedFinanceWorkspaceRoute
+  '/hr/calendar': typeof AuthenticatedHrCalendarRoute
+  '/hr/pipeline': typeof AuthenticatedHrPipelineRoute
   '/hr/projects': typeof AuthenticatedHrProjectsRoute
   '/hr/recruitment': typeof AuthenticatedHrRecruitmentRoute
+  '/hr/reports': typeof AuthenticatedHrReportsRoute
+  '/hr/tasks': typeof AuthenticatedHrTasksRoute
+  '/hr/workspace': typeof AuthenticatedHrWorkspaceRoute
+  '/it/calendar': typeof AuthenticatedItCalendarRoute
   '/it/hrms-clients': typeof AuthenticatedItHrmsClientsRoute
+  '/it/pipeline': typeof AuthenticatedItPipelineRoute
+  '/it/reports': typeof AuthenticatedItReportsRoute
   '/it/systems-sites': typeof AuthenticatedItSystemsSitesRoute
+  '/it/tasks': typeof AuthenticatedItTasksRoute
   '/it/tickets': typeof AuthenticatedItTicketsRoute
+  '/it/workspace': typeof AuthenticatedItWorkspaceRoute
   '/marketing/blog': typeof AuthenticatedMarketingBlogRouteWithChildren
+  '/marketing/calendar': typeof AuthenticatedMarketingCalendarRoute
   '/marketing/campaigns': typeof AuthenticatedMarketingCampaignsRoute
   '/marketing/leads': typeof AuthenticatedMarketingLeadsRoute
+  '/marketing/pipeline': typeof AuthenticatedMarketingPipelineRoute
+  '/marketing/reports': typeof AuthenticatedMarketingReportsRoute
+  '/marketing/tasks': typeof AuthenticatedMarketingTasksRoute
   '/marketing/website-analytics': typeof AuthenticatedMarketingWebsiteAnalyticsRoute
+  '/marketing/workspace': typeof AuthenticatedMarketingWorkspaceRoute
   '/pipeline/engagements': typeof AuthenticatedPipelineEngagementsRoute
   '/pipeline/projects': typeof AuthenticatedPipelineProjectsRoute
   '/pipeline/tenders': typeof AuthenticatedPipelineTendersRoute
@@ -573,6 +724,7 @@ export interface FileRoutesByFullPath {
   '/reports/departments/hr': typeof AuthenticatedReportsDepartmentsHrRoute
   '/reports/departments/it': typeof AuthenticatedReportsDepartmentsItRoute
   '/reports/departments/marketing': typeof AuthenticatedReportsDepartmentsMarketingRoute
+  '/reports/departments/operations': typeof AuthenticatedReportsDepartmentsOperationsRoute
   '/reports/departments/tender': typeof AuthenticatedReportsDepartmentsTenderRoute
   '/clients/contracts/': typeof AuthenticatedClientsContractsIndexRoute
   '/finance/reports/': typeof AuthenticatedFinanceReportsIndexRoute
@@ -592,19 +744,38 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/departments/$deptId': typeof AuthenticatedDepartmentsDeptIdRoute
   '/finance/budgets': typeof AuthenticatedFinanceBudgetsRoute
+  '/finance/calendar': typeof AuthenticatedFinanceCalendarRoute
   '/finance/debtors': typeof AuthenticatedFinanceDebtorsRoute
   '/finance/invoices': typeof AuthenticatedFinanceInvoicesRoute
   '/finance/payroll-compliance': typeof AuthenticatedFinancePayrollComplianceRoute
+  '/finance/pipeline': typeof AuthenticatedFinancePipelineRoute
   '/finance/revenue': typeof AuthenticatedFinanceRevenueRoute
+  '/finance/tasks': typeof AuthenticatedFinanceTasksRoute
   '/finance/upload': typeof AuthenticatedFinanceUploadRoute
+  '/finance/workspace': typeof AuthenticatedFinanceWorkspaceRoute
+  '/hr/calendar': typeof AuthenticatedHrCalendarRoute
+  '/hr/pipeline': typeof AuthenticatedHrPipelineRoute
   '/hr/projects': typeof AuthenticatedHrProjectsRoute
   '/hr/recruitment': typeof AuthenticatedHrRecruitmentRoute
+  '/hr/reports': typeof AuthenticatedHrReportsRoute
+  '/hr/tasks': typeof AuthenticatedHrTasksRoute
+  '/hr/workspace': typeof AuthenticatedHrWorkspaceRoute
+  '/it/calendar': typeof AuthenticatedItCalendarRoute
   '/it/hrms-clients': typeof AuthenticatedItHrmsClientsRoute
+  '/it/pipeline': typeof AuthenticatedItPipelineRoute
+  '/it/reports': typeof AuthenticatedItReportsRoute
   '/it/systems-sites': typeof AuthenticatedItSystemsSitesRoute
+  '/it/tasks': typeof AuthenticatedItTasksRoute
   '/it/tickets': typeof AuthenticatedItTicketsRoute
+  '/it/workspace': typeof AuthenticatedItWorkspaceRoute
+  '/marketing/calendar': typeof AuthenticatedMarketingCalendarRoute
   '/marketing/campaigns': typeof AuthenticatedMarketingCampaignsRoute
   '/marketing/leads': typeof AuthenticatedMarketingLeadsRoute
+  '/marketing/pipeline': typeof AuthenticatedMarketingPipelineRoute
+  '/marketing/reports': typeof AuthenticatedMarketingReportsRoute
+  '/marketing/tasks': typeof AuthenticatedMarketingTasksRoute
   '/marketing/website-analytics': typeof AuthenticatedMarketingWebsiteAnalyticsRoute
+  '/marketing/workspace': typeof AuthenticatedMarketingWorkspaceRoute
   '/pipeline/engagements': typeof AuthenticatedPipelineEngagementsRoute
   '/pipeline/projects': typeof AuthenticatedPipelineProjectsRoute
   '/pipeline/tenders': typeof AuthenticatedPipelineTendersRoute
@@ -634,6 +805,7 @@ export interface FileRoutesByTo {
   '/reports/departments/hr': typeof AuthenticatedReportsDepartmentsHrRoute
   '/reports/departments/it': typeof AuthenticatedReportsDepartmentsItRoute
   '/reports/departments/marketing': typeof AuthenticatedReportsDepartmentsMarketingRoute
+  '/reports/departments/operations': typeof AuthenticatedReportsDepartmentsOperationsRoute
   '/reports/departments/tender': typeof AuthenticatedReportsDepartmentsTenderRoute
   '/clients/contracts': typeof AuthenticatedClientsContractsIndexRoute
   '/finance/reports': typeof AuthenticatedFinanceReportsIndexRoute
@@ -667,21 +839,40 @@ export interface FileRoutesById {
   '/_authenticated/clients/contracts': typeof AuthenticatedClientsContractsRouteWithChildren
   '/_authenticated/departments/$deptId': typeof AuthenticatedDepartmentsDeptIdRoute
   '/_authenticated/finance/budgets': typeof AuthenticatedFinanceBudgetsRoute
+  '/_authenticated/finance/calendar': typeof AuthenticatedFinanceCalendarRoute
   '/_authenticated/finance/debtors': typeof AuthenticatedFinanceDebtorsRoute
   '/_authenticated/finance/invoices': typeof AuthenticatedFinanceInvoicesRoute
   '/_authenticated/finance/payroll-compliance': typeof AuthenticatedFinancePayrollComplianceRoute
+  '/_authenticated/finance/pipeline': typeof AuthenticatedFinancePipelineRoute
   '/_authenticated/finance/reports': typeof AuthenticatedFinanceReportsRouteWithChildren
   '/_authenticated/finance/revenue': typeof AuthenticatedFinanceRevenueRoute
+  '/_authenticated/finance/tasks': typeof AuthenticatedFinanceTasksRoute
   '/_authenticated/finance/upload': typeof AuthenticatedFinanceUploadRoute
+  '/_authenticated/finance/workspace': typeof AuthenticatedFinanceWorkspaceRoute
+  '/_authenticated/hr/calendar': typeof AuthenticatedHrCalendarRoute
+  '/_authenticated/hr/pipeline': typeof AuthenticatedHrPipelineRoute
   '/_authenticated/hr/projects': typeof AuthenticatedHrProjectsRoute
   '/_authenticated/hr/recruitment': typeof AuthenticatedHrRecruitmentRoute
+  '/_authenticated/hr/reports': typeof AuthenticatedHrReportsRoute
+  '/_authenticated/hr/tasks': typeof AuthenticatedHrTasksRoute
+  '/_authenticated/hr/workspace': typeof AuthenticatedHrWorkspaceRoute
+  '/_authenticated/it/calendar': typeof AuthenticatedItCalendarRoute
   '/_authenticated/it/hrms-clients': typeof AuthenticatedItHrmsClientsRoute
+  '/_authenticated/it/pipeline': typeof AuthenticatedItPipelineRoute
+  '/_authenticated/it/reports': typeof AuthenticatedItReportsRoute
   '/_authenticated/it/systems-sites': typeof AuthenticatedItSystemsSitesRoute
+  '/_authenticated/it/tasks': typeof AuthenticatedItTasksRoute
   '/_authenticated/it/tickets': typeof AuthenticatedItTicketsRoute
+  '/_authenticated/it/workspace': typeof AuthenticatedItWorkspaceRoute
   '/_authenticated/marketing/blog': typeof AuthenticatedMarketingBlogRouteWithChildren
+  '/_authenticated/marketing/calendar': typeof AuthenticatedMarketingCalendarRoute
   '/_authenticated/marketing/campaigns': typeof AuthenticatedMarketingCampaignsRoute
   '/_authenticated/marketing/leads': typeof AuthenticatedMarketingLeadsRoute
+  '/_authenticated/marketing/pipeline': typeof AuthenticatedMarketingPipelineRoute
+  '/_authenticated/marketing/reports': typeof AuthenticatedMarketingReportsRoute
+  '/_authenticated/marketing/tasks': typeof AuthenticatedMarketingTasksRoute
   '/_authenticated/marketing/website-analytics': typeof AuthenticatedMarketingWebsiteAnalyticsRoute
+  '/_authenticated/marketing/workspace': typeof AuthenticatedMarketingWorkspaceRoute
   '/_authenticated/pipeline/engagements': typeof AuthenticatedPipelineEngagementsRoute
   '/_authenticated/pipeline/projects': typeof AuthenticatedPipelineProjectsRoute
   '/_authenticated/pipeline/tenders': typeof AuthenticatedPipelineTendersRoute
@@ -711,6 +902,7 @@ export interface FileRoutesById {
   '/_authenticated/reports/departments/hr': typeof AuthenticatedReportsDepartmentsHrRoute
   '/_authenticated/reports/departments/it': typeof AuthenticatedReportsDepartmentsItRoute
   '/_authenticated/reports/departments/marketing': typeof AuthenticatedReportsDepartmentsMarketingRoute
+  '/_authenticated/reports/departments/operations': typeof AuthenticatedReportsDepartmentsOperationsRoute
   '/_authenticated/reports/departments/tender': typeof AuthenticatedReportsDepartmentsTenderRoute
   '/_authenticated/clients/contracts/': typeof AuthenticatedClientsContractsIndexRoute
   '/_authenticated/finance/reports/': typeof AuthenticatedFinanceReportsIndexRoute
@@ -744,21 +936,40 @@ export interface FileRouteTypes {
     | '/clients/contracts'
     | '/departments/$deptId'
     | '/finance/budgets'
+    | '/finance/calendar'
     | '/finance/debtors'
     | '/finance/invoices'
     | '/finance/payroll-compliance'
+    | '/finance/pipeline'
     | '/finance/reports'
     | '/finance/revenue'
+    | '/finance/tasks'
     | '/finance/upload'
+    | '/finance/workspace'
+    | '/hr/calendar'
+    | '/hr/pipeline'
     | '/hr/projects'
     | '/hr/recruitment'
+    | '/hr/reports'
+    | '/hr/tasks'
+    | '/hr/workspace'
+    | '/it/calendar'
     | '/it/hrms-clients'
+    | '/it/pipeline'
+    | '/it/reports'
     | '/it/systems-sites'
+    | '/it/tasks'
     | '/it/tickets'
+    | '/it/workspace'
     | '/marketing/blog'
+    | '/marketing/calendar'
     | '/marketing/campaigns'
     | '/marketing/leads'
+    | '/marketing/pipeline'
+    | '/marketing/reports'
+    | '/marketing/tasks'
     | '/marketing/website-analytics'
+    | '/marketing/workspace'
     | '/pipeline/engagements'
     | '/pipeline/projects'
     | '/pipeline/tenders'
@@ -788,6 +999,7 @@ export interface FileRouteTypes {
     | '/reports/departments/hr'
     | '/reports/departments/it'
     | '/reports/departments/marketing'
+    | '/reports/departments/operations'
     | '/reports/departments/tender'
     | '/clients/contracts/'
     | '/finance/reports/'
@@ -807,19 +1019,38 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/departments/$deptId'
     | '/finance/budgets'
+    | '/finance/calendar'
     | '/finance/debtors'
     | '/finance/invoices'
     | '/finance/payroll-compliance'
+    | '/finance/pipeline'
     | '/finance/revenue'
+    | '/finance/tasks'
     | '/finance/upload'
+    | '/finance/workspace'
+    | '/hr/calendar'
+    | '/hr/pipeline'
     | '/hr/projects'
     | '/hr/recruitment'
+    | '/hr/reports'
+    | '/hr/tasks'
+    | '/hr/workspace'
+    | '/it/calendar'
     | '/it/hrms-clients'
+    | '/it/pipeline'
+    | '/it/reports'
     | '/it/systems-sites'
+    | '/it/tasks'
     | '/it/tickets'
+    | '/it/workspace'
+    | '/marketing/calendar'
     | '/marketing/campaigns'
     | '/marketing/leads'
+    | '/marketing/pipeline'
+    | '/marketing/reports'
+    | '/marketing/tasks'
     | '/marketing/website-analytics'
+    | '/marketing/workspace'
     | '/pipeline/engagements'
     | '/pipeline/projects'
     | '/pipeline/tenders'
@@ -849,6 +1080,7 @@ export interface FileRouteTypes {
     | '/reports/departments/hr'
     | '/reports/departments/it'
     | '/reports/departments/marketing'
+    | '/reports/departments/operations'
     | '/reports/departments/tender'
     | '/clients/contracts'
     | '/finance/reports'
@@ -881,21 +1113,40 @@ export interface FileRouteTypes {
     | '/_authenticated/clients/contracts'
     | '/_authenticated/departments/$deptId'
     | '/_authenticated/finance/budgets'
+    | '/_authenticated/finance/calendar'
     | '/_authenticated/finance/debtors'
     | '/_authenticated/finance/invoices'
     | '/_authenticated/finance/payroll-compliance'
+    | '/_authenticated/finance/pipeline'
     | '/_authenticated/finance/reports'
     | '/_authenticated/finance/revenue'
+    | '/_authenticated/finance/tasks'
     | '/_authenticated/finance/upload'
+    | '/_authenticated/finance/workspace'
+    | '/_authenticated/hr/calendar'
+    | '/_authenticated/hr/pipeline'
     | '/_authenticated/hr/projects'
     | '/_authenticated/hr/recruitment'
+    | '/_authenticated/hr/reports'
+    | '/_authenticated/hr/tasks'
+    | '/_authenticated/hr/workspace'
+    | '/_authenticated/it/calendar'
     | '/_authenticated/it/hrms-clients'
+    | '/_authenticated/it/pipeline'
+    | '/_authenticated/it/reports'
     | '/_authenticated/it/systems-sites'
+    | '/_authenticated/it/tasks'
     | '/_authenticated/it/tickets'
+    | '/_authenticated/it/workspace'
     | '/_authenticated/marketing/blog'
+    | '/_authenticated/marketing/calendar'
     | '/_authenticated/marketing/campaigns'
     | '/_authenticated/marketing/leads'
+    | '/_authenticated/marketing/pipeline'
+    | '/_authenticated/marketing/reports'
+    | '/_authenticated/marketing/tasks'
     | '/_authenticated/marketing/website-analytics'
+    | '/_authenticated/marketing/workspace'
     | '/_authenticated/pipeline/engagements'
     | '/_authenticated/pipeline/projects'
     | '/_authenticated/pipeline/tenders'
@@ -925,6 +1176,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports/departments/hr'
     | '/_authenticated/reports/departments/it'
     | '/_authenticated/reports/departments/marketing'
+    | '/_authenticated/reports/departments/operations'
     | '/_authenticated/reports/departments/tender'
     | '/_authenticated/clients/contracts/'
     | '/_authenticated/finance/reports/'
@@ -1227,11 +1479,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPipelineEngagementsRouteImport
       parentRoute: typeof AuthenticatedPipelineRoute
     }
+    '/_authenticated/marketing/workspace': {
+      id: '/_authenticated/marketing/workspace'
+      path: '/workspace'
+      fullPath: '/marketing/workspace'
+      preLoaderRoute: typeof AuthenticatedMarketingWorkspaceRouteImport
+      parentRoute: typeof AuthenticatedMarketingRoute
+    }
     '/_authenticated/marketing/website-analytics': {
       id: '/_authenticated/marketing/website-analytics'
       path: '/website-analytics'
       fullPath: '/marketing/website-analytics'
       preLoaderRoute: typeof AuthenticatedMarketingWebsiteAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedMarketingRoute
+    }
+    '/_authenticated/marketing/tasks': {
+      id: '/_authenticated/marketing/tasks'
+      path: '/tasks'
+      fullPath: '/marketing/tasks'
+      preLoaderRoute: typeof AuthenticatedMarketingTasksRouteImport
+      parentRoute: typeof AuthenticatedMarketingRoute
+    }
+    '/_authenticated/marketing/reports': {
+      id: '/_authenticated/marketing/reports'
+      path: '/reports'
+      fullPath: '/marketing/reports'
+      preLoaderRoute: typeof AuthenticatedMarketingReportsRouteImport
+      parentRoute: typeof AuthenticatedMarketingRoute
+    }
+    '/_authenticated/marketing/pipeline': {
+      id: '/_authenticated/marketing/pipeline'
+      path: '/pipeline'
+      fullPath: '/marketing/pipeline'
+      preLoaderRoute: typeof AuthenticatedMarketingPipelineRouteImport
       parentRoute: typeof AuthenticatedMarketingRoute
     }
     '/_authenticated/marketing/leads': {
@@ -1248,6 +1528,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMarketingCampaignsRouteImport
       parentRoute: typeof AuthenticatedMarketingRoute
     }
+    '/_authenticated/marketing/calendar': {
+      id: '/_authenticated/marketing/calendar'
+      path: '/calendar'
+      fullPath: '/marketing/calendar'
+      preLoaderRoute: typeof AuthenticatedMarketingCalendarRouteImport
+      parentRoute: typeof AuthenticatedMarketingRoute
+    }
     '/_authenticated/marketing/blog': {
       id: '/_authenticated/marketing/blog'
       path: '/blog'
@@ -1255,11 +1542,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMarketingBlogRouteImport
       parentRoute: typeof AuthenticatedMarketingRoute
     }
+    '/_authenticated/it/workspace': {
+      id: '/_authenticated/it/workspace'
+      path: '/workspace'
+      fullPath: '/it/workspace'
+      preLoaderRoute: typeof AuthenticatedItWorkspaceRouteImport
+      parentRoute: typeof AuthenticatedItRoute
+    }
     '/_authenticated/it/tickets': {
       id: '/_authenticated/it/tickets'
       path: '/tickets'
       fullPath: '/it/tickets'
       preLoaderRoute: typeof AuthenticatedItTicketsRouteImport
+      parentRoute: typeof AuthenticatedItRoute
+    }
+    '/_authenticated/it/tasks': {
+      id: '/_authenticated/it/tasks'
+      path: '/tasks'
+      fullPath: '/it/tasks'
+      preLoaderRoute: typeof AuthenticatedItTasksRouteImport
       parentRoute: typeof AuthenticatedItRoute
     }
     '/_authenticated/it/systems-sites': {
@@ -1269,12 +1570,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedItSystemsSitesRouteImport
       parentRoute: typeof AuthenticatedItRoute
     }
+    '/_authenticated/it/reports': {
+      id: '/_authenticated/it/reports'
+      path: '/reports'
+      fullPath: '/it/reports'
+      preLoaderRoute: typeof AuthenticatedItReportsRouteImport
+      parentRoute: typeof AuthenticatedItRoute
+    }
+    '/_authenticated/it/pipeline': {
+      id: '/_authenticated/it/pipeline'
+      path: '/pipeline'
+      fullPath: '/it/pipeline'
+      preLoaderRoute: typeof AuthenticatedItPipelineRouteImport
+      parentRoute: typeof AuthenticatedItRoute
+    }
     '/_authenticated/it/hrms-clients': {
       id: '/_authenticated/it/hrms-clients'
       path: '/hrms-clients'
       fullPath: '/it/hrms-clients'
       preLoaderRoute: typeof AuthenticatedItHrmsClientsRouteImport
       parentRoute: typeof AuthenticatedItRoute
+    }
+    '/_authenticated/it/calendar': {
+      id: '/_authenticated/it/calendar'
+      path: '/calendar'
+      fullPath: '/it/calendar'
+      preLoaderRoute: typeof AuthenticatedItCalendarRouteImport
+      parentRoute: typeof AuthenticatedItRoute
+    }
+    '/_authenticated/hr/workspace': {
+      id: '/_authenticated/hr/workspace'
+      path: '/workspace'
+      fullPath: '/hr/workspace'
+      preLoaderRoute: typeof AuthenticatedHrWorkspaceRouteImport
+      parentRoute: typeof AuthenticatedHrRoute
+    }
+    '/_authenticated/hr/tasks': {
+      id: '/_authenticated/hr/tasks'
+      path: '/tasks'
+      fullPath: '/hr/tasks'
+      preLoaderRoute: typeof AuthenticatedHrTasksRouteImport
+      parentRoute: typeof AuthenticatedHrRoute
+    }
+    '/_authenticated/hr/reports': {
+      id: '/_authenticated/hr/reports'
+      path: '/reports'
+      fullPath: '/hr/reports'
+      preLoaderRoute: typeof AuthenticatedHrReportsRouteImport
+      parentRoute: typeof AuthenticatedHrRoute
     }
     '/_authenticated/hr/recruitment': {
       id: '/_authenticated/hr/recruitment'
@@ -1290,11 +1633,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHrProjectsRouteImport
       parentRoute: typeof AuthenticatedHrRoute
     }
+    '/_authenticated/hr/pipeline': {
+      id: '/_authenticated/hr/pipeline'
+      path: '/pipeline'
+      fullPath: '/hr/pipeline'
+      preLoaderRoute: typeof AuthenticatedHrPipelineRouteImport
+      parentRoute: typeof AuthenticatedHrRoute
+    }
+    '/_authenticated/hr/calendar': {
+      id: '/_authenticated/hr/calendar'
+      path: '/calendar'
+      fullPath: '/hr/calendar'
+      preLoaderRoute: typeof AuthenticatedHrCalendarRouteImport
+      parentRoute: typeof AuthenticatedHrRoute
+    }
+    '/_authenticated/finance/workspace': {
+      id: '/_authenticated/finance/workspace'
+      path: '/workspace'
+      fullPath: '/finance/workspace'
+      preLoaderRoute: typeof AuthenticatedFinanceWorkspaceRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
     '/_authenticated/finance/upload': {
       id: '/_authenticated/finance/upload'
       path: '/upload'
       fullPath: '/finance/upload'
       preLoaderRoute: typeof AuthenticatedFinanceUploadRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
+    '/_authenticated/finance/tasks': {
+      id: '/_authenticated/finance/tasks'
+      path: '/tasks'
+      fullPath: '/finance/tasks'
+      preLoaderRoute: typeof AuthenticatedFinanceTasksRouteImport
       parentRoute: typeof AuthenticatedFinanceRoute
     }
     '/_authenticated/finance/revenue': {
@@ -1309,6 +1680,13 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/finance/reports'
       preLoaderRoute: typeof AuthenticatedFinanceReportsRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
+    '/_authenticated/finance/pipeline': {
+      id: '/_authenticated/finance/pipeline'
+      path: '/pipeline'
+      fullPath: '/finance/pipeline'
+      preLoaderRoute: typeof AuthenticatedFinancePipelineRouteImport
       parentRoute: typeof AuthenticatedFinanceRoute
     }
     '/_authenticated/finance/payroll-compliance': {
@@ -1330,6 +1708,13 @@ declare module '@tanstack/react-router' {
       path: '/debtors'
       fullPath: '/finance/debtors'
       preLoaderRoute: typeof AuthenticatedFinanceDebtorsRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
+    '/_authenticated/finance/calendar': {
+      id: '/_authenticated/finance/calendar'
+      path: '/calendar'
+      fullPath: '/finance/calendar'
+      preLoaderRoute: typeof AuthenticatedFinanceCalendarRouteImport
       parentRoute: typeof AuthenticatedFinanceRoute
     }
     '/_authenticated/finance/budgets': {
@@ -1400,6 +1785,13 @@ declare module '@tanstack/react-router' {
       path: '/tender'
       fullPath: '/reports/departments/tender'
       preLoaderRoute: typeof AuthenticatedReportsDepartmentsTenderRouteImport
+      parentRoute: typeof AuthenticatedReportsDepartmentsRoute
+    }
+    '/_authenticated/reports/departments/operations': {
+      id: '/_authenticated/reports/departments/operations'
+      path: '/operations'
+      fullPath: '/reports/departments/operations'
+      preLoaderRoute: typeof AuthenticatedReportsDepartmentsOperationsRouteImport
       parentRoute: typeof AuthenticatedReportsDepartmentsRoute
     }
     '/_authenticated/reports/departments/marketing': {
@@ -1527,25 +1919,33 @@ const AuthenticatedFinanceReportsRouteWithChildren =
 
 interface AuthenticatedFinanceRouteChildren {
   AuthenticatedFinanceBudgetsRoute: typeof AuthenticatedFinanceBudgetsRoute
+  AuthenticatedFinanceCalendarRoute: typeof AuthenticatedFinanceCalendarRoute
   AuthenticatedFinanceDebtorsRoute: typeof AuthenticatedFinanceDebtorsRoute
   AuthenticatedFinanceInvoicesRoute: typeof AuthenticatedFinanceInvoicesRoute
   AuthenticatedFinancePayrollComplianceRoute: typeof AuthenticatedFinancePayrollComplianceRoute
+  AuthenticatedFinancePipelineRoute: typeof AuthenticatedFinancePipelineRoute
   AuthenticatedFinanceReportsRoute: typeof AuthenticatedFinanceReportsRouteWithChildren
   AuthenticatedFinanceRevenueRoute: typeof AuthenticatedFinanceRevenueRoute
+  AuthenticatedFinanceTasksRoute: typeof AuthenticatedFinanceTasksRoute
   AuthenticatedFinanceUploadRoute: typeof AuthenticatedFinanceUploadRoute
+  AuthenticatedFinanceWorkspaceRoute: typeof AuthenticatedFinanceWorkspaceRoute
   AuthenticatedFinanceIndexRoute: typeof AuthenticatedFinanceIndexRoute
 }
 
 const AuthenticatedFinanceRouteChildren: AuthenticatedFinanceRouteChildren = {
   AuthenticatedFinanceBudgetsRoute: AuthenticatedFinanceBudgetsRoute,
+  AuthenticatedFinanceCalendarRoute: AuthenticatedFinanceCalendarRoute,
   AuthenticatedFinanceDebtorsRoute: AuthenticatedFinanceDebtorsRoute,
   AuthenticatedFinanceInvoicesRoute: AuthenticatedFinanceInvoicesRoute,
   AuthenticatedFinancePayrollComplianceRoute:
     AuthenticatedFinancePayrollComplianceRoute,
+  AuthenticatedFinancePipelineRoute: AuthenticatedFinancePipelineRoute,
   AuthenticatedFinanceReportsRoute:
     AuthenticatedFinanceReportsRouteWithChildren,
   AuthenticatedFinanceRevenueRoute: AuthenticatedFinanceRevenueRoute,
+  AuthenticatedFinanceTasksRoute: AuthenticatedFinanceTasksRoute,
   AuthenticatedFinanceUploadRoute: AuthenticatedFinanceUploadRoute,
+  AuthenticatedFinanceWorkspaceRoute: AuthenticatedFinanceWorkspaceRoute,
   AuthenticatedFinanceIndexRoute: AuthenticatedFinanceIndexRoute,
 }
 
@@ -1553,14 +1953,24 @@ const AuthenticatedFinanceRouteWithChildren =
   AuthenticatedFinanceRoute._addFileChildren(AuthenticatedFinanceRouteChildren)
 
 interface AuthenticatedHrRouteChildren {
+  AuthenticatedHrCalendarRoute: typeof AuthenticatedHrCalendarRoute
+  AuthenticatedHrPipelineRoute: typeof AuthenticatedHrPipelineRoute
   AuthenticatedHrProjectsRoute: typeof AuthenticatedHrProjectsRoute
   AuthenticatedHrRecruitmentRoute: typeof AuthenticatedHrRecruitmentRoute
+  AuthenticatedHrReportsRoute: typeof AuthenticatedHrReportsRoute
+  AuthenticatedHrTasksRoute: typeof AuthenticatedHrTasksRoute
+  AuthenticatedHrWorkspaceRoute: typeof AuthenticatedHrWorkspaceRoute
   AuthenticatedHrIndexRoute: typeof AuthenticatedHrIndexRoute
 }
 
 const AuthenticatedHrRouteChildren: AuthenticatedHrRouteChildren = {
+  AuthenticatedHrCalendarRoute: AuthenticatedHrCalendarRoute,
+  AuthenticatedHrPipelineRoute: AuthenticatedHrPipelineRoute,
   AuthenticatedHrProjectsRoute: AuthenticatedHrProjectsRoute,
   AuthenticatedHrRecruitmentRoute: AuthenticatedHrRecruitmentRoute,
+  AuthenticatedHrReportsRoute: AuthenticatedHrReportsRoute,
+  AuthenticatedHrTasksRoute: AuthenticatedHrTasksRoute,
+  AuthenticatedHrWorkspaceRoute: AuthenticatedHrWorkspaceRoute,
   AuthenticatedHrIndexRoute: AuthenticatedHrIndexRoute,
 }
 
@@ -1569,16 +1979,26 @@ const AuthenticatedHrRouteWithChildren = AuthenticatedHrRoute._addFileChildren(
 )
 
 interface AuthenticatedItRouteChildren {
+  AuthenticatedItCalendarRoute: typeof AuthenticatedItCalendarRoute
   AuthenticatedItHrmsClientsRoute: typeof AuthenticatedItHrmsClientsRoute
+  AuthenticatedItPipelineRoute: typeof AuthenticatedItPipelineRoute
+  AuthenticatedItReportsRoute: typeof AuthenticatedItReportsRoute
   AuthenticatedItSystemsSitesRoute: typeof AuthenticatedItSystemsSitesRoute
+  AuthenticatedItTasksRoute: typeof AuthenticatedItTasksRoute
   AuthenticatedItTicketsRoute: typeof AuthenticatedItTicketsRoute
+  AuthenticatedItWorkspaceRoute: typeof AuthenticatedItWorkspaceRoute
   AuthenticatedItIndexRoute: typeof AuthenticatedItIndexRoute
 }
 
 const AuthenticatedItRouteChildren: AuthenticatedItRouteChildren = {
+  AuthenticatedItCalendarRoute: AuthenticatedItCalendarRoute,
   AuthenticatedItHrmsClientsRoute: AuthenticatedItHrmsClientsRoute,
+  AuthenticatedItPipelineRoute: AuthenticatedItPipelineRoute,
+  AuthenticatedItReportsRoute: AuthenticatedItReportsRoute,
   AuthenticatedItSystemsSitesRoute: AuthenticatedItSystemsSitesRoute,
+  AuthenticatedItTasksRoute: AuthenticatedItTasksRoute,
   AuthenticatedItTicketsRoute: AuthenticatedItTicketsRoute,
+  AuthenticatedItWorkspaceRoute: AuthenticatedItWorkspaceRoute,
   AuthenticatedItIndexRoute: AuthenticatedItIndexRoute,
 }
 
@@ -1605,9 +2025,14 @@ const AuthenticatedMarketingBlogRouteWithChildren =
 
 interface AuthenticatedMarketingRouteChildren {
   AuthenticatedMarketingBlogRoute: typeof AuthenticatedMarketingBlogRouteWithChildren
+  AuthenticatedMarketingCalendarRoute: typeof AuthenticatedMarketingCalendarRoute
   AuthenticatedMarketingCampaignsRoute: typeof AuthenticatedMarketingCampaignsRoute
   AuthenticatedMarketingLeadsRoute: typeof AuthenticatedMarketingLeadsRoute
+  AuthenticatedMarketingPipelineRoute: typeof AuthenticatedMarketingPipelineRoute
+  AuthenticatedMarketingReportsRoute: typeof AuthenticatedMarketingReportsRoute
+  AuthenticatedMarketingTasksRoute: typeof AuthenticatedMarketingTasksRoute
   AuthenticatedMarketingWebsiteAnalyticsRoute: typeof AuthenticatedMarketingWebsiteAnalyticsRoute
+  AuthenticatedMarketingWorkspaceRoute: typeof AuthenticatedMarketingWorkspaceRoute
   AuthenticatedMarketingIndexRoute: typeof AuthenticatedMarketingIndexRoute
 }
 
@@ -1615,10 +2040,15 @@ const AuthenticatedMarketingRouteChildren: AuthenticatedMarketingRouteChildren =
   {
     AuthenticatedMarketingBlogRoute:
       AuthenticatedMarketingBlogRouteWithChildren,
+    AuthenticatedMarketingCalendarRoute: AuthenticatedMarketingCalendarRoute,
     AuthenticatedMarketingCampaignsRoute: AuthenticatedMarketingCampaignsRoute,
     AuthenticatedMarketingLeadsRoute: AuthenticatedMarketingLeadsRoute,
+    AuthenticatedMarketingPipelineRoute: AuthenticatedMarketingPipelineRoute,
+    AuthenticatedMarketingReportsRoute: AuthenticatedMarketingReportsRoute,
+    AuthenticatedMarketingTasksRoute: AuthenticatedMarketingTasksRoute,
     AuthenticatedMarketingWebsiteAnalyticsRoute:
       AuthenticatedMarketingWebsiteAnalyticsRoute,
+    AuthenticatedMarketingWorkspaceRoute: AuthenticatedMarketingWorkspaceRoute,
     AuthenticatedMarketingIndexRoute: AuthenticatedMarketingIndexRoute,
   }
 
@@ -1670,6 +2100,7 @@ interface AuthenticatedReportsDepartmentsRouteChildren {
   AuthenticatedReportsDepartmentsHrRoute: typeof AuthenticatedReportsDepartmentsHrRoute
   AuthenticatedReportsDepartmentsItRoute: typeof AuthenticatedReportsDepartmentsItRoute
   AuthenticatedReportsDepartmentsMarketingRoute: typeof AuthenticatedReportsDepartmentsMarketingRoute
+  AuthenticatedReportsDepartmentsOperationsRoute: typeof AuthenticatedReportsDepartmentsOperationsRoute
   AuthenticatedReportsDepartmentsTenderRoute: typeof AuthenticatedReportsDepartmentsTenderRoute
 }
 
@@ -1683,6 +2114,8 @@ const AuthenticatedReportsDepartmentsRouteChildren: AuthenticatedReportsDepartme
       AuthenticatedReportsDepartmentsItRoute,
     AuthenticatedReportsDepartmentsMarketingRoute:
       AuthenticatedReportsDepartmentsMarketingRoute,
+    AuthenticatedReportsDepartmentsOperationsRoute:
+      AuthenticatedReportsDepartmentsOperationsRoute,
     AuthenticatedReportsDepartmentsTenderRoute:
       AuthenticatedReportsDepartmentsTenderRoute,
   }

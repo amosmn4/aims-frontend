@@ -6,6 +6,9 @@ import { useDepartments } from "@/features/clients/use-clients-contracts";
 import { DepartmentWorkspaceContent } from "./_authenticated.departments.$deptId";
 import { EngagementBoard } from "./_authenticated.pipeline.engagements";
 import { ClientRequestsWorkspace } from "./_authenticated.requests.index";
+import { DepartmentTaskBoard } from "./_authenticated.projects.department";
+import { DeadlineCalendarView } from "./_authenticated.calendar";
+import { OperationsReport } from "./_authenticated.reports.departments.operations";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 
@@ -19,12 +22,15 @@ export const Route = createFileRoute("/_authenticated/operations")({
   component: OperationsHub,
 });
 
-type HubTab = "overview" | "requests" | "workspace";
+type HubTab = "overview" | "requests" | "workspace" | "tasks" | "calendar" | "reports";
 
 const TABS: { key: HubTab; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "requests", label: "Client Requests" },
   { key: "workspace", label: "Contracts, Clients & Projects" },
+  { key: "tasks", label: "Tasks" },
+  { key: "calendar", label: "Calendar" },
+  { key: "reports", label: "Reports" },
 ];
 
 function OperationsHub() {
@@ -62,15 +68,24 @@ function OperationsHub() {
         {tab === "overview" ? (
           <ClientRequestsWorkspace />
         ) : tab === "requests" ? (
+          // Unfiltered — Operations owns intake/routing for every request, not just ones
+          // already assigned to it, so this stays the full cross-department board (unlike
+          // every other department's own "Pipeline" tab, which is scoped to just their own).
           <div className="pipeline-scope">
             <EngagementBoard />
           </div>
-        ) : operationsDept ? (
-          <DepartmentWorkspaceContent deptId={operationsDept.id} />
-        ) : (
+        ) : tab === "reports" ? (
+          <OperationsReport />
+        ) : !operationsDept ? (
           <div className="py-12 flex justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
+        ) : tab === "tasks" ? (
+          <DepartmentTaskBoard departmentId={operationsDept.id} />
+        ) : tab === "calendar" ? (
+          <DeadlineCalendarView departmentId={operationsDept.id} />
+        ) : (
+          <DepartmentWorkspaceContent deptId={operationsDept.id} />
         )}
       </div>
     </RequireRole>

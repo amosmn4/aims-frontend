@@ -127,9 +127,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-/** The CEO Executive Dashboard is admin/CEO-only; everyone else lands on the Departments overview. */
-export function homeRouteFor(roles: AppRole[]): "/dashboard" | "/departments" {
-  return roles.includes("ceo") || roles.includes("system_admin") ? "/dashboard" : "/departments";
+const DEPARTMENT_HOME: Partial<
+  Record<AppRole, "/finance" | "/hr" | "/it" | "/marketing" | "/tender" | "/operations">
+> = {
+  finance: "/finance",
+  hr: "/hr",
+  it: "/it",
+  marketing: "/marketing",
+  tender: "/tender",
+  operations: "/operations",
+};
+
+/**
+ * The CEO Executive Dashboard is admin/CEO-only. A user who belongs to exactly one department
+ * lands straight on that department's own hub (its Overview tab is their dashboard) instead of
+ * the generic Departments picker grid — the picker is for people who span multiple departments,
+ * or hold no department role at all.
+ */
+export function homeRouteFor(
+  roles: AppRole[],
+):
+  | "/dashboard"
+  | "/departments"
+  | "/finance"
+  | "/hr"
+  | "/it"
+  | "/marketing"
+  | "/tender"
+  | "/operations" {
+  if (roles.includes("ceo") || roles.includes("system_admin")) return "/dashboard";
+  const departmentHomes = new Set(
+    roles.map((r) => DEPARTMENT_HOME[r]).filter((x): x is NonNullable<typeof x> => !!x),
+  );
+  if (departmentHomes.size === 1) return [...departmentHomes][0];
+  return "/departments";
 }
 
 export function useAuth() {

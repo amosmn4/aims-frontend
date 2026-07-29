@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
 
-export type TenderStage = "identified" | "applying" | "submitted" | "evaluation" | "won" | "lost" | "withdrawn";
+export type TenderStage =
+  "identified" | "applying" | "submitted" | "evaluation" | "won" | "lost" | "withdrawn";
 
 export const TENDER_STAGES: TenderStage[] = [
   "identified",
@@ -107,7 +108,13 @@ export interface TenderCostSummary {
   actual_cost: number;
   actual_hours: number;
   unrated_hours: number;
-  by_user: { user_id: string; user_name: string | null; hours: number; rate: number | null; cost: number | null }[];
+  by_user: {
+    user_id: string;
+    user_name: string | null;
+    hours: number;
+    rate: number | null;
+    cost: number | null;
+  }[];
 }
 
 type BackendTender = {
@@ -180,7 +187,9 @@ function mapTender(t: BackendTender): TenderRow {
     project_id: t.project?.id ?? null,
     project_name: t.project?.name ?? null,
     requirements_total: t.requirements ? t.requirements.length : null,
-    requirements_done: t.requirements ? t.requirements.filter((r) => isRequirementResolved(r.status)).length : null,
+    requirements_done: t.requirements
+      ? t.requirements.filter((r) => isRequirementResolved(r.status)).length
+      : null,
   };
 }
 
@@ -258,7 +267,8 @@ function buildQuery(filters: object): string {
 export function useTenders(filters: TenderFilters = {}) {
   return useQuery({
     queryKey: ["tenders", filters],
-    queryFn: async () => (await apiJson<BackendTender[]>(`/tenders${buildQuery(filters)}`)).map(mapTender),
+    queryFn: async () =>
+      (await apiJson<BackendTender[]>(`/tenders${buildQuery(filters)}`)).map(mapTender),
   });
 }
 
@@ -271,7 +281,10 @@ export function useTender(id: string | undefined) {
 }
 
 export function useTenderPipelineSummary(
-  filters: Pick<TenderFilters, "departmentId" | "serviceLineId" | "deadlineFrom" | "deadlineTo"> = {},
+  filters: Pick<
+    TenderFilters,
+    "departmentId" | "serviceLineId" | "deadlineFrom" | "deadlineTo"
+  > = {},
 ) {
   return useQuery({
     queryKey: ["tenders", "pipeline-summary", filters],
@@ -287,7 +300,10 @@ export interface TenderTimeMetrics {
 }
 
 export function useTenderTimeMetrics(
-  filters: Pick<TenderFilters, "departmentId" | "serviceLineId" | "deadlineFrom" | "deadlineTo"> = {},
+  filters: Pick<
+    TenderFilters,
+    "departmentId" | "serviceLineId" | "deadlineFrom" | "deadlineTo"
+  > = {},
 ) {
   return useQuery({
     queryKey: ["tenders", "time-metrics", filters],
@@ -336,7 +352,13 @@ export function useTenderCostSummary(tenderId: string | undefined) {
         actualCost: number;
         actualHours: number;
         unratedHours: number;
-        byUser: { userId: string; userName: string | null; hours: number; rate: number | null; cost: number | null }[];
+        byUser: {
+          userId: string;
+          userName: string | null;
+          hours: number;
+          rate: number | null;
+          cost: number | null;
+        }[];
       }>(`/tenders/${tenderId}/cost-summary`);
       return {
         budgeted_cost: raw.budgetedCost,
@@ -361,9 +383,7 @@ export function useTenderCostSummary(tenderId: string | undefined) {
 export function useSaveTender() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (
-      input: Partial<TenderRow> & { title: string; department_id: string },
-    ) => {
+    mutationFn: async (input: Partial<TenderRow> & { title: string; department_id: string }) => {
       const body = {
         referenceNumber: input.reference_number || undefined,
         title: input.title,
@@ -395,11 +415,20 @@ export function useSaveTender() {
 export function useUpdateTenderStage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id: string; stage: TenderStage; lost_reason?: string }) => {
+    mutationFn: async (input: {
+      id: string;
+      stage: TenderStage;
+      lost_reason?: string;
+      won_at?: string;
+    }) => {
       return mapTender(
         await apiJson<BackendTender>(`/tenders/${input.id}/stage`, {
           method: "PATCH",
-          body: JSON.stringify({ stage: input.stage, lostReason: input.lost_reason }),
+          body: JSON.stringify({
+            stage: input.stage,
+            lostReason: input.lost_reason,
+            wonAt: input.won_at,
+          }),
         }),
       );
     },
@@ -467,9 +496,7 @@ export function useConvertTenderToProject() {
 export function useSaveTenderResource(tenderId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (
-      input: Partial<TenderResourceRow> & { user_id?: string },
-    ) => {
+    mutationFn: async (input: Partial<TenderResourceRow> & { user_id?: string }) => {
       const body = {
         userId: input.user_id,
         roleNote: input.role_note || undefined,
@@ -486,7 +513,10 @@ export function useSaveTenderResource(tenderId: string) {
           }),
         });
       } else {
-        await apiJson(`/tenders/${tenderId}/resources`, { method: "POST", body: JSON.stringify(body) });
+        await apiJson(`/tenders/${tenderId}/resources`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
       }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders", tenderId, "resources"] }),
@@ -509,7 +539,11 @@ export function useLogTime(tenderId: string) {
     mutationFn: async (input: { entry_date: string; hours: number; notes?: string }) => {
       await apiJson(`/tenders/${tenderId}/time-entries`, {
         method: "POST",
-        body: JSON.stringify({ entryDate: input.entry_date, hours: input.hours, notes: input.notes }),
+        body: JSON.stringify({
+          entryDate: input.entry_date,
+          hours: input.hours,
+          notes: input.notes,
+        }),
       });
     },
     onSuccess: () => {
@@ -534,7 +568,13 @@ export function useDeleteTimeEntry(tenderId: string) {
 
 /* ================= Financial resourcing ================= */
 
-export const TENDER_COST_CATEGORY_SUGGESTIONS = ["travel", "printing", "consultant", "materials", "other"];
+export const TENDER_COST_CATEGORY_SUGGESTIONS = [
+  "travel",
+  "printing",
+  "consultant",
+  "materials",
+  "other",
+];
 
 export interface TenderCostItemRow {
   id: string;
@@ -569,19 +609,35 @@ export function useTenderCostItems(tenderId: string | undefined) {
   return useQuery({
     queryKey: ["tenders", tenderId, "cost-items"],
     enabled: !!tenderId,
-    queryFn: async () => (await apiJson<BackendCostItem[]>(`/tenders/${tenderId}/cost-items`)).map(mapCostItem),
+    queryFn: async () =>
+      (await apiJson<BackendCostItem[]>(`/tenders/${tenderId}/cost-items`)).map(mapCostItem),
   });
 }
 
 export function useSaveTenderCostItem(tenderId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id?: string; category?: string; description: string; amount: number }) => {
-      const body = { category: input.category || undefined, description: input.description, amount: input.amount };
+    mutationFn: async (input: {
+      id?: string;
+      category?: string;
+      description: string;
+      amount: number;
+    }) => {
+      const body = {
+        category: input.category || undefined,
+        description: input.description,
+        amount: input.amount,
+      };
       if (input.id) {
-        await apiJson(`/tenders/cost-items/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        await apiJson(`/tenders/cost-items/${input.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
       } else {
-        await apiJson(`/tenders/${tenderId}/cost-items`, { method: "POST", body: JSON.stringify(body) });
+        await apiJson(`/tenders/${tenderId}/cost-items`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
       }
     },
     onSuccess: () => {
@@ -696,7 +752,10 @@ export function useSaveTenderBond(tenderId: string) {
         notes: input.notes || undefined,
       };
       if (input.id) {
-        await apiJson(`/tenders/bonds/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        await apiJson(`/tenders/bonds/${input.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
       } else {
         await apiJson(`/tenders/${tenderId}/bonds`, { method: "POST", body: JSON.stringify(body) });
       }
@@ -755,14 +814,22 @@ export function useTenderPricingItems(tenderId: string | undefined) {
     queryKey: ["tenders", tenderId, "pricing-items"],
     enabled: !!tenderId,
     queryFn: async () =>
-      (await apiJson<BackendPricingItem[]>(`/tenders/${tenderId}/pricing-items`)).map(mapPricingItem),
+      (await apiJson<BackendPricingItem[]>(`/tenders/${tenderId}/pricing-items`)).map(
+        mapPricingItem,
+      ),
   });
 }
 
 export function useSaveTenderPricingItem(tenderId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id?: string; description: string; quantity?: number; unit_price: number; notes?: string }) => {
+    mutationFn: async (input: {
+      id?: string;
+      description: string;
+      quantity?: number;
+      unit_price: number;
+      notes?: string;
+    }) => {
       const body = {
         description: input.description,
         quantity: input.quantity ?? undefined,
@@ -770,9 +837,15 @@ export function useSaveTenderPricingItem(tenderId: string) {
         notes: input.notes || undefined,
       };
       if (input.id) {
-        await apiJson(`/tenders/pricing-items/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        await apiJson(`/tenders/pricing-items/${input.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
       } else {
-        await apiJson(`/tenders/${tenderId}/pricing-items`, { method: "POST", body: JSON.stringify(body) });
+        await apiJson(`/tenders/${tenderId}/pricing-items`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
       }
     },
     onSuccess: () => {
@@ -884,7 +957,9 @@ export function useTenderRequirements(tenderId: string | undefined) {
     queryKey: ["tenders", tenderId, "requirements"],
     enabled: !!tenderId,
     queryFn: async () =>
-      (await apiJson<BackendRequirement[]>(`/tenders/${tenderId}/requirements`)).map(mapRequirement),
+      (await apiJson<BackendRequirement[]>(`/tenders/${tenderId}/requirements`)).map(
+        mapRequirement,
+      ),
   });
 }
 
@@ -935,7 +1010,9 @@ export function useApplyRequirementTemplate(tenderId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (templateId: string) => {
-      await apiJson(`/tenders/${tenderId}/requirements/apply-template/${templateId}`, { method: "POST" });
+      await apiJson(`/tenders/${tenderId}/requirements/apply-template/${templateId}`, {
+        method: "POST",
+      });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders", tenderId, "requirements"] }),
   });
@@ -990,7 +1067,8 @@ function mapTemplate(t: BackendTemplate): RequirementTemplateRow {
 export function useRequirementTemplates() {
   return useQuery({
     queryKey: ["requirement-templates"],
-    queryFn: async () => (await apiJson<BackendTemplate[]>("/tender-requirement-templates")).map(mapTemplate),
+    queryFn: async () =>
+      (await apiJson<BackendTemplate[]>("/tender-requirement-templates")).map(mapTemplate),
   });
 }
 
@@ -1003,7 +1081,13 @@ export function useRequirementTemplate(id: string | undefined) {
       return {
         ...mapTemplate(t),
         items: (t.items ?? []).map(
-          (i) => ({ id: i.id, template_id: i.templateId, title: i.title, category: i.category }) satisfies RequirementTemplateItemRow,
+          (i) =>
+            ({
+              id: i.id,
+              template_id: i.templateId,
+              title: i.title,
+              category: i.category,
+            }) satisfies RequirementTemplateItemRow,
         ),
       };
     },

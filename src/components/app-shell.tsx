@@ -133,7 +133,7 @@ function LiveClock() {
 
   return (
     <div
-      className="hidden md:flex items-center gap-1.5 text-xs text-sidebar-foreground/80 tabular-nums"
+      className="hidden xl:flex items-center gap-1.5 text-xs text-sidebar-foreground/80 tabular-nums shrink-0"
       title={now.toLocaleDateString(undefined, {
         weekday: "long",
         year: "numeric",
@@ -142,7 +142,13 @@ function LiveClock() {
       })}
     >
       <Clock className="h-3.5 w-3.5" />
-      <span>{now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+      <span>
+        {now.toLocaleTimeString(undefined, {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })}
+      </span>
     </div>
   );
 }
@@ -188,7 +194,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const LayoutToggle = (
     <button
       onClick={() => setMode(mode === "top" ? "sidebar" : "top")}
-      className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded text-[0.6875rem] bg-white/10 hover:bg-white/20 text-sidebar-foreground"
+      className="hidden lg:flex shrink-0 items-center gap-1.5 px-2 py-1 rounded text-[0.6875rem] bg-white/10 hover:bg-white/20 text-sidebar-foreground"
       title={`Switch to ${mode === "top" ? "sidebar" : "top"} layout`}
     >
       {mode === "top" ? (
@@ -200,30 +206,36 @@ export function AppShell({ children }: { children: ReactNode }) {
     </button>
   );
 
+  // Search/clock/layout-toggle/full-name only show once there's room for them — same breakpoint
+  // the sidebar/top-nav switch and inline nav use, so this block never has to compete with the
+  // nav links for space. Notifications and sign-out stay compact but always visible at every
+  // width (shrink-0 so they're never the thing that gets squeezed off-screen).
   const UserBlock = (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2 sm:gap-3 shrink-0">
       <HeaderSearch inputRef={searchInputRef} />
       <LiveClock />
-      <NotificationBell />
+      <div className="shrink-0">
+        <NotificationBell />
+      </div>
       {LayoutToggle}
-      <div className="hidden md:flex items-center gap-2 text-xs text-sidebar-foreground/80">
-        <div className="h-7 w-7 rounded-full bg-accent flex items-center justify-center text-accent-foreground font-semibold">
+      <div className="hidden lg:flex items-center gap-2 text-xs text-sidebar-foreground/80 shrink-0 max-w-40 xl:max-w-56">
+        <div className="h-7 w-7 shrink-0 rounded-full bg-accent flex items-center justify-center text-accent-foreground font-semibold">
           {(profile?.fullName || profile?.email || "?").charAt(0).toUpperCase()}
         </div>
-        <div className="leading-tight">
-          <div className="font-medium text-sidebar-foreground">
+        <div className="leading-tight min-w-0">
+          <div className="font-medium text-sidebar-foreground truncate">
             {profile?.fullName || profile?.email}
           </div>
-          <div className="flex items-center gap-1">
-            {roles.includes("ceo") && <Crown className="h-3 w-3 text-accent" />}
-            {primaryRoleLabel}
+          <div className="flex items-center gap-1 truncate">
+            {roles.includes("ceo") && <Crown className="h-3 w-3 shrink-0 text-accent" />}
+            <span className="truncate">{primaryRoleLabel}</span>
           </div>
         </div>
       </div>
       <Button
         variant="ghost"
         size="sm"
-        className="text-sidebar-foreground hover:bg-white/10"
+        className="shrink-0 text-sidebar-foreground hover:bg-white/10"
         onClick={handleSignOut}
       >
         <LogOut className="h-4 w-4 md:mr-2" />
@@ -324,13 +336,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-30 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
         <div className="flex items-center gap-2 h-14 px-4 md:px-6">
           <button
-            className="lg:hidden p-2 -ml-2 rounded hover:bg-white/10"
+            className="2xl:hidden p-2 -ml-2 rounded hover:bg-white/10 shrink-0"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <Link to={homeRouteFor(roles)} className="flex items-center gap-2 mr-4">
+          <Link to={homeRouteFor(roles)} className="flex items-center gap-2 mr-4 shrink-0">
             <div className="h-8 w-8 rounded-md bg-white p-1 flex items-center justify-center">
               <img src="/amsol-logo.png" alt="Amsol" className="h-full w-full object-contain" />
             </div>
@@ -340,7 +352,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </Link>
 
-          <nav className="hidden lg:flex items-center gap-0.5 ml-2">
+          {/* Only shown once there's genuinely room for every top-level item (2xl+) — below that,
+              the hamburger + MobileDrawer below covers the exact same links. The overflow-x-auto
+              here is just a safety net for in-between widths (e.g. a maximized-but-not-huge
+              browser window at exactly 2xl): nav scrolls within its own strip instead of ever
+              pushing notifications/sign-out off the right edge of the screen. */}
+          <nav className="hidden 2xl:flex items-center gap-0.5 ml-2 flex-1 min-w-0 overflow-x-auto">
             {visibleNav.map((item) => {
               const active = isActive(item);
               const Icon = item.icon;
@@ -349,13 +366,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                 return (
                   <div
                     key={item.to}
-                    className="relative"
+                    className="relative shrink-0"
                     onMouseEnter={() => setOpenMenu(item.to)}
                     onMouseLeave={() => setOpenMenu(null)}
                   >
                     <button
                       className={cn(
-                        "flex items-center gap-1.5 px-3 h-9 rounded-md text-sm transition-colors",
+                        "flex items-center gap-1.5 px-3 h-9 rounded-md text-sm transition-colors whitespace-nowrap",
                         active
                           ? "bg-accent text-accent-foreground font-medium"
                           : "text-sidebar-foreground/90 hover:bg-white/10",
@@ -391,7 +408,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   key={item.to}
                   to={item.to}
                   className={cn(
-                    "flex items-center gap-1.5 px-3 h-9 rounded-md text-sm transition-colors",
+                    "flex shrink-0 items-center gap-1.5 px-3 h-9 rounded-md text-sm whitespace-nowrap transition-colors",
                     active
                       ? "bg-accent text-accent-foreground font-medium"
                       : "text-sidebar-foreground/90 hover:bg-white/10",
@@ -436,9 +453,9 @@ function MobileDrawer({
     location.pathname === child.to || location.pathname.startsWith(child.to + "/");
 
   return (
-    <div className="fixed inset-0 z-40 lg:hidden">
+    <div className="fixed inset-0 z-40 2xl:hidden">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="absolute left-0 top-0 bottom-0 w-72 bg-sidebar text-sidebar-foreground p-4 overflow-y-auto">
+      <div className="absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] bg-sidebar text-sidebar-foreground p-4 overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <div className="font-semibold">Menu</div>
           <button onClick={onClose}>

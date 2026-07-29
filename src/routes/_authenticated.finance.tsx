@@ -5,12 +5,16 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { to: "/finance", label: "Overview", exact: true },
+  { to: "/finance/pipeline", label: "Pipeline" },
+  { to: "/finance/workspace", label: "Clients, Contracts & Projects" },
   { to: "/finance/invoices", label: "Invoices & Billing" },
   { to: "/finance/debtors", label: "Debtors" },
   { to: "/finance/revenue", label: "Revenue & Margin" },
   { to: "/finance/budgets", label: "Budgets" },
   { to: "/finance/payroll-compliance", label: "Payroll Compliance" },
   { to: "/finance/upload", label: "Excel Upload" },
+  { to: "/finance/tasks", label: "Tasks" },
+  { to: "/finance/calendar", label: "Calendar" },
   { to: "/finance/reports", label: "Reports to CEO" },
 ];
 

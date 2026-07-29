@@ -10,7 +10,11 @@ import {
   type SdlcStage,
 } from "@/features/projects/use-projects";
 import { useDepartments } from "@/features/clients/use-clients-contracts";
-import { useItSystems, IT_SYSTEM_STATUS_LABELS, type ItSystemStatus } from "@/features/it/use-it-systems";
+import {
+  useItSystems,
+  IT_SYSTEM_STATUS_LABELS,
+  type ItSystemStatus,
+} from "@/features/it/use-it-systems";
 
 export const Route = createFileRoute("/_authenticated/reports/departments/it")({
   head: () => ({ meta: [{ title: "IT Report — AIMS" }] }),
@@ -19,7 +23,8 @@ export const Route = createFileRoute("/_authenticated/reports/departments/it")({
 
 const PROJECT_ACTIVE = new Set(["planning", "active"]);
 
-function ItReport() {
+// Exported so the IT department hub can embed this same report as a "Reports" tab.
+export function ItReport() {
   return (
     <RequireRole
       roles={["it"]}
@@ -30,7 +35,8 @@ function ItReport() {
           <div>
             <div className="text-base font-semibold">Information Technology</div>
             <div className="text-xs text-muted-foreground">
-              Project delivery, the Systems &amp; Sites registry, and system-development work in flight.
+              Project delivery, the Systems &amp; Sites registry, and system-development work in
+              flight.
             </div>
           </div>
           <Link to="/it" className="text-xs text-primary hover:underline">
@@ -134,7 +140,9 @@ function SystemsSummary() {
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
       ) : systems.length === 0 ? (
-        <div className="text-xs text-muted-foreground py-4 text-center">Nothing registered yet.</div>
+        <div className="text-xs text-muted-foreground py-4 text-center">
+          Nothing registered yet.
+        </div>
       ) : (
         <div className="space-y-2 mt-3">
           {(Object.keys(IT_SYSTEM_STATUS_LABELS) as ItSystemStatus[]).map((status) => {

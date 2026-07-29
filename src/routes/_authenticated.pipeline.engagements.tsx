@@ -13,13 +13,22 @@ import {
 } from "@/features/client-requests/use-client-requests";
 import { NewRequestDialog } from "@/features/client-requests/new-request-dialog";
 import { useDepartments } from "@/features/clients/use-clients-contracts";
-import { useClients } from "@/features/finance/use-finance-data";
+import { ClientPicker } from "@/features/clients/client-picker";
 import { formatCurrency } from "@/features/finance/finance";
 import { useAuth } from "@/lib/auth";
-import { ENGAGEMENT_PIPELINE_STAGES, deptColor, initials } from "@/features/pipeline/pipeline-theme";
+import {
+  ENGAGEMENT_PIPELINE_STAGES,
+  deptColor,
+  initials,
+} from "@/features/pipeline/pipeline-theme";
 import { Spine } from "@/components/pipeline/spine";
 import { PipelineBoard } from "@/components/pipeline/pipeline-board";
-import { PipelineDetailSheet, KvGrid, SectionLabel, StageTracker } from "@/components/pipeline/detail-sheet";
+import {
+  PipelineDetailSheet,
+  KvGrid,
+  SectionLabel,
+  StageTracker,
+} from "@/components/pipeline/detail-sheet";
 import { ActivityPane } from "@/components/pipeline/activity-pane";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,7 +89,10 @@ function DropOutAction({
   }
 
   return (
-    <div className="mt-2 space-y-2 rounded-lg border p-2.5" style={{ borderColor: "var(--pipeline-line)" }}>
+    <div
+      className="mt-2 space-y-2 rounded-lg border p-2.5"
+      style={{ borderColor: "var(--pipeline-line)" }}
+    >
       <Select value={stage} onValueChange={(v) => setStage(v as "lost" | "withdrawn")}>
         <SelectTrigger className="h-8 w-full text-xs">
           <SelectValue />
@@ -114,15 +126,18 @@ function DropOutAction({
   );
 }
 
-// Exported so the Tender and Operations department hubs can embed this board as a tab —
-// Operations is this board's primary intake owner (see canCreateRequest below).
-export function EngagementBoard() {
+// Exported so every department hub can embed this board as a tab, scoped to that department via
+// the optional `departmentId` prop — the central `/pipeline/engagements` route renders it with no
+// filter (every request, every department), department hubs pass their own id. Same component,
+// same query, just a narrower filter — not a fork.
+export function EngagementBoard({ departmentId }: { departmentId?: string } = {}) {
   const { isAdminOrCeo, hasRole } = useAuth();
-  const canManage = isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing", "tender", "operations"]);
+  const canManage =
+    isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing", "tender", "operations"]);
   // Creating a new request (intake) is Operations' job specifically, not every department that
   // might later be routed one — narrower than canManage, which governs already-routed requests.
   const canCreateRequest = isAdminOrCeo || hasRole("operations");
-  const requestsQ = useClientRequests();
+  const requestsQ = useClientRequests({ departmentId });
   const updateStage = useUpdateClientRequestStage();
   const convertToProject = useConvertToProject();
   const convertToContract = useConvertClientRequestToContract();
@@ -132,7 +147,8 @@ export function EngagementBoard() {
 
   const requests = requestsQ.data ?? [];
   const counts: Record<string, number> = {};
-  for (const s of ENGAGEMENT_PIPELINE_STAGES) counts[s.key] = requests.filter((r) => r.stage === s.key).length;
+  for (const s of ENGAGEMENT_PIPELINE_STAGES)
+    counts[s.key] = requests.filter((r) => r.stage === s.key).length;
 
   const open = requests.find((r) => r.id === openId) ?? null;
 
@@ -140,7 +156,10 @@ export function EngagementBoard() {
     updateStage.mutate(
       { id, stage: stage as ClientRequestStage },
       {
-        onSuccess: () => toast.success(`Moved to ${ENGAGEMENT_PIPELINE_STAGES.find((s) => s.key === stage)?.label}`),
+        onSuccess: () =>
+          toast.success(
+            `Moved to ${ENGAGEMENT_PIPELINE_STAGES.find((s) => s.key === stage)?.label}`,
+          ),
         onError: (err) => toast.error(err instanceof Error ? err.message : "Move failed"),
       },
     );
@@ -211,7 +230,15 @@ export function EngagementBoard() {
   );
 }
 
-function EngagementCard({ r, onClick, onOnboard }: { r: ClientRequestRow; onClick: () => void; onOnboard: () => void }) {
+function EngagementCard({
+  r,
+  onClick,
+  onOnboard,
+}: {
+  r: ClientRequestRow;
+  onClick: () => void;
+  onOnboard: () => void;
+}) {
   const c = deptColor(r.department_code);
   return (
     <div onClick={onClick}>
@@ -223,7 +250,9 @@ function EngagementCard({ r, onClick, onOnboard }: { r: ClientRequestRow; onClic
           {r.department_name ?? "Unassigned"}
         </span>
       </div>
-      <div className="mb-2 text-[13.5px] font-semibold leading-snug">{r.client_name ?? r.prospect_client_name ?? r.title}</div>
+      <div className="mb-2 text-[13.5px] font-semibold leading-snug">
+        {r.client_name ?? r.prospect_client_name ?? r.title}
+      </div>
       <div className="text-[11.5px]" style={{ color: "var(--pipeline-slate)" }}>
         {r.title}
       </div>
@@ -232,17 +261,26 @@ function EngagementCard({ r, onClick, onOnboard }: { r: ClientRequestRow; onClic
           {r.estimated_value != null ? formatCurrency(r.estimated_value, r.currency) : "—"}
         </span>
         {r.stage === "won" && (
-          <span className="rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold" style={{ background: "var(--pipeline-teal-soft)", color: "var(--pipeline-teal)" }}>
+          <span
+            className="rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold"
+            style={{ background: "var(--pipeline-teal-soft)", color: "var(--pipeline-teal)" }}
+          >
             Won
           </span>
         )}
         {r.stage === "lost" && (
-          <span className="rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold" style={{ background: "var(--pipeline-coral-soft)", color: "var(--pipeline-coral)" }}>
+          <span
+            className="rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold"
+            style={{ background: "var(--pipeline-coral-soft)", color: "var(--pipeline-coral)" }}
+          >
             Lost
           </span>
         )}
       </div>
-      <div className="mt-2 flex items-center justify-between border-t pt-2" style={{ borderColor: "var(--pipeline-line)", borderStyle: "dashed" }}>
+      <div
+        className="mt-2 flex items-center justify-between border-t pt-2"
+        style={{ borderColor: "var(--pipeline-line)", borderStyle: "dashed" }}
+      >
         <div className="flex items-center gap-1.5">
           <div className="mini-avatar">{initials(r.assigned_to_name)}</div>
           <span className="text-[11px]" style={{ color: "var(--pipeline-slate)" }}>
@@ -263,7 +301,10 @@ function EngagementCard({ r, onClick, onOnboard }: { r: ClientRequestRow; onClic
         </button>
       )}
       {r.stage === "won" && (r.converted_project_id || r.converted_contract_id) && (
-        <div className="mt-2.5 flex items-center gap-1 text-[11px] font-semibold" style={{ color: "var(--pipeline-teal)" }}>
+        <div
+          className="mt-2.5 flex items-center gap-1 text-[11px] font-semibold"
+          style={{ color: "var(--pipeline-teal)" }}
+        >
           ✓ Onboarded as client {r.converted_project_id ? "project" : "contract"}
         </div>
       )}
@@ -305,7 +346,10 @@ function EngagementDetail({
           <span className="p-chip" style={{ background: c.bg, color: c.text }}>
             {request.department_name ?? "Unassigned"}
           </span>
-          <span className="p-chip" style={{ background: "var(--pipeline-line-soft)", color: "var(--pipeline-slate)" }}>
+          <span
+            className="p-chip"
+            style={{ background: "var(--pipeline-line-soft)", color: "var(--pipeline-slate)" }}
+          >
             {ENGAGEMENT_PIPELINE_STAGES.find((s) => s.key === request.stage)?.label}
           </span>
         </>
@@ -316,14 +360,27 @@ function EngagementDetail({
         <div>
           <KvGrid
             items={[
-              { label: "Client", value: request.client_name ?? request.prospect_client_name ?? "—" },
+              {
+                label: "Client",
+                value: request.client_name ?? request.prospect_client_name ?? "—",
+              },
               { label: "Service requested", value: request.title },
               { label: "Contact", value: request.contact_name ?? request.contact_email ?? "—" },
-              { label: "Est. value", value: request.estimated_value != null ? formatCurrency(request.estimated_value, request.currency) : "—" },
+              {
+                label: "Est. value",
+                value:
+                  request.estimated_value != null
+                    ? formatCurrency(request.estimated_value, request.currency)
+                    : "—",
+              },
             ]}
           />
           <SectionLabel>Stage progress</SectionLabel>
-          <StageTracker total={ENGAGEMENT_PIPELINE_STAGES.length} doneCount={idx} currentIndex={idx} />
+          <StageTracker
+            total={ENGAGEMENT_PIPELINE_STAGES.length}
+            doneCount={idx}
+            currentIndex={idx}
+          />
           {canManage && request.department_id && (
             <div>
               <SectionLabel>Move stage</SectionLabel>
@@ -332,7 +389,9 @@ function EngagementDetail({
                 onValueChange={(v) =>
                   updateStage.mutate(
                     { id: request.id, stage: v as ClientRequestStage },
-                    { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed") },
+                    {
+                      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed"),
+                    },
                   )
                 }
               >
@@ -353,7 +412,9 @@ function EngagementDetail({
                 onSubmit={(stage, reason) =>
                   updateStage.mutate(
                     { id: request.id, stage, lost_reason: reason || undefined },
-                    { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed") },
+                    {
+                      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed"),
+                    },
                   )
                 }
               />
@@ -365,7 +426,12 @@ function EngagementDetail({
             </div>
           )}
           <div className="mt-4">
-            <Link to="/requests/$requestId" params={{ requestId: request.id }} className="text-xs hover:underline" style={{ color: "var(--pipeline-gold)" }}>
+            <Link
+              to="/requests/$requestId"
+              params={{ requestId: request.id }}
+              className="text-xs hover:underline"
+              style={{ color: "var(--pipeline-gold)" }}
+            >
               Open full request record (routing, documents) →
             </Link>
           </div>
@@ -379,7 +445,9 @@ function EngagementDetail({
           onAdd={(type, summary) =>
             logActivity.mutate(
               { type: type as "note" | "call" | "email" | "meeting", summary },
-              { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to log") },
+              {
+                onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to log"),
+              },
             )
           }
         />
@@ -391,7 +459,11 @@ function EngagementDetail({
       }
       footer={
         isWon && !alreadyOnboarded ? (
-          <Button className="flex-1" onClick={onOnboard} style={{ background: "var(--pipeline-ink)" }}>
+          <Button
+            className="flex-1"
+            onClick={onOnboard}
+            style={{ background: "var(--pipeline-ink)" }}
+          >
             Onboard as Client Project →
           </Button>
         ) : (
@@ -418,7 +490,6 @@ function OnboardForm({
   const [mode, setMode] = useState<"project" | "contract">("project");
   const [clientId, setClientId] = useState(request.client_id ?? "");
   const [contractNumber, setContractNumber] = useState("");
-  const clientsQ = useClients();
 
   const submit = () => {
     if (!request.client_id && !clientId) {
@@ -467,34 +538,39 @@ function OnboardForm({
       </DialogHeader>
       <div className="space-y-3 py-2">
         <div className="flex gap-2">
-          <Button size="sm" variant={mode === "project" ? "default" : "outline"} onClick={() => setMode("project")}>
+          <Button
+            size="sm"
+            variant={mode === "project" ? "default" : "outline"}
+            onClick={() => setMode("project")}
+          >
             One-off project
           </Button>
-          <Button size="sm" variant={mode === "contract" ? "default" : "outline"} onClick={() => setMode("contract")}>
+          <Button
+            size="sm"
+            variant={mode === "contract" ? "default" : "outline"}
+            onClick={() => setMode("contract")}
+          >
             Recurring contract
           </Button>
         </div>
         {!request.client_id && (
           <div>
             <Label>Client on file</Label>
-            <Select value={clientId} onValueChange={setClientId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select the real client record…" />
-              </SelectTrigger>
-              <SelectContent>
-                {(clientsQ.data ?? []).map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <ClientPicker
+              value={clientId}
+              onChange={setClientId}
+              placeholder="Select the real client record…"
+            />
           </div>
         )}
         {mode === "contract" && (
           <div>
             <Label>Contract number</Label>
-            <Input value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} placeholder="e.g. CTR-2026-108" />
+            <Input
+              value={contractNumber}
+              onChange={(e) => setContractNumber(e.target.value)}
+              placeholder="e.g. CTR-2026-108"
+            />
           </div>
         )}
       </div>

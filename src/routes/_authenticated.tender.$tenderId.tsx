@@ -8,6 +8,7 @@ import {
   useTender,
   useUpdateTenderStage,
   useConvertToContract,
+  useConvertTenderToProject,
   useTenderResources,
   useSaveTenderResource,
   useDeleteTenderResource,
@@ -47,6 +48,7 @@ import {
   type TenderRequirementRow,
 } from "@/features/tender/use-tender";
 import { useProfilesLite } from "@/features/clients/use-clients-contracts";
+import { ClientPicker } from "@/features/clients/client-picker";
 import { formatCurrency } from "@/features/finance/finance";
 import { AttachmentsPanel } from "@/features/documents/attachments-panel";
 import { useDocuments } from "@/features/documents/use-documents";
@@ -105,7 +107,11 @@ function buildTenderRelated(tender: ReturnType<typeof useTender>["data"]): Relat
     });
   }
   if (tender.project_id) {
-    items.push({ label: "Delivery Project", title: tender.project_name ?? "Project", to: `/projects/${tender.project_id}` });
+    items.push({
+      label: "Delivery Project",
+      title: tender.project_name ?? "Project",
+      to: `/projects/${tender.project_id}`,
+    });
   }
   return items;
 }
@@ -138,6 +144,16 @@ function TenderDetail() {
       const reason = window.prompt("Reason the tender was lost (optional):") ?? undefined;
       updateStage.mutate(
         { id: tender.id, stage, lost_reason: reason },
+        { onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed") },
+      );
+      return;
+    }
+    if (stage === "won") {
+      const today = new Date().toISOString().slice(0, 10);
+      const input = window.prompt("Date awarded (YYYY-MM-DD):", today);
+      if (input === null) return; // cancelled
+      updateStage.mutate(
+        { id: tender.id, stage, won_at: input.trim() || today },
         { onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed") },
       );
       return;
@@ -191,13 +207,45 @@ function TenderDetail() {
               </div>
             )}
             {tender.submission_deadline && (
-              <div className="text-xs text-muted-foreground">Deadline {tender.submission_deadline}</div>
+              <div className="text-xs text-muted-foreground">
+                Deadline {tender.submission_deadline}
+              </div>
+            )}
+            {tender.stage === "won" && tender.won_at && (
+              <div className="text-xs text-muted-foreground">
+                Awarded {tender.won_at.slice(0, 10)}
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => changeStage("won")}
+                    className="ml-1.5 text-primary hover:underline"
+                    title="Change the awarded date"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
 
         {tender.stage === "won" && canManage && (
-          <div className="mt-3 pt-3 border-t">
+          <div className="mt-3 pt-3 border-t flex flex-wrap items-center gap-3">
+            {tender.project_id ? (
+              <Link
+                to="/projects/$projectId"
+                params={{ projectId: tender.project_id }}
+                className="text-xs text-success underline hover:opacity-80"
+              >
+                Forwarded to delivery project {tender.project_name ?? ""} →
+              </Link>
+            ) : (
+              <ConvertToProjectDialog
+                tenderId={tender.id}
+                defaultClientId={tender.client_id}
+                prospectClientName={tender.prospect_client_name}
+              />
+            )}
             {tender.contract_id ? (
               <Link
                 to="/clients/contracts/$id"
@@ -207,13 +255,20 @@ function TenderDetail() {
                 Converted to contract {tender.contract_number ?? tender.contract_id} →
               </Link>
             ) : (
-              <ConvertToContractDialog tenderId={tender.id} defaultValue={tender.estimated_value} />
+              <ConvertToContractDialog
+                tenderId={tender.id}
+                defaultClientId={tender.client_id}
+                defaultValue={tender.estimated_value}
+              />
             )}
           </div>
         )}
       </div>
 
-      <RelatedRecords items={buildTenderRelated(tender)} engagementTo={`/engagements/tender/${tender.id}`} />
+      <RelatedRecords
+        items={buildTenderRelated(tender)}
+        engagementTo={`/engagements/tender/${tender.id}`}
+      />
 
       <Tabs defaultValue="resources">
         <TabsList>
@@ -227,7 +282,11 @@ function TenderDetail() {
           <ResourcesTab tenderId={tender.id} canManage={canManage} />
         </TabsContent>
         <TabsContent value="financials">
-          <FinancialsTab tenderId={tender.id} canManage={canManage} estimatedValue={tender.estimated_value} />
+          <FinancialsTab
+            tenderId={tender.id}
+            canManage={canManage}
+            estimatedValue={tender.estimated_value}
+          />
         </TabsContent>
         <TabsContent value="requirements">
           <RequirementsTab tenderId={tender.id} canManage={canManage} />
@@ -258,7 +317,9 @@ function ResourcesTab({ tenderId, canManage }: { tenderId: string; canManage: bo
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
       ) : (resourcesQ.data ?? []).length === 0 ? (
-        <div className="text-xs text-muted-foreground py-4 text-center">No resources assigned yet.</div>
+        <div className="text-xs text-muted-foreground py-4 text-center">
+          No resources assigned yet.
+        </div>
       ) : (
         <Table>
           <TableHeader>
@@ -274,7 +335,9 @@ function ResourcesTab({ tenderId, canManage }: { tenderId: string; canManage: bo
             {(resourcesQ.data ?? []).map((r) => (
               <TableRow key={r.id}>
                 <TableCell className="text-sm">{r.user_name}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{r.role_note ?? "—"}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {r.role_note ?? "—"}
+                </TableCell>
                 <TableCell className="text-right text-xs tabular-nums">
                   {r.allocated_hours ?? "—"}
                 </TableCell>
@@ -384,7 +447,11 @@ function AddResourceDialog({ tenderId }: { tenderId: string }) {
             </div>
             <div>
               <Label>Hourly rate</Label>
-              <Input type="number" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} />
+              <Input
+                type="number"
+                value={hourlyRate}
+                onChange={(e) => setHourlyRate(e.target.value)}
+              />
             </div>
           </div>
         </div>
@@ -408,8 +475,14 @@ function TimeTrackingTab({ tenderId, canManage }: { tenderId: string; canManage:
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <CostCard label="Budgeted cost" value={costQ.data ? formatCurrency(costQ.data.budgeted_cost) : "—"} />
-        <CostCard label="Actual cost" value={costQ.data ? formatCurrency(costQ.data.actual_cost) : "—"} />
+        <CostCard
+          label="Budgeted cost"
+          value={costQ.data ? formatCurrency(costQ.data.budgeted_cost) : "—"}
+        />
+        <CostCard
+          label="Actual cost"
+          value={costQ.data ? formatCurrency(costQ.data.actual_cost) : "—"}
+        />
         <CostCard
           label="Hours logged"
           value={costQ.data ? costQ.data.actual_hours.toLocaleString() : "—"}
@@ -531,7 +604,12 @@ function LogTimeDialog({ tenderId }: { tenderId: string }) {
             </div>
             <div>
               <Label>Hours</Label>
-              <Input type="number" step="0.25" value={hours} onChange={(e) => setHours(e.target.value)} />
+              <Input
+                type="number"
+                step="0.25"
+                value={hours}
+                onChange={(e) => setHours(e.target.value)}
+              />
             </div>
           </div>
           <div>
@@ -550,19 +628,95 @@ function LogTimeDialog({ tenderId }: { tenderId: string }) {
   );
 }
 
+function ConvertToProjectDialog({
+  tenderId,
+  defaultClientId,
+  prospectClientName,
+}: {
+  tenderId: string;
+  defaultClientId: string | null;
+  prospectClientName: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [clientId, setClientId] = useState(defaultClientId ?? "");
+  const convert = useConvertTenderToProject();
+
+  const submit = () => {
+    if (!defaultClientId && !clientId) {
+      toast.error("Choose a client — a delivery project needs a real client on file");
+      return;
+    }
+    convert.mutate(
+      { tenderId, name: name.trim() || undefined, clientId: clientId || undefined },
+      {
+        onSuccess: () => {
+          toast.success("Forwarded to a delivery project");
+          setOpen(false);
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Conversion failed"),
+      },
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm">Forward to department (project)</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Forward to department as a delivery project</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Project name (optional)</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Defaults to tender title"
+            />
+          </div>
+          {!defaultClientId && (
+            <div>
+              <Label>Client</Label>
+              <ClientPicker value={clientId} onChange={setClientId} />
+              {prospectClientName && !clientId && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  This tender was tracked against prospect "{prospectClientName}" — create or select
+                  their real client record to proceed.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button onClick={submit} disabled={convert.isPending}>
+            {convert.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Forward
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ConvertToContractDialog({
   tenderId,
+  defaultClientId,
   defaultValue,
 }: {
   tenderId: string;
+  defaultClientId: string | null;
   defaultValue: number | null;
 }) {
   const [open, setOpen] = useState(false);
   const [contractNumber, setContractNumber] = useState("");
-  const [billingFrequency, setBillingFrequency] = useState<"one_off" | "monthly" | "quarterly" | "annual">(
-    "one_off",
-  );
+  const [billingFrequency, setBillingFrequency] = useState<
+    "one_off" | "monthly" | "quarterly" | "annual"
+  >("one_off");
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [clientId, setClientId] = useState(defaultClientId ?? "");
 
   const convert = useConvertToContract();
 
@@ -571,8 +725,18 @@ function ConvertToContractDialog({
       toast.error("Contract number is required");
       return;
     }
+    if (!defaultClientId && !clientId) {
+      toast.error("Choose a client — a contract needs a real client on file");
+      return;
+    }
     convert.mutate(
-      { tenderId, contractNumber: contractNumber.trim(), billingFrequency, startDate },
+      {
+        tenderId,
+        contractNumber: contractNumber.trim(),
+        billingFrequency,
+        startDate,
+        clientId: clientId || undefined,
+      },
       {
         onSuccess: () => {
           toast.success("Converted to contract");
@@ -586,7 +750,9 @@ function ConvertToContractDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm">Convert to contract</Button>
+        <Button size="sm" variant="outline">
+          Convert to contract
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -597,10 +763,19 @@ function ConvertToContractDialog({
             <Label>Contract number</Label>
             <Input value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} />
           </div>
+          {!defaultClientId && (
+            <div>
+              <Label>Client</Label>
+              <ClientPicker value={clientId} onChange={setClientId} />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Billing frequency</Label>
-              <Select value={billingFrequency} onValueChange={(v) => setBillingFrequency(v as typeof billingFrequency)}>
+              <Select
+                value={billingFrequency}
+                onValueChange={(v) => setBillingFrequency(v as typeof billingFrequency)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -619,7 +794,8 @@ function ConvertToContractDialog({
           </div>
           {defaultValue != null && (
             <p className="text-xs text-muted-foreground">
-              Contract value defaults to the tender's estimated value ({formatCurrency(defaultValue)}).
+              Contract value defaults to the tender's estimated value (
+              {formatCurrency(defaultValue)}).
             </p>
           )}
         </div>
@@ -654,9 +830,18 @@ function FinancialsTab({
           label="Cost to pursue"
           value={summaryQ.data ? formatCurrency(summaryQ.data.total_cost_to_pursue) : "—"}
         />
-        <CostCard label="Bid price" value={summaryQ.data ? formatCurrency(summaryQ.data.bid_price) : "—"} />
-        <CostCard label="Bonds" value={summaryQ.data ? formatCurrency(summaryQ.data.bonds_total) : "—"} />
-        <CostCard label="Estimated value" value={estimatedValue != null ? formatCurrency(estimatedValue) : "—"} />
+        <CostCard
+          label="Bid price"
+          value={summaryQ.data ? formatCurrency(summaryQ.data.bid_price) : "—"}
+        />
+        <CostCard
+          label="Bonds"
+          value={summaryQ.data ? formatCurrency(summaryQ.data.bonds_total) : "—"}
+        />
+        <CostCard
+          label="Estimated value"
+          value={estimatedValue != null ? formatCurrency(estimatedValue) : "—"}
+        />
       </div>
 
       <CostItemsSection tenderId={tenderId} canManage={canManage} />
@@ -697,8 +882,12 @@ function CostItemsSection({ tenderId, canManage }: { tenderId: string; canManage
             {(itemsQ.data ?? []).map((i) => (
               <TableRow key={i.id}>
                 <TableCell className="text-sm">{i.description}</TableCell>
-                <TableCell className="text-xs text-muted-foreground capitalize">{i.category}</TableCell>
-                <TableCell className="text-right text-xs tabular-nums">{formatCurrency(i.amount)}</TableCell>
+                <TableCell className="text-xs text-muted-foreground capitalize">
+                  {i.category}
+                </TableCell>
+                <TableCell className="text-right text-xs tabular-nums">
+                  {formatCurrency(i.amount)}
+                </TableCell>
                 {canManage && (
                   <TableCell className="text-right">
                     <Button
@@ -706,7 +895,8 @@ function CostItemsSection({ tenderId, canManage }: { tenderId: string; canManage
                       variant="ghost"
                       onClick={() =>
                         deleteItem.mutate(i.id, {
-                          onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                          onError: (err) =>
+                            toast.error(err instanceof Error ? err.message : "Failed to delete"),
                         })
                       }
                     >
@@ -840,7 +1030,9 @@ function BondsSection({ tenderId, canManage }: { tenderId: string; canManage: bo
               <TableRow key={b.id}>
                 <TableCell className="text-sm">{TENDER_BOND_TYPE_LABELS[b.bond_type]}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{b.provider ?? "—"}</TableCell>
-                <TableCell className="text-right text-xs tabular-nums">{formatCurrency(b.amount)}</TableCell>
+                <TableCell className="text-right text-xs tabular-nums">
+                  {formatCurrency(b.amount)}
+                </TableCell>
                 <TableCell>
                   <Badge className={TENDER_BOND_STATUS_STYLES[b.status]} variant="secondary">
                     {TENDER_BOND_STATUS_LABELS[b.status]}
@@ -854,7 +1046,8 @@ function BondsSection({ tenderId, canManage }: { tenderId: string; canManage: bo
                       variant="ghost"
                       onClick={() =>
                         deleteBond.mutate(b.id, {
-                          onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                          onError: (err) =>
+                            toast.error(err instanceof Error ? err.message : "Failed to delete"),
                         })
                       }
                     >
@@ -886,7 +1079,13 @@ function BondDialog({ tenderId }: { tenderId: string }) {
       return;
     }
     save.mutate(
-      { bond_type: bondType, amount: Number(amount), provider: provider || undefined, status, expiry_date: expiryDate || undefined },
+      {
+        bond_type: bondType,
+        amount: Number(amount),
+        provider: provider || undefined,
+        status,
+        expiry_date: expiryDate || undefined,
+      },
       {
         onSuccess: () => {
           toast.success("Bond added");
@@ -1003,7 +1202,9 @@ function PricingItemsSection({ tenderId, canManage }: { tenderId: string; canMan
               <TableRow key={i.id}>
                 <TableCell className="text-sm">{i.description}</TableCell>
                 <TableCell className="text-right text-xs tabular-nums">{i.quantity}</TableCell>
-                <TableCell className="text-right text-xs tabular-nums">{formatCurrency(i.unit_price)}</TableCell>
+                <TableCell className="text-right text-xs tabular-nums">
+                  {formatCurrency(i.unit_price)}
+                </TableCell>
                 <TableCell className="text-right text-xs tabular-nums">
                   {formatCurrency(i.quantity * i.unit_price)}
                 </TableCell>
@@ -1014,7 +1215,8 @@ function PricingItemsSection({ tenderId, canManage }: { tenderId: string; canMan
                       variant="ghost"
                       onClick={() =>
                         deleteItem.mutate(i.id, {
-                          onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                          onError: (err) =>
+                            toast.error(err instanceof Error ? err.message : "Failed to delete"),
                         })
                       }
                     >
@@ -1053,7 +1255,11 @@ function PricingItemDialog({ tenderId }: { tenderId: string }) {
       return;
     }
     save.mutate(
-      { description: description.trim(), quantity: Number(quantity) || 1, unit_price: Number(unitPrice) },
+      {
+        description: description.trim(),
+        quantity: Number(quantity) || 1,
+        unit_price: Number(unitPrice),
+      },
       {
         onSuccess: () => {
           toast.success("Pricing item added");
@@ -1090,7 +1296,11 @@ function PricingItemDialog({ tenderId }: { tenderId: string }) {
             </div>
             <div>
               <Label>Unit price</Label>
-              <Input type="number" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
+              <Input
+                type="number"
+                value={unitPrice}
+                onChange={(e) => setUnitPrice(e.target.value)}
+              />
             </div>
           </div>
         </div>
@@ -1154,7 +1364,9 @@ function RequirementsTab({ tenderId, canManage }: { tenderId: string; canManage:
                     <div className="flex-1 min-w-0">
                       <div className="text-sm">{r.title}</div>
                       {r.notes && <div className="text-xs text-muted-foreground">{r.notes}</div>}
-                      {linkedDoc && <div className="text-xs text-primary">📎 {linkedDoc.title}</div>}
+                      {linkedDoc && (
+                        <div className="text-xs text-primary">📎 {linkedDoc.title}</div>
+                      )}
                     </div>
                     {canManage ? (
                       <Select
@@ -1163,7 +1375,8 @@ function RequirementsTab({ tenderId, canManage }: { tenderId: string; canManage:
                           saveReq.mutate(
                             { id: r.id, status: v as TenderRequirementStatus },
                             {
-                              onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed"),
+                              onError: (err) =>
+                                toast.error(err instanceof Error ? err.message : "Update failed"),
                             },
                           )
                         }
@@ -1180,13 +1393,21 @@ function RequirementsTab({ tenderId, canManage }: { tenderId: string; canManage:
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Badge className={TENDER_REQUIREMENT_STATUS_STYLES[r.status]} variant="secondary">
+                      <Badge
+                        className={TENDER_REQUIREMENT_STATUS_STYLES[r.status]}
+                        variant="secondary"
+                      >
                         {TENDER_REQUIREMENT_STATUS_LABELS[r.status]}
                       </Badge>
                     )}
                     {canManage && (
                       <>
-                        <Button size="icon" variant="ghost" onClick={() => setLinkDialogFor(r)} title="Link document">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setLinkDialogFor(r)}
+                          title="Link document"
+                        >
                           <Plus className="h-3.5 w-3.5" />
                         </Button>
                         <Button
@@ -1194,7 +1415,10 @@ function RequirementsTab({ tenderId, canManage }: { tenderId: string; canManage:
                           variant="ghost"
                           onClick={() =>
                             deleteReq.mutate(r.id, {
-                              onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                              onError: (err) =>
+                                toast.error(
+                                  err instanceof Error ? err.message : "Failed to delete",
+                                ),
                             })
                           }
                         >
@@ -1258,11 +1482,19 @@ function AddRequirementDialog({ tenderId }: { tenderId: string }) {
         <div className="space-y-3">
           <div>
             <Label>Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Tax compliance certificate" />
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Tax compliance certificate"
+            />
           </div>
           <div>
             <Label>Category</Label>
-            <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Legal" />
+            <Input
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g. Legal"
+            />
           </div>
         </div>
         <DialogFooter>
@@ -1378,11 +1610,19 @@ function SaveAsTemplateDialog({ tenderId, disabled }: { tenderId: string; disabl
         <div className="space-y-3">
           <div>
             <Label>Template name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Government tender standard requirements" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Government tender standard requirements"
+            />
           </div>
           <div>
             <Label>Description (optional)</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+            />
           </div>
         </div>
         <DialogFooter>

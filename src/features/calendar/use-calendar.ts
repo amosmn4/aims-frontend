@@ -24,9 +24,12 @@ export interface DeadlineItem {
   to: string;
 }
 
-export function useDeadlines(from: string, to: string) {
+export function useDeadlines(from: string, to: string, departmentId?: string) {
   return useQuery({
-    queryKey: ["calendar", "deadlines", from, to],
-    queryFn: () => apiJson<DeadlineItem[]>(`/calendar/deadlines?from=${from}&to=${to}`),
+    queryKey: ["calendar", "deadlines", from, to, departmentId ?? "all"],
+    queryFn: () =>
+      apiJson<DeadlineItem[]>(
+        `/calendar/deadlines?from=${from}&to=${to}${departmentId ? `&departmentId=${departmentId}` : ""}`,
+      ),
   });
 }

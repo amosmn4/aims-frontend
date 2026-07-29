@@ -7,7 +7,11 @@ import { useClientRequests } from "@/features/client-requests/use-client-request
 import { useProjects, PROJECT_STATUS_LABELS } from "@/features/projects/use-projects";
 import { useContracts, useDepartments } from "@/features/clients/use-clients-contracts";
 import { useServiceLines } from "@/features/finance/use-finance-data";
-import { useRecruitmentEngagements, FUNNEL_STAGE_LABELS, type FunnelStageKey } from "@/features/hr/use-recruitment";
+import {
+  useRecruitmentEngagements,
+  FUNNEL_STAGE_LABELS,
+  type FunnelStageKey,
+} from "@/features/hr/use-recruitment";
 import { formatCurrency } from "@/features/finance/finance";
 
 export const Route = createFileRoute("/_authenticated/reports/departments/hr")({
@@ -17,9 +21,16 @@ export const Route = createFileRoute("/_authenticated/reports/departments/hr")({
 
 const TENDER_TERMINAL = new Set(["won", "lost", "withdrawn"]);
 const REQUEST_TERMINAL = new Set(["won", "lost", "withdrawn"]);
-const STAGE_ORDER: FunnelStageKey[] = ["applications_received", "screened", "interviewed", "offered", "placed"];
+const STAGE_ORDER: FunnelStageKey[] = [
+  "applications_received",
+  "screened",
+  "interviewed",
+  "offered",
+  "placed",
+];
 
-function HrReport() {
+// Exported so the HR department hub can embed this same report as a "Reports" tab.
+export function HrReport() {
   return (
     <RequireRole
       roles={["hr"]}
@@ -98,7 +109,9 @@ function ServiceLineBreakdown() {
       byLine.set(key, cur);
     }
 
-    const recentProjects = [...projects].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 6);
+    const recentProjects = [...projects]
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, 6);
 
     return { lines: Array.from(byLine.values()).sort((a, b) => b.value - a.value), recentProjects };
   }, [tendersQ.data, requestsQ.data, projectsQ.data, contractsQ.data, serviceLinesQ.data]);
@@ -132,7 +145,9 @@ function ServiceLineBreakdown() {
                   <span className="font-medium">
                     {l.name} <span className="ml-2 text-muted-foreground">({l.count})</span>
                   </span>
-                  <span className="tabular-nums text-muted-foreground">{formatCurrency(l.value)}</span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {formatCurrency(l.value)}
+                  </span>
                 </div>
                 <div className="h-2 rounded-full bg-secondary overflow-hidden">
                   <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
@@ -156,7 +171,9 @@ function ServiceLineBreakdown() {
               className="flex items-center justify-between py-2 text-sm hover:bg-secondary/40 -mx-1 px-1 rounded"
             >
               <span className="font-medium">{p.name}</span>
-              <span className="text-xs text-muted-foreground">{PROJECT_STATUS_LABELS[p.status]}</span>
+              <span className="text-xs text-muted-foreground">
+                {PROJECT_STATUS_LABELS[p.status]}
+              </span>
             </Link>
           ))}
         </div>
