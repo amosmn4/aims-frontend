@@ -36,7 +36,6 @@ interface AuthContextValue {
   roles: AppRole[];
   loading: boolean;
   login: (email: string, password: string) => Promise<AppRole[]>;
-  demoLogin: (role: "system_admin" | "ceo" | "finance") => Promise<AppRole[]>;
   setPassword: (token: string, password: string) => Promise<AppRole[]>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -89,14 +88,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const body = await apiJson<{ accessToken: string }>("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
-      });
-      setAccessToken(body.accessToken);
-      return loadProfile();
-    },
-    demoLogin: async (role) => {
-      const body = await apiJson<{ accessToken: string }>("/auth/demo-login", {
-        method: "POST",
-        body: JSON.stringify({ role }),
       });
       setAccessToken(body.accessToken);
       return loadProfile();
@@ -161,6 +152,29 @@ export function homeRouteFor(
   );
   if (departmentHomes.size === 1) return [...departmentHomes][0];
   return "/departments";
+}
+
+export type DepartmentCode = "finance" | "hr" | "it" | "marketing" | "tender" | "operations";
+
+const DEPARTMENT_CODES: DepartmentCode[] = [
+  "finance",
+  "hr",
+  "it",
+  "marketing",
+  "tender",
+  "operations",
+];
+
+/**
+ * Which single department's nav a user should see, or null for the global/central nav — same
+ * "exactly one department role, and not admin/CEO" rule `homeRouteFor` already uses to decide
+ * where to land after login, just exposed as the department code instead of a route. Admin/CEO
+ * and anyone spanning multiple departments (or none) keep the global nav in AppShell.
+ */
+export function departmentScopeFor(roles: AppRole[]): DepartmentCode | null {
+  if (roles.includes("ceo") || roles.includes("system_admin")) return null;
+  const owned = DEPARTMENT_CODES.filter((code) => roles.includes(code));
+  return owned.length === 1 ? owned[0] : null;
 }
 
 export function useAuth() {

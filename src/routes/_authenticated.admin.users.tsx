@@ -33,7 +33,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, Plus, ShieldOff, Mail } from "lucide-react";
+import { Loader2, Plus, ShieldOff, Mail, KeyRound, Trash2 } from "lucide-react";
+import { usePagination, type PaginatedResponse } from "@/hooks/use-pagination";
+import { PaginationBar } from "@/components/pagination-bar";
 
 export const Route = createFileRoute("/_authenticated/admin/users")({
   head: () => ({
@@ -78,14 +80,18 @@ const emptyCreateForm = {
 };
 
 function UsersAdmin() {
-  const { isAdminOrCeo } = useAuth();
+  const { isAdminOrCeo, profile } = useAuth();
   const qc = useQueryClient();
 
+  const { page, pageSize, setPage, setPageSize } = usePagination(25);
+
   const usersQ = useQuery({
-    queryKey: ["admin", "users"],
-    queryFn: () => apiJson<AdminUser[]>("/users"),
+    queryKey: ["admin", "users", page, pageSize],
+    queryFn: () =>
+      apiJson<PaginatedResponse<AdminUser>>(`/users?page=${page}&pageSize=${pageSize}`),
     enabled: isAdminOrCeo,
   });
+  const users = usersQ.data?.data ?? [];
 
   const departmentsQ = useQuery({
     queryKey: ["departments", "admin"],
@@ -106,9 +112,35 @@ function UsersAdmin() {
     onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed"),
   });
 
+  // Copies the raw setup link to the clipboard — always offered, since SMTP being unconfigured
+  // (or a send failing) should never leave an admin with no way to hand someone their invite.
+  const copyLink = (link: string) => {
+    navigator.clipboard.writeText(link).then(
+      () => toast.success("Link copied"),
+      () => toast.error("Couldn't copy — copy it from here instead: " + link),
+    );
+  };
+
+  const notifySetupLink = (
+    inviteSent: boolean,
+    setupLink: string,
+    sentMessage: string,
+    unsentMessage: string,
+  ) => {
+    if (inviteSent) {
+      toast.success(sentMessage, {
+        action: { label: "Copy link", onClick: () => copyLink(setupLink) },
+      });
+    } else {
+      toast.warning(unsentMessage, {
+        action: { label: "Copy link", onClick: () => copyLink(setupLink) },
+      });
+    }
+  };
+
   const createUserMutation = useMutation({
     mutationFn: (dto: typeof emptyCreateForm) =>
-      apiJson<{ inviteSent: boolean }>("/users", {
+      apiJson<{ inviteSent: boolean; setupLink: string }>("/users", {
         method: "POST",
         body: JSON.stringify({
           email: dto.email,
@@ -119,10 +151,11 @@ function UsersAdmin() {
         }),
       }),
     onSuccess: (res) => {
-      toast.success(
-        res.inviteSent
-          ? "User created — invite email sent"
-          : "User created — email not sent (SMTP not configured); share the setup link manually",
+      notifySetupLink(
+        res.inviteSent,
+        res.setupLink,
+        "User created — invite email sent",
+        "User created — email not sent (SMTP not configured)",
       );
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
     },
@@ -130,10 +163,48 @@ function UsersAdmin() {
   });
 
   const resendInviteMutation = useMutation({
-    mutationFn: (id: string) => apiJson<{ inviteSent: boolean }>(`/users/${id}/resend-invite`, { method: "POST" }),
-    onSuccess: (res) => toast.success(res.inviteSent ? "Invite resent" : "Invite issued — email not sent (SMTP not configured)"),
+    mutationFn: (id: string) =>
+      apiJson<{ inviteSent: boolean; setupLink: string }>(`/users/${id}/resend-invite`, {
+        method: "POST",
+      }),
+    onSuccess: (res) =>
+      notifySetupLink(
+        res.inviteSent,
+        res.setupLink,
+        "Invite resent",
+        "Invite issued — email not sent (SMTP not configured)",
+      ),
     onError: (err) => toast.error(err instanceof Error ? err.message : "Could not resend invite"),
   });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiJson<{ inviteSent: boolean; setupLink: string }>(`/users/${id}/reset-password`, {
+        method: "POST",
+      }),
+    onSuccess: (res) =>
+      notifySetupLink(
+        res.inviteSent,
+        res.setupLink,
+        "Password reset link sent",
+        "Reset link issued — email not sent (SMTP not configured)",
+      ),
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Could not reset password"),
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: (id: string) => apiJson(`/users/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("User deleted");
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Could not delete user"),
+  });
+
+  const removeUser = (u: AdminUser) => {
+    if (!confirm(`Delete ${u.fullName || u.email}? This can't be undone.`)) return;
+    deleteUserMutation.mutate(u.id);
+  };
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
@@ -305,10 +376,11 @@ function UsersAdmin() {
                 <TableHead>Roles</TableHead>
                 <TableHead className="w-56">Grant role</TableHead>
                 <TableHead className="w-36">Status</TableHead>
+                <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(usersQ.data ?? []).map((u) => {
+              {users.map((u) => {
                 const userRoles = u.roles.map((r) => r.role);
                 return (
                   <TableRow key={u.id}>
@@ -378,7 +450,9 @@ function UsersAdmin() {
                     </TableCell>
                     <TableCell>
                       {u.hasPassword ? (
-                        <span className="text-xs text-muted-foreground">Active</span>
+                        <span className="text-xs text-muted-foreground">
+                          {u.isActive ? "Active" : "Deactivated"}
+                        </span>
                       ) : (
                         <Button
                           size="sm"
@@ -391,11 +465,48 @@ function UsersAdmin() {
                         </Button>
                       )}
                     </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        {u.hasPassword && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            disabled={resetPasswordMutation.isPending}
+                            onClick={() => resetPasswordMutation.mutate(u.id)}
+                            title="Send password reset link"
+                          >
+                            <KeyRound className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive disabled:opacity-30"
+                          disabled={deleteUserMutation.isPending || u.id === profile?.id}
+                          onClick={() => removeUser(u)}
+                          title={
+                            u.id === profile?.id
+                              ? "You can't delete your own account"
+                              : "Delete user"
+                          }
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 );
               })}
             </TableBody>
           </Table>
+          <PaginationBar
+            page={usersQ.data?.page ?? page}
+            pageSize={usersQ.data?.pageSize ?? pageSize}
+            total={usersQ.data?.total ?? 0}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
 

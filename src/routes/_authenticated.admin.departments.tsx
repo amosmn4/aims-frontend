@@ -25,7 +25,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, Plus, ShieldOff } from "lucide-react";
+import { Loader2, Plus, ShieldOff, Trash2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin/departments")({
   head: () => ({
@@ -86,6 +86,22 @@ function DepartmentsAdmin() {
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to add office"),
   });
+
+  const deleteDepMutation = useMutation({
+    mutationFn: (id: string) => apiJson(`/departments/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Department deleted");
+      qc.invalidateQueries({ queryKey: ["departments"] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : "Failed to delete department"),
+  });
+
+  const removeDep = (id: string, name: string) => {
+    if (!confirm(`Delete ${name}? Departments with any projects or tenders can't be deleted.`))
+      return;
+    deleteDepMutation.mutate(id);
+  };
 
   const [depOpen, setDepOpen] = useState(false);
   const [depForm, setDepForm] = useState({ code: "", name: "", description: "" });
@@ -195,6 +211,7 @@ function DepartmentsAdmin() {
                   <TableHead>Name</TableHead>
                   <TableHead>Code</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -209,6 +226,18 @@ function DepartmentsAdmin() {
                     <TableCell className="text-xs font-mono">{d.code}</TableCell>
                     <TableCell>
                       {d.isCore ? <Badge>Core</Badge> : <Badge variant="secondary">Custom</Badge>}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        disabled={deleteDepMutation.isPending}
+                        onClick={() => removeDep(d.id, d.name)}
+                        title="Delete department"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   useProject,
@@ -9,6 +9,7 @@ import {
   useCreateTask,
   useUpdateTask,
   useMilestones,
+  useDeleteProject,
   TASK_PRIORITY_LABELS,
   type Task,
   type TaskStatus,
@@ -82,7 +83,9 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
   component: ProjectDetail,
 });
 
-function buildProjectBreadcrumb(project: ReturnType<typeof useProject>["data"]): BreadcrumbSegment[] {
+function buildProjectBreadcrumb(
+  project: ReturnType<typeof useProject>["data"],
+): BreadcrumbSegment[] {
   if (!project) return [];
   const segments: BreadcrumbSegment[] = [];
   if (project.tender_id) {
@@ -90,7 +93,10 @@ function buildProjectBreadcrumb(project: ReturnType<typeof useProject>["data"]):
     segments.push({ label: project.tender_title ?? "Tender", to: `/tender/${project.tender_id}` });
   } else if (project.client_request_id) {
     segments.push({ label: "Client Requests", to: "/requests" });
-    segments.push({ label: project.client_request_title ?? "Request", to: `/requests/${project.client_request_id}` });
+    segments.push({
+      label: project.client_request_title ?? "Request",
+      to: `/requests/${project.client_request_id}`,
+    });
   } else {
     segments.push({ label: "Projects", to: "/projects" });
   }
@@ -110,6 +116,7 @@ function ProjectDetail() {
   const activitiesQ = useProjectActivities(projectId);
   const logActivity = useLogProjectActivity(projectId);
   const updateTask = useUpdateTask();
+  const deleteProject = useDeleteProject();
   const { hasRole, isAdminOrCeo } = useAuth();
   const departmentsQ = useDepartments();
   const profilesQ = useProfilesLite();
@@ -132,7 +139,10 @@ function ProjectDetail() {
   if (!project) return <div className="text-sm text-muted-foreground">Project not found.</div>;
 
   const departmentCode = departmentsQ.data?.find((d) => d.id === project.department_id)?.code;
-  const canManageDocuments = isAdminOrCeo || (!!departmentCode && hasRole(departmentCode as AppRole));
+  // Same rule the backend enforces on delete: admin/CEO, or a member of the project's own
+  // department — not just any authenticated user.
+  const canManageDocuments =
+    isAdminOrCeo || (!!departmentCode && hasRole(departmentCode as AppRole));
 
   const handleStatusChange = (taskId: string, status: TaskStatus) => {
     updateTask.mutate(
@@ -141,17 +151,55 @@ function ProjectDetail() {
     );
   };
 
+  const handleDeleteProject = () => {
+    if (
+      !confirm(
+        `Delete "${project.name}"? This removes all its tasks, milestones and documents too.`,
+      )
+    )
+      return;
+    deleteProject.mutate(project.id, {
+      onSuccess: () => {
+        toast.success("Project deleted");
+        navigate({ to: "/projects" });
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
+    });
+  };
+
   const actualCost = (costItemsQ.data ?? []).reduce((a, c) => a + c.actual_amount, 0);
 
   return (
     <div className="pipeline-scope space-y-3">
-      <EntityBreadcrumb segments={buildProjectBreadcrumb(project)} />
+      <div className="flex items-start justify-between gap-2">
+        <EntityBreadcrumb segments={buildProjectBreadcrumb(project)} />
+        {canManageDocuments && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-muted-foreground hover:text-destructive shrink-0"
+            disabled={deleteProject.isPending}
+            onClick={handleDeleteProject}
+          >
+            {deleteProject.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            ) : (
+              <Trash2 className="h-3.5 w-3.5 mr-1" />
+            )}
+            Delete project
+          </Button>
+        )}
+      </div>
 
       <WorkspaceHeader project={project} tasks={tasks} actualCost={actualCost} />
 
       <div className="ws-tabbar">
         {TABS.map(([v, label]) => (
-          <button key={v} onClick={() => setView(v)} className={`ws-tabbtn ${view === v ? "active" : ""}`}>
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={`ws-tabbtn ${view === v ? "active" : ""}`}
+          >
             {label}
           </button>
         ))}
@@ -159,7 +207,12 @@ function ProjectDetail() {
 
       <div>
         {view === "overview" && (
-          <OverviewTab project={project} tasks={tasks} milestones={milestonesQ.data ?? []} actualCost={actualCost} />
+          <OverviewTab
+            project={project}
+            tasks={tasks}
+            milestones={milestonesQ.data ?? []}
+            actualCost={actualCost}
+          />
         )}
         {view === "tasks" &&
           (tasksQ.isLoading ? (
@@ -175,7 +228,9 @@ function ProjectDetail() {
               newTaskAction={<NewTaskDialog projectId={projectId} />}
             />
           ))}
-        {view === "gantt" && <GanttTab project={project} tasks={tasks} milestones={milestonesQ.data ?? []} />}
+        {view === "gantt" && (
+          <GanttTab project={project} tasks={tasks} milestones={milestonesQ.data ?? []} />
+        )}
         {view === "team" && <TeamTab projectId={projectId} />}
         {view === "financials" && <FinancialsTab project={project} projectId={projectId} />}
         {view === "calendar" && <CalendarTab tasks={tasks} milestones={milestonesQ.data ?? []} />}
@@ -189,7 +244,10 @@ function ProjectDetail() {
               onAdd={(type, summary) =>
                 logActivity.mutate(
                   { type, summary },
-                  { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to log") },
+                  {
+                    onError: (err) =>
+                      toast.error(err instanceof Error ? err.message : "Failed to log"),
+                  },
                 )
               }
             />
@@ -198,7 +256,11 @@ function ProjectDetail() {
         {view === "raid" && <RaidTab projectId={projectId} />}
         {view === "documents" && (
           <div className="ws-panel">
-            <AttachmentsPanel resourceType="project" resourceId={projectId} canManage={canManageDocuments} />
+            <AttachmentsPanel
+              resourceType="project"
+              resourceId={projectId}
+              canManage={canManageDocuments}
+            />
           </div>
         )}
       </div>
@@ -277,11 +339,19 @@ function NewTaskDialog({ projectId }: { projectId: string }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Phase</Label>
-              <Input value={phase} onChange={(e) => setPhase(e.target.value)} placeholder="e.g. Discovery" />
+              <Input
+                value={phase}
+                onChange={(e) => setPhase(e.target.value)}
+                placeholder="e.g. Discovery"
+              />
             </div>
             <div>
               <Label>Est. hours</Label>
-              <Input type="number" value={estimatedHours} onChange={(e) => setEstimatedHours(e.target.value)} />
+              <Input
+                type="number"
+                value={estimatedHours}
+                onChange={(e) => setEstimatedHours(e.target.value)}
+              />
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3">
@@ -326,7 +396,11 @@ function NewTaskDialog({ projectId }: { projectId: string }) {
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={submit} disabled={createTask.isPending} style={{ background: "var(--pipeline-ink)" }}>
+          <Button
+            onClick={submit}
+            disabled={createTask.isPending}
+            style={{ background: "var(--pipeline-ink)" }}
+          >
             {createTask.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Create task
           </Button>

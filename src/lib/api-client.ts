@@ -3,8 +3,8 @@ const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api/v1";
 let accessToken: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
 // Caches the outcome of the last session check (see ensureSession below). Kept in sync by
-// setAccessToken so a route guard checked right after login/demoLogin, or right after a
-// refresh failure, never sees a stale result from before that state change.
+// setAccessToken so a route guard checked right after login, or right after a refresh failure,
+// never sees a stale result from before that state change.
 let sessionPromise: Promise<boolean> | null = null;
 
 export function getAccessToken() {

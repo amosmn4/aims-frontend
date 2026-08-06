@@ -5,9 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, Crown, Shield, Wallet } from "lucide-react";
-
-type DemoRole = "system_admin" | "ceo" | "finance";
+import { Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -22,24 +20,10 @@ export const Route = createFileRoute("/auth")({
 
 function AuthPage() {
   const navigate = useNavigate();
-  const { session, roles, loading, login, demoLogin } = useAuth();
+  const { session, roles, loading, login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [demoLoading, setDemoLoading] = useState<DemoRole | null>(null);
-
-  const handleDemo = async (role: DemoRole) => {
-    setDemoLoading(role);
-    try {
-      const newRoles = await demoLogin(role);
-      toast.success(`Signed in as ${role.replace("_", " ")}`);
-      navigate({ to: homeRouteFor(newRoles) });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Demo login failed");
-    } finally {
-      setDemoLoading(null);
-    }
-  };
 
   useEffect(() => {
     if (!loading && session) navigate({ to: homeRouteFor(roles) });
@@ -141,48 +125,9 @@ function AuthPage() {
           </form>
 
           <p className="mt-4 text-xs text-muted-foreground text-center">
-            Accounts are created by your System Administrator.
+            Accounts are created by your System Administrator — check your email for an invite link.
+            Trouble signing in? Ask your admin for a password reset.
           </p>
-
-          <div className="mt-6 rounded-lg border border-dashed border-accent/40 bg-accent/5 p-4">
-            <div className="text-xs font-semibold uppercase tracking-wider text-accent mb-1">
-              Demo access
-            </div>
-            <p className="text-xs text-muted-foreground mb-3">
-              Click to auto-create and sign in as a seeded account.
-            </p>
-            <div className="grid gap-2">
-              {[
-                { role: "system_admin" as const, label: "System Admin", icon: Shield },
-                { role: "ceo" as const, label: "CEO", icon: Crown },
-                { role: "finance" as const, label: "Finance", icon: Wallet },
-              ].map((d) => {
-                const Icon = d.icon;
-                const busy = demoLoading === d.role;
-                return (
-                  <Button
-                    key={d.role}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="justify-start"
-                    disabled={!!demoLoading}
-                    onClick={() => handleDemo(d.role)}
-                  >
-                    {busy ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Icon className="h-4 w-4 mr-2" />
-                    )}
-                    Enter as {d.label}
-                  </Button>
-                );
-              })}
-            </div>
-            <div className="mt-2 text-[0.625rem] text-muted-foreground">
-              Password for all demo accounts: <span className="font-mono">AmsolDemo!2026</span>
-            </div>
-          </div>
 
           <div className="mt-8 text-center">
             <Link to="/" className="text-xs text-muted-foreground hover:text-foreground">

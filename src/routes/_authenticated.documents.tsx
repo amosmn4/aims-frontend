@@ -18,6 +18,7 @@ import { DocumentAccessDialog } from "@/features/documents/document-access-picke
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -28,23 +29,49 @@ import {
 
 export const Route = createFileRoute("/_authenticated/documents")({
   head: () => ({ meta: [{ title: "Documents — AIMS" }] }),
-  component: DocumentsLibrary,
+  component: () => <DocumentsLibrary />,
 });
 
-const RESOURCE_TYPES: LibraryResourceType[] = ["project", "task", "finance_report", "tender", "contract"];
+const RESOURCE_TYPES: LibraryResourceType[] = [
+  "project",
+  "task",
+  "finance_report",
+  "tender",
+  "contract",
+];
 
-function DocumentsLibrary() {
+/**
+ * Exported so each department can embed this same library scoped to itself (department id
+ * locked, department picker hidden) instead of the central, unscoped view every other role sees
+ * — same "one shared component, narrower query" pattern as the rest of the department hubs.
+ * When scoped, a "Shared with me" toggle sits next to it (Google-Drive-style: things outside your
+ * own department that were specifically shared with you, not blended into your normal list).
+ */
+export function DocumentsLibrary({
+  departmentId: lockedDepartmentId,
+}: {
+  departmentId?: string;
+} = {}) {
   const { user, isAdminOrCeo } = useAuth();
   const [resourceType, setResourceType] = useState<LibraryResourceType | "all">("all");
   const [departmentId, setDepartmentId] = useState<string>("all");
   const [q, setQ] = useState("");
   const [mine, setMine] = useState(false);
+  const [view, setView] = useState<"mine" | "shared">("mine");
+  const scoped = !!lockedDepartmentId;
 
   const documentsQ = useDocuments({
     resourceType: resourceType === "all" ? undefined : resourceType,
-    departmentId: departmentId === "all" ? undefined : departmentId,
+    departmentId: scoped
+      ? view === "mine"
+        ? lockedDepartmentId
+        : undefined
+      : departmentId === "all"
+        ? undefined
+        : departmentId,
     q: q.trim() || undefined,
-    mine,
+    mine: scoped ? false : mine,
+    sharedWithMe: scoped && view === "shared",
   });
   const departmentsQ = useDepartments();
   const deleteDocument = useDeleteDocument();
@@ -63,12 +90,32 @@ function DocumentsLibrary() {
         <div>
           <h1 className="text-lg font-semibold">Documents</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Central library for everything attached across Projects, Tasks, Finance Reports and
-            Contracts.
+            {scoped
+              ? "Everything attached to your department's projects, tasks and records."
+              : "Central library for everything attached across Projects, Tasks, Finance Reports and Contracts."}
           </p>
         </div>
         <DocumentUploadDialog />
       </div>
+
+      {scoped && (
+        <div className="inline-flex rounded-md border bg-card p-0.5 text-xs">
+          {(["mine", "shared"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={cn(
+                "px-3 py-1.5 rounded-[5px] font-medium",
+                view === v
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {v === "mine" ? "My department" : "Shared with me"}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="rounded-lg border bg-card p-3 flex flex-wrap items-end gap-3">
         <div className="relative flex-1 min-w-50">
@@ -81,7 +128,10 @@ function DocumentsLibrary() {
           />
         </div>
         <div className="w-40">
-          <Select value={resourceType} onValueChange={(v) => setResourceType(v as typeof resourceType)}>
+          <Select
+            value={resourceType}
+            onValueChange={(v) => setResourceType(v as typeof resourceType)}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -95,27 +145,31 @@ function DocumentsLibrary() {
             </SelectContent>
           </Select>
         </div>
-        <div className="w-45">
-          <Select value={departmentId} onValueChange={setDepartmentId}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All departments</SelectItem>
-              {(departmentsQ.data ?? []).map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2">
-          <Checkbox id="mine-only" checked={mine} onCheckedChange={(v) => setMine(!!v)} />
-          <Label htmlFor="mine-only" className="font-normal cursor-pointer text-sm">
-            Mine only
-          </Label>
-        </div>
+        {!scoped && (
+          <div className="w-45">
+            <Select value={departmentId} onValueChange={setDepartmentId}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All departments</SelectItem>
+                {(departmentsQ.data ?? []).map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {!scoped && (
+          <div className="flex items-center gap-2">
+            <Checkbox id="mine-only" checked={mine} onCheckedChange={(v) => setMine(!!v)} />
+            <Label htmlFor="mine-only" className="font-normal cursor-pointer text-sm">
+              Mine only
+            </Label>
+          </div>
+        )}
       </div>
 
       {documentsQ.isLoading ? (

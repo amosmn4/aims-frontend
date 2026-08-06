@@ -5,7 +5,8 @@ export type ProjectStatus = "planning" | "active" | "on_hold" | "completed" | "c
 export type ProjectHealth = "green" | "amber" | "red";
 export type TaskStatus = "not_started" | "in_progress" | "review" | "blocked" | "completed";
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
-export type SdlcStage = "requirements" | "design" | "development" | "testing" | "deployment" | "maintenance";
+export type SdlcStage =
+  "requirements" | "design" | "development" | "testing" | "deployment" | "maintenance";
 
 export const SYSTEM_DEVELOPMENT_METHODOLOGY = "system_development";
 
@@ -248,7 +249,9 @@ function mapProject(p: BackendProject): Project {
     tender_id: p.tender?.id ?? null,
     tender_title: p.tender ? (p.tender.referenceNumber ?? p.tender.title) : null,
     client_request_id: p.clientRequest?.id ?? null,
-    client_request_title: p.clientRequest ? (p.clientRequest.referenceNumber ?? p.clientRequest.title) : null,
+    client_request_title: p.clientRequest
+      ? (p.clientRequest.referenceNumber ?? p.clientRequest.title)
+      : null,
     department_id: p.departmentId,
     department_name: p.department?.name ?? "—",
     status: p.status,
@@ -321,14 +324,22 @@ export function useProjects(filters?: {
   departmentId?: string;
   status?: ProjectStatus;
   clientId?: string;
+  sharedWithMe?: boolean;
 }) {
   const qs = toQuery({
     departmentId: filters?.departmentId,
     status: filters?.status,
     clientId: filters?.clientId,
+    sharedWithMe: filters?.sharedWithMe ? "true" : undefined,
   });
   return useQuery({
-    queryKey: ["projects", filters?.departmentId, filters?.status, filters?.clientId],
+    queryKey: [
+      "projects",
+      filters?.departmentId,
+      filters?.status,
+      filters?.clientId,
+      filters?.sharedWithMe,
+    ],
     queryFn: async () => (await apiJson<BackendProject[]>(`/projects${qs}`)).map(mapProject),
   });
 }

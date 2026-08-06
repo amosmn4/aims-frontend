@@ -21,19 +21,20 @@ import {
   CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuth, homeRouteFor, ROLE_LABELS, type AppRole } from "@/lib/auth";
+import { useAuth, homeRouteFor, departmentScopeFor, ROLE_LABELS, type AppRole } from "@/lib/auth";
+import { buildDepartmentNav } from "@/lib/department-nav";
 import { useLayoutPreference } from "@/lib/layout-preference";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notification-bell";
 import { HeaderSearch } from "@/components/header-search";
 
-interface NavChild {
+export interface NavChild {
   to: string;
   label: string;
   role?: AppRole;
 }
 
-interface NavItem {
+export interface NavItem {
   to: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -189,7 +190,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isChildActive = (child: NavChild) =>
     location.pathname === child.to || location.pathname.startsWith(child.to + "/");
 
-  const visibleNav = NAV.filter((i) => !i.adminOnly || isAdminOrCeo);
+  // A user scoped to exactly one department (not admin/CEO) gets that department's own nav —
+  // Dashboard/domain-dropdown/Reports/Projects & Tasks/Calendar/Clients & Contracts/Documents,
+  // every item already scoped to just that department — instead of the global/central nav.
+  // Admin/CEO and anyone spanning multiple departments (or none) keep the nav below unchanged.
+  const departmentScope = departmentScopeFor(roles);
+  const visibleNav = departmentScope
+    ? buildDepartmentNav(departmentScope)
+    : NAV.filter((i) => !i.adminOnly || isAdminOrCeo);
 
   const LayoutToggle = (
     <button
