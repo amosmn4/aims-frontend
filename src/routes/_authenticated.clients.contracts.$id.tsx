@@ -1,15 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import {
-  Loader2,
-  Upload,
-  FileText,
-  Trash2,
-  Download,
-  AlertTriangle,
-  Calendar,
-} from "lucide-react";
+import { Loader2, Upload, FileText, Trash2, Download, AlertTriangle, Calendar } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import {
   useContract,
   useContractDocuments,
@@ -52,7 +45,11 @@ function buildContractRelated(
 ): RelatedRecordItem[] {
   const items: RelatedRecordItem[] = [];
   if (c.tender_id) {
-    items.push({ label: "Originating Tender", title: c.tender_title ?? "Tender", to: `/tender/${c.tender_id}` });
+    items.push({
+      label: "Originating Tender",
+      title: c.tender_title ?? "Tender",
+      to: `/tender/${c.tender_id}`,
+    });
   }
   if (c.client_request_id) {
     items.push({
@@ -70,14 +67,19 @@ function buildContractRelated(
   return items;
 }
 
-function buildContractBreadcrumb(c: NonNullable<ReturnType<typeof useContract>["data"]>): BreadcrumbSegment[] {
+function buildContractBreadcrumb(
+  c: NonNullable<ReturnType<typeof useContract>["data"]>,
+): BreadcrumbSegment[] {
   const segments: BreadcrumbSegment[] = [];
   if (c.tender_id) {
     segments.push({ label: "Tender Records", to: "/tender" });
     segments.push({ label: c.tender_title ?? "Tender", to: `/tender/${c.tender_id}` });
   } else if (c.client_request_id) {
     segments.push({ label: "Client Requests", to: "/requests" });
-    segments.push({ label: c.client_request_title ?? "Request", to: `/requests/${c.client_request_id}` });
+    segments.push({
+      label: c.client_request_title ?? "Request",
+      to: `/requests/${c.client_request_id}`,
+    });
   } else {
     segments.push({ label: "Contracts", to: "/clients/contracts" });
   }
@@ -157,7 +159,8 @@ function ContractDetail() {
   };
 
   const removeDoc = async (docId: string) => {
-    if (!confirm("Delete this document?")) return;
+    const ok = await confirmDialog({ description: "Delete this document?", destructive: true });
+    if (!ok) return;
     const doc = (docsQ.data ?? []).find((d) => d.id === docId);
     if (!doc) return;
     try {
@@ -206,7 +209,9 @@ function ContractDetail() {
             </div>
           </div>
           <div className="text-right">
-            <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">Value</div>
+            <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">
+              Value
+            </div>
             <div className="text-xl font-semibold tabular-nums">
               {formatCurrency(Number(c.value))}{" "}
               <span className="text-xs text-muted-foreground">{c.currency}</span>
@@ -235,7 +240,10 @@ function ContractDetail() {
         )}
       </div>
 
-      <RelatedRecords items={buildContractRelated(c, client?.name ?? null)} engagementTo={`/engagements/contract/${c.id}`} />
+      <RelatedRecords
+        items={buildContractRelated(c, client?.name ?? null)}
+        engagementTo={`/engagements/contract/${c.id}`}
+      />
 
       {/* Renewal / expiry timeline */}
       <RenewalTimeline startDate={c.start_date} endDate={c.end_date} autoRenew={c.auto_renew} />
@@ -402,7 +410,9 @@ function RenewalTimeline({
         <div className="text-sm font-semibold inline-flex items-center gap-1.5">
           <Calendar className="h-4 w-4 text-primary" /> Renewal / expiry timeline
         </div>
-        <span className={`text-[0.625rem] px-1.5 py-0.5 rounded ${info.className}`}>{info.label}</span>
+        <span className={`text-[0.625rem] px-1.5 py-0.5 rounded ${info.className}`}>
+          {info.label}
+        </span>
       </div>
 
       <div className="relative mt-3">

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { useAuth, homeRouteFor } from "@/lib/auth";
 import { ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -16,10 +16,7 @@ const searchSchema = z.object({
 export const Route = createFileRoute("/set-password")({
   validateSearch: searchSchema,
   head: () => ({
-    meta: [
-      { title: "Set your password — AIMS" },
-      { name: "robots", content: "noindex" },
-    ],
+    meta: [{ title: "Set your password — AIMS" }, { name: "robots", content: "noindex" }],
   }),
   component: SetPasswordPage,
 });
@@ -50,11 +47,7 @@ function SetPasswordPage() {
       toast.success("Password set — welcome to AIMS.");
       navigate({ to: homeRouteFor(roles) });
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : "This link is invalid or has expired.",
-      );
+      setError(err instanceof ApiError ? err.message : "This link is invalid or has expired.");
     } finally {
       setSubmitting(false);
     }
@@ -102,9 +95,8 @@ function SetPasswordPage() {
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
               <Label htmlFor="password">New password</Label>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -114,9 +106,8 @@ function SetPasswordPage() {
             </div>
             <div>
               <Label htmlFor="confirm">Confirm password</Label>
-              <Input
+              <PasswordInput
                 id="confirm"
-                type="password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 required

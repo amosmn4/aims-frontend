@@ -3,6 +3,7 @@ import { useState } from "react";
 import { z } from "zod";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import {
   useProject,
   useTasks,
@@ -151,13 +152,14 @@ function ProjectDetail() {
     );
   };
 
-  const handleDeleteProject = () => {
-    if (
-      !confirm(
-        `Delete "${project.name}"? This removes all its tasks, milestones and documents too.`,
-      )
-    )
-      return;
+  const handleDeleteProject = async () => {
+    const ok = await confirmDialog({
+      title: `Delete "${project.name}"?`,
+      description: "This removes all its tasks, milestones and documents too.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     deleteProject.mutate(project.id, {
       onSuccess: () => {
         toast.success("Project deleted");

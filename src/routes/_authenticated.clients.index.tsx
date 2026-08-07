@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { Loader2, Plus, Pencil, Trash2, Users, Mail, Phone, Star } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { useClients } from "@/features/finance/use-finance-data";
 import {
   useClientContacts,
@@ -132,7 +133,13 @@ function ClientsList() {
   };
 
   const remove = async (id: string, name: string) => {
-    if (!confirm(`Delete ${name}? Contracts referencing this client will block deletion.`)) return;
+    const ok = await confirmDialog({
+      title: `Delete ${name}?`,
+      description: "Contracts referencing this client will block deletion.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await del.mutateAsync(id);
       toast.success("Deleted");
@@ -405,7 +412,8 @@ function ContactsDialog({
 
   const remove = async (id: string) => {
     if (!client) return;
-    if (!confirm("Delete this contact?")) return;
+    const ok = await confirmDialog({ description: "Delete this contact?", destructive: true });
+    if (!ok) return;
     await del.mutateAsync({ id, client_id: client.id });
   };
 

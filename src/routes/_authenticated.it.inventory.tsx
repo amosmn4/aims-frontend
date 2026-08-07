@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   useInventoryItems,
@@ -140,8 +141,14 @@ function InventoryPage() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          onClick={() => {
-                            if (!window.confirm(`Remove "${item.device_name}"?`)) return;
+                          onClick={async () => {
+                            const ok = await confirmDialog({
+                              title: `Remove "${item.device_name}"?`,
+                              confirmLabel: "Remove",
+                              destructive: true,
+                              description: "This can't be undone.",
+                            });
+                            if (!ok) return;
                             deleteItem.mutate(item.id, {
                               onError: (err) =>
                                 toast.error(

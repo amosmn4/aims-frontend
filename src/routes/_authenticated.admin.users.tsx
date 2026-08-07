@@ -33,6 +33,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { Loader2, Plus, ShieldOff, Mail, KeyRound, Trash2 } from "lucide-react";
 import { usePagination, type PaginatedResponse } from "@/hooks/use-pagination";
 import { PaginationBar } from "@/components/pagination-bar";
@@ -80,8 +81,15 @@ const emptyCreateForm = {
 };
 
 function UsersAdmin() {
-  const { isAdminOrCeo, profile } = useAuth();
+  const { isAdminOrCeo, profile, hasRole } = useAuth();
   const qc = useQueryClient();
+
+  // The System Administrator role is seeded and self-managed — only someone who already holds
+  // it can see it as an option anywhere, including the CEO (who otherwise has full admin access
+  // everywhere else in AIMS). The backend enforces this independently (grants are rejected,
+  // system_admin users are excluded from the list entirely for any other viewer) — this just
+  // keeps the option from being offered in the UI to begin with.
+  const visibleRoles = ALL_ROLES.filter((r) => r !== "system_admin" || hasRole("system_admin"));
 
   const { page, pageSize, setPage, setPageSize } = usePagination(25);
 
@@ -201,8 +209,14 @@ function UsersAdmin() {
     onError: (err) => toast.error(err instanceof Error ? err.message : "Could not delete user"),
   });
 
-  const removeUser = (u: AdminUser) => {
-    if (!confirm(`Delete ${u.fullName || u.email}? This can't be undone.`)) return;
+  const removeUser = async (u: AdminUser) => {
+    const ok = await confirmDialog({
+      title: `Delete ${u.fullName || u.email}?`,
+      description: "This can't be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     deleteUserMutation.mutate(u.id);
   };
 
@@ -337,7 +351,7 @@ function UsersAdmin() {
                 <div>
                   <Label>Roles</Label>
                   <div className="mt-1 grid grid-cols-2 gap-2">
-                    {ALL_ROLES.map((r) => (
+                    {visibleRoles.map((r) => (
                       <label key={r} className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={createForm.roles.includes(r)}
@@ -440,11 +454,13 @@ function UsersAdmin() {
                           <SelectValue placeholder="Add role…" />
                         </SelectTrigger>
                         <SelectContent>
-                          {ALL_ROLES.filter((r) => !userRoles.includes(r)).map((r) => (
-                            <SelectItem key={r} value={r}>
-                              {ROLE_LABELS[r]}
-                            </SelectItem>
-                          ))}
+                          {visibleRoles
+                            .filter((r) => !userRoles.includes(r))
+                            .map((r) => (
+                              <SelectItem key={r} value={r}>
+                                {ROLE_LABELS[r]}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                     </TableCell>

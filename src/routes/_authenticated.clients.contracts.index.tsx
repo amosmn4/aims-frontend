@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { Loader2, Plus, Pencil, Trash2, ExternalLink, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import {
   useContracts,
@@ -177,7 +178,13 @@ function ContractsList() {
   };
 
   const remove = async (id: string, title: string) => {
-    if (!confirm(`Delete contract "${title}"? Attached documents will also be removed.`)) return;
+    const ok = await confirmDialog({
+      title: `Delete contract "${title}"?`,
+      description: "Attached documents will also be removed.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await del.mutateAsync(id);
       toast.success("Deleted");
@@ -196,7 +203,9 @@ function ContractsList() {
           <div className="text-base font-semibold tabular-nums">{totals.count}</div>
         </div>
         <div className="rounded-lg border bg-card p-3">
-          <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">Active</div>
+          <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">
+            Active
+          </div>
           <div className="text-base font-semibold tabular-nums">{totals.active}</div>
         </div>
         <div className="rounded-lg border bg-card p-3">

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { confirmDialog } from "@/components/confirm-dialog";
 import {
   useItSystems,
   useSaveItSystem,
@@ -97,7 +98,9 @@ function SystemsSites() {
                 <TableRow key={s.id}>
                   <TableCell>
                     <div className="font-medium">{s.name}</div>
-                    {s.notes && <div className="text-xs text-muted-foreground line-clamp-1">{s.notes}</div>}
+                    {s.notes && (
+                      <div className="text-xs text-muted-foreground line-clamp-1">{s.notes}</div>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm">{IT_SYSTEM_TYPE_LABELS[s.type]}</TableCell>
                   <TableCell>
@@ -115,10 +118,19 @@ function SystemsSites() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          onClick={() => {
-                            if (!window.confirm(`Remove "${s.name}"?`)) return;
+                          onClick={async () => {
+                            const ok = await confirmDialog({
+                              title: `Remove "${s.name}"?`,
+                              confirmLabel: "Remove",
+                              destructive: true,
+                              description: "This can't be undone.",
+                            });
+                            if (!ok) return;
                             deleteSystem.mutate(s.id, {
-                              onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                              onError: (err) =>
+                                toast.error(
+                                  err instanceof Error ? err.message : "Failed to delete",
+                                ),
                             });
                           }}
                         >
@@ -169,7 +181,14 @@ function EditSystemForm({ value, onDone }: { value: ItSystemRow | null; onDone: 
       return;
     }
     save.mutate(
-      { id: value?.id, name: name.trim(), type, status, owner: owner || undefined, notes: notes || undefined },
+      {
+        id: value?.id,
+        name: name.trim(),
+        type,
+        status,
+        owner: owner || undefined,
+        notes: notes || undefined,
+      },
       {
         onSuccess: () => {
           toast.success(value ? "Updated" : "Added");
@@ -188,7 +207,11 @@ function EditSystemForm({ value, onDone }: { value: ItSystemRow | null; onDone: 
       <div className="space-y-3">
         <div>
           <Label>Name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. amsol.com" />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. amsol.com"
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -224,7 +247,11 @@ function EditSystemForm({ value, onDone }: { value: ItSystemRow | null; onDone: 
         </div>
         <div>
           <Label>Owner (optional)</Label>
-          <Input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="Who's responsible for this" />
+          <Input
+            value={owner}
+            onChange={(e) => setOwner(e.target.value)}
+            placeholder="Who's responsible for this"
+          />
         </div>
         <div>
           <Label>Notes</Label>

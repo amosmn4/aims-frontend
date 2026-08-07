@@ -44,6 +44,7 @@ import { AttachmentsPanel } from "@/features/documents/attachments-panel";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 
 export const Route = createFileRoute("/_authenticated/finance/reports/$id")({
   head: () => ({ meta: [{ title: "Report — AIMS" }] }),
@@ -174,7 +175,8 @@ function ReportDetail() {
     }
   };
   const remove = async () => {
-    if (!confirm("Delete this draft report?")) return;
+    const ok = await confirmDialog({ description: "Delete this draft report?", destructive: true });
+    if (!ok) return;
     await del.mutateAsync(r.id);
     toast.success("Deleted");
     navigate({ to: "/finance/reports" });

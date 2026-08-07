@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { AuthProvider } from "@/lib/auth";
 import { LayoutPreferenceProvider } from "@/lib/layout-preference";
 import { Toaster } from "@/components/ui/sonner";
+import { ConfirmDialogHost } from "@/components/confirm-dialog";
 
 function NotFoundComponent() {
   return (
@@ -133,6 +134,7 @@ function RootComponent() {
         <LayoutPreferenceProvider>
           <Outlet />
           <Toaster richColors position="top-right" />
+          <ConfirmDialogHost />
         </LayoutPreferenceProvider>
       </AuthProvider>
     </QueryClientProvider>

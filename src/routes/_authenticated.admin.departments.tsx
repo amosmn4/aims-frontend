@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { Loader2, Plus, ShieldOff, Trash2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin/departments")({
@@ -119,9 +120,14 @@ function DepartmentsAdmin() {
       toast.error(err instanceof Error ? err.message : "Failed to delete department"),
   });
 
-  const removeDep = (id: string, name: string) => {
-    if (!confirm(`Delete ${name}? Departments with any projects or tenders can't be deleted.`))
-      return;
+  const removeDep = async (id: string, name: string) => {
+    const ok = await confirmDialog({
+      title: `Delete ${name}?`,
+      description: "Departments with any projects or tenders can't be deleted.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     deleteDepMutation.mutate(id);
   };
 
@@ -148,8 +154,14 @@ function DepartmentsAdmin() {
       toast.error(err instanceof Error ? err.message : "Failed to delete service line"),
   });
 
-  const removeServiceLine = (id: string, name: string) => {
-    if (!confirm(`Delete "${name}"? Invoices/contracts referencing it keep their history.`)) return;
+  const removeServiceLine = async (id: string, name: string) => {
+    const ok = await confirmDialog({
+      title: `Delete "${name}"?`,
+      description: "Invoices/contracts referencing it keep their history.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     deleteServiceLineMutation.mutate(id);
   };
 

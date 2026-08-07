@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   useHrmsLicenses,
@@ -102,7 +103,9 @@ function HrmsClients() {
                   <TableRow key={l.id}>
                     <TableCell>
                       <div className="font-medium">{l.client.name}</div>
-                      {l.notes && <div className="text-xs text-muted-foreground line-clamp-1">{l.notes}</div>}
+                      {l.notes && (
+                        <div className="text-xs text-muted-foreground line-clamp-1">{l.notes}</div>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm">{HRMS_LICENSE_TIER_LABELS[l.tier]}</TableCell>
                     <TableCell>
@@ -110,7 +113,9 @@ function HrmsClients() {
                         {HRMS_LICENSE_STATUS_LABELS[l.status]}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{l.activeUsers ?? "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {l.activeUsers ?? "—"}
+                    </TableCell>
                     <TableCell>
                       <Badge className={renewal.className} variant="secondary">
                         {renewal.label}
@@ -125,11 +130,19 @@ function HrmsClients() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            onClick={() => {
-                              if (!window.confirm(`Remove license for "${l.client.name}"?`)) return;
+                            onClick={async () => {
+                              const ok = await confirmDialog({
+                                title: `Remove license for "${l.client.name}"?`,
+                                confirmLabel: "Remove",
+                                destructive: true,
+                                description: "This can't be undone.",
+                              });
+                              if (!ok) return;
                               deleteLicense.mutate(l.id, {
                                 onError: (err) =>
-                                  toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                                  toast.error(
+                                    err instanceof Error ? err.message : "Failed to delete",
+                                  ),
                               });
                             }}
                           >
@@ -269,7 +282,11 @@ function EditLicenseForm({ value, onDone }: { value: HrmsLicenseRow | null; onDo
           </div>
           <div>
             <Label>Renewal date</Label>
-            <Input type="date" value={renewalDate} onChange={(e) => setRenewalDate(e.target.value)} />
+            <Input
+              type="date"
+              value={renewalDate}
+              onChange={(e) => setRenewalDate(e.target.value)}
+            />
           </div>
         </div>
         <div>

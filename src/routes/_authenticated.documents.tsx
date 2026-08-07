@@ -60,17 +60,15 @@ export function DocumentsLibrary({
   const [view, setView] = useState<"mine" | "shared">("mine");
   const scoped = !!lockedDepartmentId;
 
+  // Scoped (department-embedded) use only ever happens for a non-admin/CEO viewer — admin/CEO
+  // use the unscoped central library below instead — so "mine" here can mean what it says:
+  // documents this person actually uploaded, not "everything in my department" (that was the
+  // old behavior, and it meant no department user ever had a truly personal view).
   const documentsQ = useDocuments({
     resourceType: resourceType === "all" ? undefined : resourceType,
-    departmentId: scoped
-      ? view === "mine"
-        ? lockedDepartmentId
-        : undefined
-      : departmentId === "all"
-        ? undefined
-        : departmentId,
+    departmentId: scoped ? undefined : departmentId === "all" ? undefined : departmentId,
     q: q.trim() || undefined,
-    mine: scoped ? false : mine,
+    mine: scoped ? view === "mine" : mine,
     sharedWithMe: scoped && view === "shared",
   });
   const departmentsQ = useDepartments();
@@ -91,7 +89,7 @@ export function DocumentsLibrary({
           <h1 className="text-lg font-semibold">Documents</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             {scoped
-              ? "Everything attached to your department's projects, tasks and records."
+              ? "Documents you've uploaded, plus anything specifically shared with you."
               : "Central library for everything attached across Projects, Tasks, Finance Reports and Contracts."}
           </p>
         </div>
@@ -111,7 +109,7 @@ export function DocumentsLibrary({
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {v === "mine" ? "My department" : "Shared with me"}
+              {v === "mine" ? "My documents" : "Shared with me"}
             </button>
           ))}
         </div>

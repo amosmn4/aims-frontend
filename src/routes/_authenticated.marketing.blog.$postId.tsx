@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { ArrowLeft, Loader2, Upload } from "lucide-react";
 import {
   useBlogPost,
@@ -77,7 +78,10 @@ function BlogEditor() {
         excerpt,
         content,
         author_name: authorName,
-        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        tags: tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
       },
       {
         onSuccess: () => toast.success("Saved"),
@@ -131,7 +135,8 @@ function BlogEditor() {
                 onClick={() =>
                   publish.mutate(post.id, {
                     onSuccess: () => toast.success("Published"),
-                    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to publish"),
+                    onError: (err) =>
+                      toast.error(err instanceof Error ? err.message : "Failed to publish"),
                   })
                 }
               >
@@ -146,7 +151,8 @@ function BlogEditor() {
                 onClick={() =>
                   unpublish.mutate(post.id, {
                     onSuccess: () => toast.success("Unpublished"),
-                    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to unpublish"),
+                    onError: (err) =>
+                      toast.error(err instanceof Error ? err.message : "Failed to unpublish"),
                   })
                 }
               >
@@ -158,11 +164,17 @@ function BlogEditor() {
               size="sm"
               variant="ghost"
               className="text-destructive"
-              onClick={() => {
-                if (!window.confirm("Delete this post permanently?")) return;
+              onClick={async () => {
+                const ok = await confirmDialog({
+                  description: "Delete this post permanently?",
+                  confirmLabel: "Delete",
+                  destructive: true,
+                });
+                if (!ok) return;
                 deletePost.mutate(post.id, {
                   onSuccess: () => toast.success("Post deleted"),
-                  onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                  onError: (err) =>
+                    toast.error(err instanceof Error ? err.message : "Failed to delete"),
                 });
               }}
             >
@@ -177,7 +189,11 @@ function BlogEditor() {
           <div className="rounded-lg border bg-card p-4 space-y-3">
             <div>
               <Label>Title</Label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} disabled={!canManage} />
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                disabled={!canManage}
+              />
             </div>
             <div>
               <Label>Excerpt</Label>
@@ -202,11 +218,21 @@ function BlogEditor() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Tags (comma-separated)</Label>
-                <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="payroll, compliance, kenya" disabled={!canManage} />
+                <Input
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                  placeholder="payroll, compliance, kenya"
+                  disabled={!canManage}
+                />
               </div>
               <div>
                 <Label>Author name (optional)</Label>
-                <Input value={authorName} onChange={(e) => setAuthorName(e.target.value)} placeholder="AMSOL Marketing Team" disabled={!canManage} />
+                <Input
+                  value={authorName}
+                  onChange={(e) => setAuthorName(e.target.value)}
+                  placeholder="AMSOL Marketing Team"
+                  disabled={!canManage}
+                />
               </div>
             </div>
             {canManage && (
@@ -222,7 +248,11 @@ function BlogEditor() {
           <div className="rounded-lg border bg-card p-4">
             <h2 className="text-sm font-semibold mb-2">Image</h2>
             {imagePreviewUrl ? (
-              <img src={imagePreviewUrl} alt={post.title} className="w-full rounded-md border object-cover aspect-video" />
+              <img
+                src={imagePreviewUrl}
+                alt={post.title}
+                className="w-full rounded-md border object-cover aspect-video"
+              />
             ) : (
               <div className="aspect-video rounded-md border border-dashed flex items-center justify-center text-xs text-muted-foreground">
                 No image
@@ -230,7 +260,13 @@ function BlogEditor() {
             )}
             {canManage && (
               <>
-                <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={onFileChange} />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={onFileChange}
+                />
                 <Button
                   size="sm"
                   variant="outline"
@@ -238,7 +274,11 @@ function BlogEditor() {
                   disabled={uploadImage.isPending}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  {uploadImage.isPending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Upload className="h-4 w-4 mr-1.5" />}
+                  {uploadImage.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-1.5" />
+                  )}
                   {post.has_image ? "Replace image" : "Upload image"}
                 </Button>
               </>
@@ -248,7 +288,11 @@ function BlogEditor() {
           <div className="rounded-lg border bg-card p-4">
             <h2 className="text-sm font-semibold mb-2">Video (optional hero)</h2>
             {videoPreviewUrl ? (
-              <video src={videoPreviewUrl} controls className="w-full rounded-md border aspect-video" />
+              <video
+                src={videoPreviewUrl}
+                controls
+                className="w-full rounded-md border aspect-video"
+              />
             ) : (
               <div className="aspect-video rounded-md border border-dashed flex items-center justify-center text-xs text-muted-foreground">
                 No video
@@ -256,7 +300,13 @@ function BlogEditor() {
             )}
             {canManage && (
               <>
-                <input ref={videoInputRef} type="file" accept="video/mp4,video/webm" className="hidden" onChange={onVideoFileChange} />
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/mp4,video/webm"
+                  className="hidden"
+                  onChange={onVideoFileChange}
+                />
                 <Button
                   size="sm"
                   variant="outline"
@@ -264,11 +314,16 @@ function BlogEditor() {
                   disabled={uploadVideo.isPending}
                   onClick={() => videoInputRef.current?.click()}
                 >
-                  {uploadVideo.isPending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Upload className="h-4 w-4 mr-1.5" />}
+                  {uploadVideo.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-1.5" />
+                  )}
                   {post.has_video ? "Replace video" : "Upload video"}
                 </Button>
                 <p className="text-[11px] text-muted-foreground mt-1.5">
-                  When present, the site should show this instead of the cover image, using the cover as the video poster.
+                  When present, the site should show this instead of the cover image, using the
+                  cover as the video poster.
                 </p>
               </>
             )}

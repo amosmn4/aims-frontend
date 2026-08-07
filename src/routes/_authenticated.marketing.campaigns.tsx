@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   useCampaigns,
@@ -46,8 +47,7 @@ export const Route = createFileRoute("/_authenticated/marketing/campaigns")({
   component: Campaigns,
 });
 
-const currency = (n: number) =>
-  n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+const currency = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
 function RoiCell({ campaignId, hasBudget }: { campaignId: string; hasBudget: boolean }) {
   const roiQ = useCampaignRoi(campaignId);
@@ -66,7 +66,11 @@ function RoiCell({ campaignId, hasBudget }: { campaignId: string; hasBudget: boo
     <div className="flex items-center gap-2">
       <Badge
         variant="secondary"
-        className={pct !== null && pct >= 0 ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"}
+        className={
+          pct !== null && pct >= 0
+            ? "bg-success/15 text-success"
+            : "bg-destructive/15 text-destructive"
+        }
       >
         {pct !== null ? `${pct >= 0 ? "+" : ""}${pct}%` : "—"}
       </Badge>
@@ -127,9 +131,13 @@ function Campaigns() {
                 <TableRow key={c.id}>
                   <TableCell>
                     <div className="font-medium">{c.name}</div>
-                    {c.notes && <div className="text-xs text-muted-foreground line-clamp-1">{c.notes}</div>}
+                    {c.notes && (
+                      <div className="text-xs text-muted-foreground line-clamp-1">{c.notes}</div>
+                    )}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{c.channel ?? "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {c.channel ?? "—"}
+                  </TableCell>
                   <TableCell>
                     <Badge className={CAMPAIGN_STATUS_STYLES[c.status]} variant="secondary">
                       {CAMPAIGN_STATUS_LABELS[c.status]}
@@ -150,11 +158,19 @@ function Campaigns() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          onClick={() => {
-                            if (!window.confirm(`Remove "${c.name}"?`)) return;
+                          onClick={async () => {
+                            const ok = await confirmDialog({
+                              title: `Remove "${c.name}"?`,
+                              confirmLabel: "Remove",
+                              destructive: true,
+                              description: "This can't be undone.",
+                            });
+                            if (!ok) return;
                             deleteCampaign.mutate(c.id, {
                               onError: (err) =>
-                                toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                                toast.error(
+                                  err instanceof Error ? err.message : "Failed to delete",
+                                ),
                             });
                           }}
                         >
@@ -235,12 +251,20 @@ function EditCampaignForm({ value, onDone }: { value: CampaignRow | null; onDone
       <div className="space-y-3">
         <div>
           <Label>Name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Q3 LinkedIn Push" />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Q3 LinkedIn Push"
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Channel</Label>
-            <Input value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="LinkedIn, Email…" />
+            <Input
+              value={channel}
+              onChange={(e) => setChannel(e.target.value)}
+              placeholder="LinkedIn, Email…"
+            />
           </div>
           <div>
             <Label>Status</Label>

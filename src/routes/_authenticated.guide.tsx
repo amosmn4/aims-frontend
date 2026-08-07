@@ -7,10 +7,12 @@ import {
   Megaphone,
   FileText,
   Crown,
+  ClipboardList,
   ArrowRight,
   ArrowDown,
 } from "lucide-react";
 import { PageHeader } from "@/components/app-shell";
+import { useAuth, departmentScopeFor } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 const searchSchema = z.object({
@@ -21,6 +23,7 @@ const searchSchema = z.object({
       z.literal("hr"),
       z.literal("it"),
       z.literal("marketing"),
+      z.literal("operations"),
       z.literal("ceo_admin"),
     ])
     .optional(),
@@ -34,7 +37,7 @@ export const Route = createFileRoute("/_authenticated/guide")({
   component: GuidePage,
 });
 
-type RoleKey = "tender" | "finance" | "hr" | "it" | "marketing" | "ceo_admin";
+type RoleKey = "tender" | "finance" | "hr" | "it" | "marketing" | "operations" | "ceo_admin";
 
 interface Step {
   label: string;
@@ -60,16 +63,59 @@ const ROLES: RoleGuide[] = [
     intro:
       "You run two things: AMSOL's bid pipeline, and the front door for every inbound client request. Both are pre-project pipelines that hand off to a delivering department once won.",
     steps: [
-      { label: "Identify", description: "Log a new opportunity onto the Tender Pipeline board.", to: "/pipeline/tenders" },
-      { label: "Prepare Application", description: "Work the requirements checklist — the board shows live % complete.", to: "/pipeline/tenders" },
-      { label: "Submit", description: "Move the card to Submitted once the bid is in.", to: "/pipeline/tenders" },
-      { label: "Under Evaluation", description: "Wait on the client's decision. Drop out (Lost/Withdrawn, with a reason) at any point via the card's quick action.", to: "/pipeline/tenders" },
-      { label: "Awarded", description: "Won — forward it to the delivering department.", to: "/pipeline/tenders" },
-      { label: "Becomes a Project", description: "The delivering department now runs it as a Project.", to: "/pipeline/projects" },
-      { label: "Full tender record", description: "Resources, financials and requirement templates live on the tender's own page.", to: "/tender" },
-      { label: "Client request intake", description: "Also log and route every inbound client request here — the other pre-project pipeline you own.", to: "/pipeline/engagements" },
-      { label: "Route to department", description: "Assign it to whichever department owns that service.", to: "/pipeline/engagements" },
-      { label: "Won → Project", description: "Onboard as a client or convert straight to a Project once won.", to: "/pipeline/engagements" },
+      {
+        label: "Identify",
+        description: "Log a new opportunity onto the Tender Pipeline board.",
+        to: "/pipeline/tenders",
+      },
+      {
+        label: "Prepare Application",
+        description: "Work the requirements checklist — the board shows live % complete.",
+        to: "/pipeline/tenders",
+      },
+      {
+        label: "Submit",
+        description: "Move the card to Submitted once the bid is in.",
+        to: "/pipeline/tenders",
+      },
+      {
+        label: "Under Evaluation",
+        description:
+          "Wait on the client's decision. Drop out (Lost/Withdrawn, with a reason) at any point via the card's quick action.",
+        to: "/pipeline/tenders",
+      },
+      {
+        label: "Awarded",
+        description: "Won — forward it to the delivering department.",
+        to: "/pipeline/tenders",
+      },
+      {
+        label: "Becomes a Project",
+        description: "The delivering department now runs it as a Project.",
+        to: "/pipeline/projects",
+      },
+      {
+        label: "Full tender record",
+        description:
+          "Resources, financials and requirement templates live on the tender's own page.",
+        to: "/tender",
+      },
+      {
+        label: "Client request intake",
+        description:
+          "Also log and route every inbound client request here — the other pre-project pipeline you own.",
+        to: "/pipeline/engagements",
+      },
+      {
+        label: "Route to department",
+        description: "Assign it to whichever department owns that service.",
+        to: "/pipeline/engagements",
+      },
+      {
+        label: "Won → Project",
+        description: "Onboard as a client or convert straight to a Project once won.",
+        to: "/pipeline/engagements",
+      },
     ],
   },
   {
@@ -80,12 +126,36 @@ const ROLES: RoleGuide[] = [
     intro:
       "You bill clients, collect what's owed, and give the CEO visibility into revenue, margin and compliance.",
     steps: [
-      { label: "Invoices & Billing", description: "Raise and track invoices against contracts and projects.", to: "/finance/invoices" },
-      { label: "Debtors", description: "Chase outstanding and overdue balances.", to: "/finance/debtors" },
-      { label: "Revenue & Margin", description: "Recurring vs one-off revenue, gross margin by service line.", to: "/finance/revenue" },
-      { label: "Budgets", description: "Set department and project budgets.", to: "/finance/budgets" },
-      { label: "Payroll Compliance", description: "Track statutory filing deadlines for clients.", to: "/finance/payroll-compliance" },
-      { label: "Reports to CEO", description: "Submit a narrative report for executive visibility.", to: "/finance/reports" },
+      {
+        label: "Invoices & Billing",
+        description: "Raise and track invoices against contracts and projects.",
+        to: "/finance/invoices",
+      },
+      {
+        label: "Debtors",
+        description: "Chase outstanding and overdue balances.",
+        to: "/finance/debtors",
+      },
+      {
+        label: "Revenue & Margin",
+        description: "Recurring vs one-off revenue, gross margin by service line.",
+        to: "/finance/revenue",
+      },
+      {
+        label: "Budgets",
+        description: "Set department and project budgets.",
+        to: "/finance/budgets",
+      },
+      {
+        label: "Payroll Compliance",
+        description: "Track statutory filing deadlines for clients.",
+        to: "/finance/payroll-compliance",
+      },
+      {
+        label: "Reports to CEO",
+        description: "Submit a narrative report for executive visibility.",
+        to: "/finance/reports",
+      },
     ],
   },
   {
@@ -96,10 +166,29 @@ const ROLES: RoleGuide[] = [
     intro:
       "AMSOL's HR team doesn't manage AMSOL's own staff — you deliver AMSOL's HR service lines (salary surveys, recruitment, training, HRMS, retainers) to clients.",
     steps: [
-      { label: "Win the engagement", description: "Salary surveys, recruitment, training and retainer work start as Tenders or Client Requests routed to HR.", to: "/pipeline/tenders" },
-      { label: "Deliver as a Project", description: "Once won, it becomes a Project with tasks, milestones and a team.", to: "/projects" },
-      { label: "Run recruitment delivery", description: "For Recruitment-service engagements, track candidates you're sourcing for the client's open role.", to: "/hr/recruitment" },
-      { label: "HR Overview", description: "See every active HR engagement, pipeline value and the breakdown by service line.", to: "/hr" },
+      {
+        label: "Win the engagement",
+        description:
+          "Salary surveys, recruitment, training and retainer work start as Tenders or Client Requests routed to HR.",
+        to: "/pipeline/tenders",
+      },
+      {
+        label: "Deliver as a Project",
+        description: "Once won, it becomes a Project with tasks, milestones and a team.",
+        to: "/projects",
+      },
+      {
+        label: "Run recruitment delivery",
+        description:
+          "For Recruitment-service engagements, track candidates you're sourcing for the client's open role.",
+        to: "/hr/recruitment",
+      },
+      {
+        label: "HR Overview",
+        description:
+          "See every active HR engagement, pipeline value and the breakdown by service line.",
+        to: "/hr",
+      },
     ],
   },
   {
@@ -110,10 +199,27 @@ const ROLES: RoleGuide[] = [
     intro:
       "You deliver systems and HRMS-licensing engagements, keep AMSOL's own infrastructure running, and build/manage the company website and internal systems.",
     steps: [
-      { label: "Win the engagement", description: "HRMS licensing and systems work start as Tenders or Client Requests routed to IT.", to: "/pipeline/tenders" },
-      { label: "Deliver as a Project", description: "Implementation/rollout work runs as a Project — tasks, Gantt timeline, team.", to: "/projects" },
-      { label: "Register what you maintain", description: "Track every website, internal system and integration IT is responsible for.", to: "/it/systems-sites" },
-      { label: "IT Overview", description: "Active projects, open tasks and a status breakdown of everything registered.", to: "/it" },
+      {
+        label: "Win the engagement",
+        description:
+          "HRMS licensing and systems work start as Tenders or Client Requests routed to IT.",
+        to: "/pipeline/tenders",
+      },
+      {
+        label: "Deliver as a Project",
+        description: "Implementation/rollout work runs as a Project — tasks, Gantt timeline, team.",
+        to: "/projects",
+      },
+      {
+        label: "Register what you maintain",
+        description: "Track every website, internal system and integration IT is responsible for.",
+        to: "/it/systems-sites",
+      },
+      {
+        label: "IT Overview",
+        description: "Active projects, open tasks and a status breakdown of everything registered.",
+        to: "/it",
+      },
     ],
   },
   {
@@ -124,13 +230,73 @@ const ROLES: RoleGuide[] = [
     intro:
       "You generate and nurture leads, then hand qualified ones to Tender to become a real client request — plus you track how the website is performing.",
     steps: [
-      { label: "New Lead", description: "Log a lead as it comes in — website, referral, campaign, event.", to: "/marketing/leads" },
-      { label: "Contact → Qualify", description: "Work it through follow-ups, logged against the lead.", to: "/marketing/leads" },
-      { label: "Nurture or drop", description: "Keep nurturing, or mark it Lost if it's not going anywhere.", to: "/marketing/leads" },
-      { label: "Convert", description: "Once it's sales-ready, convert it into a Client Request — from there it's Tender's intake pipeline.", to: "/marketing/leads" },
-      { label: "Website Analytics", description: "Visitors, page views and top sources for the company website.", to: "/marketing/website-analytics" },
-      { label: "Write a blog post", description: "Draft, publish and track engagement (views, likes, shares, time spent) on posts served to the company website.", to: "/marketing/blog" },
-      { label: "Marketing Overview", description: "Leads, conversion rate and website performance in one place.", to: "/marketing" },
+      {
+        label: "New Lead",
+        description: "Log a lead as it comes in — website, referral, campaign, event.",
+        to: "/marketing/leads",
+      },
+      {
+        label: "Contact → Qualify",
+        description: "Work it through follow-ups, logged against the lead.",
+        to: "/marketing/leads",
+      },
+      {
+        label: "Nurture or drop",
+        description: "Keep nurturing, or mark it Lost if it's not going anywhere.",
+        to: "/marketing/leads",
+      },
+      {
+        label: "Convert",
+        description:
+          "Once it's sales-ready, convert it into a Client Request — from there it's Tender's intake pipeline.",
+        to: "/marketing/leads",
+      },
+      {
+        label: "Website Analytics",
+        description: "Visitors, page views and top sources for the company website.",
+        to: "/marketing/website-analytics",
+      },
+      {
+        label: "Write a blog post",
+        description:
+          "Draft, publish and track engagement (views, likes, shares, time spent) on posts served to the company website.",
+        to: "/marketing/blog",
+      },
+      {
+        label: "Marketing Overview",
+        description: "Leads, conversion rate and website performance in one place.",
+        to: "/marketing",
+      },
+    ],
+  },
+  {
+    key: "operations",
+    title: "Operations",
+    icon: ClipboardList,
+    accent: "bg-primary/10 text-primary",
+    intro:
+      "You handle inbound client requests that don't route through Tender's bid pipeline — intake, assignment and hand-off to the delivering department.",
+    steps: [
+      {
+        label: "Client request intake",
+        description: "Log a new inbound request as it comes in.",
+        to: "/operations/requests",
+      },
+      {
+        label: "Route to department",
+        description: "Assign it to whichever department owns that service.",
+        to: "/operations/requests",
+      },
+      {
+        label: "Won → Project",
+        description: "Onboard as a client or convert straight to a Project once won.",
+        to: "/operations/requests",
+      },
+      {
+        label: "Operations Overview",
+        description: "Every active request and where it stands.",
+        to: "/operations",
+      },
     ],
   },
   {
@@ -141,9 +307,21 @@ const ROLES: RoleGuide[] = [
     intro:
       "You see everything: revenue, pipeline, margin, every department's numbers — and you manage who has access to what.",
     steps: [
-      { label: "Executive Dashboard", description: "Revenue vs target, pipeline funnels, margin, alerts — all at a glance.", to: "/dashboard" },
-      { label: "Departments", description: "Drill into any department's clients and contracts.", to: "/departments" },
-      { label: "Reports", description: "Narrative reports submitted by each department.", to: "/reports" },
+      {
+        label: "Executive Dashboard",
+        description: "Revenue vs target, pipeline funnels, margin, alerts — all at a glance.",
+        to: "/dashboard",
+      },
+      {
+        label: "Departments",
+        description: "Drill into any department's clients and contracts.",
+        to: "/departments",
+      },
+      {
+        label: "Reports",
+        description: "Narrative reports submitted by each department.",
+        to: "/reports",
+      },
       { label: "Admin", description: "Manage users, roles and departments.", to: "/admin/users" },
     ],
   },
@@ -163,7 +341,9 @@ function FlowDiagram({ steps, accent }: { steps: Step[]; accent: string }) {
           >
             {s.label}
           </Link>
-          {i < steps.length - 1 && <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+          {i < steps.length - 1 && (
+            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          )}
         </div>
       ))}
     </div>
@@ -175,7 +355,12 @@ function RoleWalkthrough({ role }: { role: RoleGuide }) {
   return (
     <div className="space-y-5">
       <div className="flex items-start gap-3">
-        <div className={cn("h-10 w-10 rounded-md flex items-center justify-center shrink-0", role.accent)}>
+        <div
+          className={cn(
+            "h-10 w-10 rounded-md flex items-center justify-center shrink-0",
+            role.accent,
+          )}
+        >
           <Icon className="h-5 w-5" />
         </div>
         <div>
@@ -259,17 +444,49 @@ function SystemMap() {
 
       <p className="text-xs text-muted-foreground pt-2 border-t">
         Every department (Finance, HR, IT, Marketing &amp; Operations, Tender) owns tenders,
-        requests and projects the same way — only the service lines and who's assigned differ.
-        The Pipeline board shows the pre-project stages; Projects &amp; Tasks and the individual
-        Project Workspace show delivery; Finance shows the money.
+        requests and projects the same way — only the service lines and who's assigned differ. The
+        Pipeline board shows the pre-project stages; Projects &amp; Tasks and the individual Project
+        Workspace show delivery; Finance shows the money.
       </p>
     </div>
   );
 }
 
+// Department code and guide RoleKey line up 1:1 for every department except ceo_admin (which
+// isn't a department at all) — this is the only place that mapping needs to be spelled out.
+const SCOPE_TO_ROLE_KEY: Record<string, RoleKey> = {
+  finance: "finance",
+  hr: "hr",
+  it: "it",
+  marketing: "marketing",
+  tender: "tender",
+  operations: "operations",
+};
+
 function GuidePage() {
   const { role } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const { roles, isAdminOrCeo } = useAuth();
+
+  // CEO/system_admin see the whole map and every role's walkthrough, same as before. Everyone
+  // else — someone with exactly one department role — only ever sees their own: no tab
+  // switcher, no company-wide system map, no peeking at another department's flow.
+  const scope = isAdminOrCeo ? null : departmentScopeFor(roles);
+  const scopedRoleKey = scope ? SCOPE_TO_ROLE_KEY[scope] : null;
+  const scopedGuide = scopedRoleKey ? (ROLES.find((r) => r.key === scopedRoleKey) ?? null) : null;
+
+  if (scopedGuide) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="How AIMS Works"
+          description="How your work flows through the system, with direct links to every real screen."
+        />
+        <RoleWalkthrough role={scopedGuide} />
+      </div>
+    );
+  }
+
   const selected = ROLES.find((r) => r.key === role) ?? null;
 
   return (

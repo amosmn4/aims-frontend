@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import {
   Table,
   TableBody,
@@ -44,7 +45,8 @@ function BudgetsPage() {
   const deleteBudget = useDeleteBudget();
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this budget?")) return;
+    const ok = await confirmDialog({ description: "Delete this budget?", destructive: true });
+    if (!ok) return;
     try {
       await deleteBudget.mutateAsync(id);
       toast.success("Budget deleted");
