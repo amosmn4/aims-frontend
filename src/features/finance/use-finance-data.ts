@@ -15,6 +15,8 @@ export type ServiceLine = {
   id: string;
   code: string;
   name: string;
+  department_id: string;
+  department_name: string;
   is_recurring: boolean;
   is_active: boolean;
   sort_order: number;
@@ -49,6 +51,7 @@ type BackendServiceLine = {
   id: string;
   code: string;
   name: string;
+  department: { id: string; code: string; name: string };
   isRecurring: boolean;
   isActive: boolean;
   sortOrder: number;
@@ -59,6 +62,8 @@ function mapServiceLine(s: BackendServiceLine): ServiceLine {
     id: s.id,
     code: s.code,
     name: s.name,
+    department_id: s.department.id,
+    department_name: s.department.name,
     is_recurring: s.isRecurring,
     is_active: s.isActive,
     sort_order: s.sortOrder,

@@ -24,6 +24,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Loader2, Plus, ShieldOff, Trash2 } from "lucide-react";
 
@@ -51,6 +59,14 @@ type Office = {
   isHq: boolean;
 };
 
+type ServiceLine = {
+  id: string;
+  code: string;
+  name: string;
+  isRecurring: boolean;
+  department: { id: string; code: string; name: string };
+};
+
 function DepartmentsAdmin() {
   const { isAdminOrCeo } = useAuth();
   const qc = useQueryClient();
@@ -64,6 +80,12 @@ function DepartmentsAdmin() {
   const officesQ = useQuery({
     queryKey: ["offices", "admin"],
     queryFn: () => apiJson<Office[]>("/offices"),
+    enabled: isAdminOrCeo,
+  });
+
+  const serviceLinesQ = useQuery({
+    queryKey: ["service-lines", "admin"],
+    queryFn: () => apiJson<ServiceLine[]>("/service-lines"),
     enabled: isAdminOrCeo,
   });
 
@@ -103,6 +125,34 @@ function DepartmentsAdmin() {
     deleteDepMutation.mutate(id);
   };
 
+  const addServiceLineMutation = useMutation({
+    mutationFn: (dto: { code: string; name: string; departmentId: string; isRecurring: boolean }) =>
+      apiJson("/service-lines", { method: "POST", body: JSON.stringify(dto) }),
+    onSuccess: () => {
+      toast.success("Service line added");
+      qc.invalidateQueries({ queryKey: ["service-lines"] });
+      qc.invalidateQueries({ queryKey: ["finance", "service_lines"] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : "Failed to add service line"),
+  });
+
+  const deleteServiceLineMutation = useMutation({
+    mutationFn: (id: string) => apiJson(`/service-lines/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Service line deleted");
+      qc.invalidateQueries({ queryKey: ["service-lines"] });
+      qc.invalidateQueries({ queryKey: ["finance", "service_lines"] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : "Failed to delete service line"),
+  });
+
+  const removeServiceLine = (id: string, name: string) => {
+    if (!confirm(`Delete "${name}"? Invoices/contracts referencing it keep their history.`)) return;
+    deleteServiceLineMutation.mutate(id);
+  };
+
   const [depOpen, setDepOpen] = useState(false);
   const [depForm, setDepForm] = useState({ code: "", name: "", description: "" });
   const [officeOpen, setOfficeOpen] = useState(false);
@@ -111,6 +161,13 @@ function DepartmentsAdmin() {
     country: "",
     city: "",
     currencyCode: "KES",
+  });
+  const [slOpen, setSlOpen] = useState(false);
+  const [slForm, setSlForm] = useState({
+    code: "",
+    name: "",
+    departmentId: "",
+    isRecurring: false,
   });
 
   if (!isAdminOrCeo) {
@@ -145,11 +202,21 @@ function DepartmentsAdmin() {
     });
   };
 
+  const addServiceLine = () => {
+    if (!slForm.code || !slForm.name || !slForm.departmentId) return;
+    addServiceLineMutation.mutate(slForm, {
+      onSuccess: () => {
+        setSlOpen(false);
+        setSlForm({ code: "", name: "", departmentId: "", isRecurring: false });
+      },
+    });
+  };
+
   return (
     <div>
       <PageHeader
-        title="Departments & Offices"
-        description="Extend Amsol with new departments and regional offices without a code release."
+        title="Departments, Offices & Service Lines"
+        description="Extend Amsol with new departments, regional offices and service lines without a code release."
       />
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -341,6 +408,124 @@ function DepartmentsAdmin() {
           )}
         </section>
       </div>
+
+      <section className="rounded-lg border bg-card mt-6">
+        <div className="p-4 flex items-center justify-between border-b">
+          <div>
+            <h2 className="font-semibold">Service Lines</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Each service line belongs to the department that delivers it — used across Contracts,
+              Invoices, Tenders and Client Requests.
+            </p>
+          </div>
+          <Dialog open={slOpen} onOpenChange={setSlOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="h-4 w-4 mr-1" /> New
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>New service line</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div>
+                  <Label>Code</Label>
+                  <Input
+                    value={slForm.code}
+                    onChange={(e) => setSlForm({ ...slForm, code: e.target.value.toUpperCase() })}
+                    placeholder="OUTSOURCING"
+                  />
+                </div>
+                <div>
+                  <Label>Name</Label>
+                  <Input
+                    value={slForm.name}
+                    onChange={(e) => setSlForm({ ...slForm, name: e.target.value })}
+                    placeholder="Staff Outsourcing"
+                  />
+                </div>
+                <div>
+                  <Label>Delivering department</Label>
+                  <Select
+                    value={slForm.departmentId}
+                    onValueChange={(v) => setSlForm({ ...slForm, departmentId: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(depsQ.data ?? []).map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={slForm.isRecurring}
+                    onCheckedChange={(v) => setSlForm({ ...slForm, isRecurring: v === true })}
+                  />
+                  Recurring service (e.g. monthly payroll/licensing)
+                </label>
+              </div>
+              <DialogFooter>
+                <Button onClick={addServiceLine} disabled={addServiceLineMutation.isPending}>
+                  {addServiceLineMutation.isPending && (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  )}
+                  Create
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+        {serviceLinesQ.isLoading ? (
+          <div className="p-6 flex justify-center">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Code</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(serviceLinesQ.data ?? []).map((sl) => (
+                <TableRow key={sl.id}>
+                  <TableCell className="font-medium">{sl.name}</TableCell>
+                  <TableCell className="text-xs font-mono">{sl.code}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">{sl.department.name}</Badge>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {sl.isRecurring ? "Recurring" : "One-off"}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      disabled={deleteServiceLineMutation.isPending}
+                      onClick={() => removeServiceLine(sl.id, sl.name)}
+                      title="Delete service line"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </section>
     </div>
   );
 }

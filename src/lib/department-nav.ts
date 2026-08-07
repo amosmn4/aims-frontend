@@ -37,6 +37,7 @@ const DOMAIN_ITEMS: Record<DepartmentCode, { to: string; label: string }[]> = {
     { to: "/it/systems-sites", label: "Systems & Sites" },
     { to: "/it/tickets", label: "Tickets" },
     { to: "/it/hrms-clients", label: "HRMS Clients" },
+    { to: "/it/inventory", label: "Inventory" },
   ],
   marketing: [
     { to: "/marketing/pipeline", label: "Pipeline" },

@@ -84,6 +84,7 @@ import { Route as AuthenticatedItSystemsSitesRouteImport } from './routes/_authe
 import { Route as AuthenticatedItSharedProjectsRouteImport } from './routes/_authenticated.it.shared-projects'
 import { Route as AuthenticatedItReportsRouteImport } from './routes/_authenticated.it.reports'
 import { Route as AuthenticatedItPipelineRouteImport } from './routes/_authenticated.it.pipeline'
+import { Route as AuthenticatedItInventoryRouteImport } from './routes/_authenticated.it.inventory'
 import { Route as AuthenticatedItHrmsClientsRouteImport } from './routes/_authenticated.it.hrms-clients'
 import { Route as AuthenticatedItDocumentsRouteImport } from './routes/_authenticated.it.documents'
 import { Route as AuthenticatedItCalendarRouteImport } from './routes/_authenticated.it.calendar'
@@ -552,6 +553,12 @@ const AuthenticatedItPipelineRoute = AuthenticatedItPipelineRouteImport.update({
   path: '/pipeline',
   getParentRoute: () => AuthenticatedItRoute,
 } as any)
+const AuthenticatedItInventoryRoute =
+  AuthenticatedItInventoryRouteImport.update({
+    id: '/inventory',
+    path: '/inventory',
+    getParentRoute: () => AuthenticatedItRoute,
+  } as any)
 const AuthenticatedItHrmsClientsRoute =
   AuthenticatedItHrmsClientsRouteImport.update({
     id: '/hrms-clients',
@@ -853,6 +860,7 @@ export interface FileRoutesByFullPath {
   '/it/calendar': typeof AuthenticatedItCalendarRoute
   '/it/documents': typeof AuthenticatedItDocumentsRoute
   '/it/hrms-clients': typeof AuthenticatedItHrmsClientsRoute
+  '/it/inventory': typeof AuthenticatedItInventoryRoute
   '/it/pipeline': typeof AuthenticatedItPipelineRoute
   '/it/reports': typeof AuthenticatedItReportsRoute
   '/it/shared-projects': typeof AuthenticatedItSharedProjectsRoute
@@ -958,6 +966,7 @@ export interface FileRoutesByTo {
   '/it/calendar': typeof AuthenticatedItCalendarRoute
   '/it/documents': typeof AuthenticatedItDocumentsRoute
   '/it/hrms-clients': typeof AuthenticatedItHrmsClientsRoute
+  '/it/inventory': typeof AuthenticatedItInventoryRoute
   '/it/pipeline': typeof AuthenticatedItPipelineRoute
   '/it/reports': typeof AuthenticatedItReportsRoute
   '/it/shared-projects': typeof AuthenticatedItSharedProjectsRoute
@@ -1078,6 +1087,7 @@ export interface FileRoutesById {
   '/_authenticated/it/calendar': typeof AuthenticatedItCalendarRoute
   '/_authenticated/it/documents': typeof AuthenticatedItDocumentsRoute
   '/_authenticated/it/hrms-clients': typeof AuthenticatedItHrmsClientsRoute
+  '/_authenticated/it/inventory': typeof AuthenticatedItInventoryRoute
   '/_authenticated/it/pipeline': typeof AuthenticatedItPipelineRoute
   '/_authenticated/it/reports': typeof AuthenticatedItReportsRoute
   '/_authenticated/it/shared-projects': typeof AuthenticatedItSharedProjectsRoute
@@ -1199,6 +1209,7 @@ export interface FileRouteTypes {
     | '/it/calendar'
     | '/it/documents'
     | '/it/hrms-clients'
+    | '/it/inventory'
     | '/it/pipeline'
     | '/it/reports'
     | '/it/shared-projects'
@@ -1304,6 +1315,7 @@ export interface FileRouteTypes {
     | '/it/calendar'
     | '/it/documents'
     | '/it/hrms-clients'
+    | '/it/inventory'
     | '/it/pipeline'
     | '/it/reports'
     | '/it/shared-projects'
@@ -1423,6 +1435,7 @@ export interface FileRouteTypes {
     | '/_authenticated/it/calendar'
     | '/_authenticated/it/documents'
     | '/_authenticated/it/hrms-clients'
+    | '/_authenticated/it/inventory'
     | '/_authenticated/it/pipeline'
     | '/_authenticated/it/reports'
     | '/_authenticated/it/shared-projects'
@@ -2027,6 +2040,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedItPipelineRouteImport
       parentRoute: typeof AuthenticatedItRoute
     }
+    '/_authenticated/it/inventory': {
+      id: '/_authenticated/it/inventory'
+      path: '/inventory'
+      fullPath: '/it/inventory'
+      preLoaderRoute: typeof AuthenticatedItInventoryRouteImport
+      parentRoute: typeof AuthenticatedItRoute
+    }
     '/_authenticated/it/hrms-clients': {
       id: '/_authenticated/it/hrms-clients'
       path: '/hrms-clients'
@@ -2469,6 +2489,7 @@ interface AuthenticatedItRouteChildren {
   AuthenticatedItCalendarRoute: typeof AuthenticatedItCalendarRoute
   AuthenticatedItDocumentsRoute: typeof AuthenticatedItDocumentsRoute
   AuthenticatedItHrmsClientsRoute: typeof AuthenticatedItHrmsClientsRoute
+  AuthenticatedItInventoryRoute: typeof AuthenticatedItInventoryRoute
   AuthenticatedItPipelineRoute: typeof AuthenticatedItPipelineRoute
   AuthenticatedItReportsRoute: typeof AuthenticatedItReportsRoute
   AuthenticatedItSharedProjectsRoute: typeof AuthenticatedItSharedProjectsRoute
@@ -2483,6 +2504,7 @@ const AuthenticatedItRouteChildren: AuthenticatedItRouteChildren = {
   AuthenticatedItCalendarRoute: AuthenticatedItCalendarRoute,
   AuthenticatedItDocumentsRoute: AuthenticatedItDocumentsRoute,
   AuthenticatedItHrmsClientsRoute: AuthenticatedItHrmsClientsRoute,
+  AuthenticatedItInventoryRoute: AuthenticatedItInventoryRoute,
   AuthenticatedItPipelineRoute: AuthenticatedItPipelineRoute,
   AuthenticatedItReportsRoute: AuthenticatedItReportsRoute,
   AuthenticatedItSharedProjectsRoute: AuthenticatedItSharedProjectsRoute,
