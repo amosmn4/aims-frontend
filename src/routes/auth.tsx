@@ -12,7 +12,7 @@ export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
       { title: "Sign in — AIMS" },
-      { name: "description", content: "Sign in to Amsol Integrated Management System (AIMS)." },
+      { name: "description", content: "Sign in to AMSOL Management System (AIMS)." },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -56,7 +56,7 @@ function AuthPage() {
             </div>
             <div>
               <div className="text-lg font-semibold leading-tight">AIMS</div>
-              <div className="text-xs text-white/70">Amsol Integrated Management System</div>
+              <div className="text-xs text-white/70">AMSOL Management System</div>
             </div>
           </div>
         </div>

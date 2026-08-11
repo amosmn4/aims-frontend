@@ -18,5 +18,5 @@ function HrWorkspace() {
       </div>
     );
   }
-  return <DepartmentWorkspaceContent deptId={dept.id} />;
+  return <DepartmentWorkspaceContent deptId={dept.id} scoped />;
 }

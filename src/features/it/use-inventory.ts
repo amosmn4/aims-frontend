@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
+import type { PaginatedResponse } from "@/hooks/use-pagination";
 
 export type InventoryCategory =
   "laptop" | "desktop" | "monitor" | "printer" | "peripheral" | "other";
@@ -84,11 +85,37 @@ function mapInventoryItem(i: BackendInventoryItem): InventoryItemRow {
   };
 }
 
-export function useInventoryItems() {
+export interface InventoryFilters {
+  category?: InventoryCategory;
+  status?: InventoryStatus;
+  officeId?: string;
+  q?: string;
+}
+
+function buildQuery(params: Record<string, string | number | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") qs.set(key, String(value));
+  }
+  const s = qs.toString();
+  return s ? `?${s}` : "";
+}
+
+export function useInventoryItems(
+  filters: InventoryFilters = {},
+  pagination: { page?: number; pageSize?: number } = {},
+) {
   return useQuery({
-    queryKey: ["inventory"],
-    queryFn: async () =>
-      (await apiJson<BackendInventoryItem[]>("/inventory")).map(mapInventoryItem),
+    queryKey: ["inventory", filters, pagination],
+    queryFn: async () => {
+      const qs = buildQuery({ ...filters, ...pagination });
+      const raw = await apiJson<BackendInventoryItem[] | PaginatedResponse<BackendInventoryItem>>(
+        `/inventory${qs}`,
+      );
+      return Array.isArray(raw)
+        ? raw.map(mapInventoryItem)
+        : { ...raw, data: raw.data.map(mapInventoryItem) };
+    },
   });
 }
 

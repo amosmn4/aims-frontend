@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import {
   useInventoryItems,
   useSaveInventoryItem,
@@ -17,6 +17,8 @@ import {
 } from "@/features/it/use-inventory";
 import { apiJson } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
+import { usePagination } from "@/hooks/use-pagination";
+import { PaginationBar } from "@/components/pagination-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,14 +55,38 @@ export const Route = createFileRoute("/_authenticated/it/inventory")({
 type Office = { id: string; name: string };
 
 const NONE_OFFICE = "__none__";
+const ALL = "__all__";
 
 function InventoryPage() {
   const { isAdminOrCeo, hasRole } = useAuth();
   const canManage = isAdminOrCeo || hasRole("it");
-  const itemsQ = useInventoryItems();
+  const officesQ = useQuery({
+    queryKey: ["offices", "admin"],
+    queryFn: () => apiJson<Office[]>("/offices"),
+  });
+
+  const [category, setCategory] = useState<InventoryCategory | "">("");
+  const [status, setStatus] = useState<InventoryStatus | "">("");
+  const [officeId, setOfficeId] = useState("");
+  const [q, setQ] = useState("");
+  const { page, pageSize, setPage, setPageSize } = usePagination(25);
+
+  const itemsQ = useInventoryItems(
+    {
+      category: category || undefined,
+      status: status || undefined,
+      officeId: officeId || undefined,
+      q: q.trim() || undefined,
+    },
+    { page, pageSize },
+  );
   const deleteItem = useDeleteInventoryItem();
   const [editing, setEditing] = useState<InventoryItemRow | "new" | null>(null);
-  const items = itemsQ.data ?? [];
+
+  const result = itemsQ.data;
+  const items = result ? (Array.isArray(result) ? result : result.data) : [];
+  const total = result && !Array.isArray(result) ? result.total : items.length;
+  const startIndex = (page - 1) * pageSize;
 
   return (
     <div className="space-y-4">
@@ -79,93 +105,184 @@ function InventoryPage() {
         )}
       </div>
 
+      <div className="rounded-lg border bg-card p-3 flex flex-wrap items-end gap-3">
+        <div className="relative flex-1 min-w-50">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Search asset tag, device, serial, assignee…"
+            className="pl-7"
+          />
+        </div>
+        <div className="w-40">
+          <Select
+            value={category || ALL}
+            onValueChange={(v) => {
+              setCategory(v === ALL ? "" : (v as InventoryCategory));
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder="Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All categories</SelectItem>
+              {Object.entries(INVENTORY_CATEGORY_LABELS).map(([v, label]) => (
+                <SelectItem key={v} value={v}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="w-40">
+          <Select
+            value={status || ALL}
+            onValueChange={(v) => {
+              setStatus(v === ALL ? "" : (v as InventoryStatus));
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All statuses</SelectItem>
+              {Object.entries(INVENTORY_STATUS_LABELS).map(([v, label]) => (
+                <SelectItem key={v} value={v}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="w-44">
+          <Select
+            value={officeId || ALL}
+            onValueChange={(v) => {
+              setOfficeId(v === ALL ? "" : v);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder="Office" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All offices</SelectItem>
+              {(officesQ.data ?? []).map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       {itemsQ.isLoading ? (
         <div className="py-12 flex justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">
-          No inventory recorded yet.
+          No inventory matches these filters.
         </div>
       ) : (
-        <div className="rounded-lg border bg-card overflow-hidden overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Asset tag</TableHead>
-                <TableHead>Device</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Assigned to</TableHead>
-                <TableHead>Office</TableHead>
-                <TableHead className="w-20" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-mono text-xs">{item.asset_tag}</TableCell>
-                  <TableCell>
-                    <div className="font-medium">{item.device_name}</div>
-                    {(item.brand || item.model) && (
-                      <div className="text-xs text-muted-foreground">
-                        {[item.brand, item.model].filter(Boolean).join(" ")}
-                      </div>
-                    )}
-                    {item.description && (
-                      <div className="text-xs text-muted-foreground line-clamp-1">
-                        {item.description}
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {INVENTORY_CATEGORY_LABELS[item.category]}
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={INVENTORY_STATUS_STYLES[item.status]} variant="secondary">
-                      {INVENTORY_STATUS_LABELS[item.status]}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {item.assigned_to ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {item.office_name ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    {canManage && (
-                      <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => setEditing(item)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={async () => {
-                            const ok = await confirmDialog({
-                              title: `Remove "${item.device_name}"?`,
-                              confirmLabel: "Remove",
-                              destructive: true,
-                              description: "This can't be undone.",
-                            });
-                            if (!ok) return;
-                            deleteItem.mutate(item.id, {
-                              onError: (err) =>
-                                toast.error(
-                                  err instanceof Error ? err.message : "Failed to delete",
-                                ),
-                            });
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    )}
-                  </TableCell>
+        <div className="rounded-lg border bg-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">#</TableHead>
+                  <TableHead>Asset tag</TableHead>
+                  <TableHead>Device</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Assigned to</TableHead>
+                  <TableHead>Office</TableHead>
+                  <TableHead className="w-20" />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {items.map((item, i) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="text-xs text-muted-foreground tabular-nums">
+                      {startIndex + i + 1}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{item.asset_tag}</TableCell>
+                    <TableCell>
+                      <div className="font-medium">{item.device_name}</div>
+                      {(item.brand || item.model) && (
+                        <div className="text-xs text-muted-foreground">
+                          {[item.brand, item.model].filter(Boolean).join(" ")}
+                        </div>
+                      )}
+                      {item.description && (
+                        <div className="text-xs text-muted-foreground line-clamp-1">
+                          {item.description}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {INVENTORY_CATEGORY_LABELS[item.category]}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={INVENTORY_STATUS_STYLES[item.status]} variant="secondary">
+                        {INVENTORY_STATUS_LABELS[item.status]}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {item.assigned_to ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {item.office_name ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      {canManage && (
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" onClick={() => setEditing(item)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={async () => {
+                              const ok = await confirmDialog({
+                                title: `Remove "${item.device_name}"?`,
+                                confirmLabel: "Remove",
+                                destructive: true,
+                                description: "This can't be undone.",
+                              });
+                              if (!ok) return;
+                              deleteItem.mutate(item.id, {
+                                onError: (err) =>
+                                  toast.error(
+                                    err instanceof Error ? err.message : "Failed to delete",
+                                  ),
+                              });
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <PaginationBar
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
 

@@ -43,10 +43,18 @@ function DepartmentWorkspace() {
   return <DepartmentWorkspaceContent deptId={deptId} />;
 }
 
-// Split out from the route component so the Tender hub (and future department hubs) can embed
-// this same Clients/Contracts/Projects workspace as a tab, passing a resolved department id
-// directly instead of requiring a `/departments/$deptId` route match.
-export function DepartmentWorkspaceContent({ deptId }: { deptId: string }) {
+// Split out from the route component so each department hub can embed this same
+// Clients/Contracts/Projects workspace directly, passing a resolved department id instead of
+// requiring a `/departments/$deptId` route match. `scoped` marks that embedded case: a
+// department-scoped viewer shouldn't see a way back to the cross-department picker or a pointer
+// to the central (all-departments) module — their whole app *is* this one department.
+export function DepartmentWorkspaceContent({
+  deptId,
+  scoped = false,
+}: {
+  deptId: string;
+  scoped?: boolean;
+}) {
   const deptsQ = useDepartments();
   const clientsQ = useClients();
   const linesQ = useServiceLines();
@@ -142,24 +150,32 @@ export function DepartmentWorkspaceContent({ deptId }: { deptId: string }) {
 
   return (
     <div className="space-y-3">
-      <Link
-        to="/departments"
-        className="text-xs text-muted-foreground inline-flex items-center gap-1 hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" /> Back to departments
-      </Link>
+      {!scoped && (
+        <Link
+          to="/departments"
+          className="text-xs text-muted-foreground inline-flex items-center gap-1 hover:text-foreground"
+        >
+          <ArrowLeft className="h-3 w-3" /> Back to departments
+        </Link>
+      )}
 
       <div>
         <h1 className="text-lg font-semibold flex items-center gap-2">
           <Briefcase className="h-4 w-4 text-primary" /> {dept.name} — Clients & Contracts
         </h1>
         <p className="text-xs text-muted-foreground">
-          Scoped view of the central clients & contracts module for the {dept.name} department. Full
-          CRUD is available from the{" "}
-          <Link to="/clients" className="text-primary hover:underline">
-            central module
-          </Link>
-          .
+          {scoped ? (
+            `Clients and contracts belonging to ${dept.name}.`
+          ) : (
+            <>
+              Scoped view of the central clients & contracts module for the {dept.name}{" "}
+              department. Full CRUD is available from the{" "}
+              <Link to="/clients" className="text-primary hover:underline">
+                central module
+              </Link>
+              .
+            </>
+          )}
         </p>
       </div>
 
