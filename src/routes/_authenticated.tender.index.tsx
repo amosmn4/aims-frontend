@@ -58,7 +58,15 @@ export const Route = createFileRoute("/_authenticated/tender/")({
   ),
 });
 
-const FUNNEL_STAGES: TenderStage[] = ["identified", "applying", "submitted", "evaluation", "won", "lost", "withdrawn"];
+const FUNNEL_STAGES: TenderStage[] = [
+  "identified",
+  "applying",
+  "submitted",
+  "evaluation",
+  "won",
+  "lost",
+  "withdrawn",
+];
 const FUNNEL_COLORS: Record<string, string> = {
   identified: "#8C8C8C",
   applying: "#085599",
@@ -100,18 +108,33 @@ export function TenderWorkspace() {
   const summary = summaryQ.data ?? [];
   const totalTenders = summary.reduce((sum, s) => sum + s.count, 0);
   const activeCount = summary
-    .filter((s) => s.stage === "identified" || s.stage === "applying" || s.stage === "submitted" || s.stage === "evaluation")
+    .filter(
+      (s) =>
+        s.stage === "identified" ||
+        s.stage === "applying" ||
+        s.stage === "submitted" ||
+        s.stage === "evaluation",
+    )
     .reduce((sum, s) => sum + s.count, 0);
   const pipelineValue = summary
-    .filter((s) => s.stage === "identified" || s.stage === "applying" || s.stage === "submitted" || s.stage === "evaluation")
+    .filter(
+      (s) =>
+        s.stage === "identified" ||
+        s.stage === "applying" ||
+        s.stage === "submitted" ||
+        s.stage === "evaluation",
+    )
     .reduce((sum, s) => sum + s.total_value, 0);
   const wonCount = summary.find((s) => s.stage === "won")?.count ?? 0;
   const lostCount = summary.find((s) => s.stage === "lost")?.count ?? 0;
   const winRate = wonCount + lostCount > 0 ? wonCount / (wonCount + lostCount) : null;
 
+  // Pass-through funnel: cumulative_count is "how many tenders ever reached at least this
+  // stage" (never shrinks as tenders advance, only when one's deleted) — not the live `count`
+  // of what's sitting in that exact stage right now, which is what a Kanban column shows.
   const funnelData = FUNNEL_STAGES.map((s) => ({
     stage: TENDER_STAGE_LABELS[s],
-    value: summary.find((r) => r.stage === s)?.count ?? 0,
+    value: summary.find((r) => r.stage === s)?.cumulative_count ?? 0,
     color: FUNNEL_COLORS[s],
   }));
 
@@ -130,7 +153,10 @@ export function TenderWorkspace() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiCard label="Active tenders" value={activeCount.toLocaleString()} />
         <KpiCard label="Pipeline value" value={formatCurrency(pipelineValue)} />
-        <KpiCard label="Win rate" value={winRate != null ? `${(winRate * 100).toFixed(0)}%` : "—"} />
+        <KpiCard
+          label="Win rate"
+          value={winRate != null ? `${(winRate * 100).toFixed(0)}%` : "—"}
+        />
         <KpiCard label="Total tenders" value={totalTenders.toLocaleString()} />
       </div>
 
@@ -152,7 +178,12 @@ export function TenderWorkspace() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="relative flex-1 min-w-40">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title…" className="pl-7" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search title…"
+                className="pl-7"
+              />
             </div>
             <div className="w-40">
               <Select value={departmentId} onValueChange={setDepartmentId}>
@@ -206,7 +237,9 @@ export function TenderWorkspace() {
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
           ) : (tendersQ.data ?? []).length === 0 ? (
-            <div className="text-xs text-muted-foreground py-6 text-center">No tenders match these filters.</div>
+            <div className="text-xs text-muted-foreground py-6 text-center">
+              No tenders match these filters.
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -225,7 +258,9 @@ export function TenderWorkspace() {
                     <TableRow
                       key={t.id}
                       className="cursor-pointer hover:bg-secondary/40"
-                      onClick={() => navigate({ to: "/tender/$tenderId", params: { tenderId: t.id } })}
+                      onClick={() =>
+                        navigate({ to: "/tender/$tenderId", params: { tenderId: t.id } })
+                      }
                     >
                       <TableCell className="font-medium">
                         <Link
@@ -236,7 +271,9 @@ export function TenderWorkspace() {
                           {t.title}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-xs">{t.client_name ?? t.prospect_client_name ?? "—"}</TableCell>
+                      <TableCell className="text-xs">
+                        {t.client_name ?? t.prospect_client_name ?? "—"}
+                      </TableCell>
                       <TableCell className="text-xs">{t.department_name}</TableCell>
                       <TableCell>
                         <Badge className={TENDER_STAGE_STYLES[t.stage]} variant="secondary">
@@ -245,7 +282,9 @@ export function TenderWorkspace() {
                       </TableCell>
                       <TableCell className="text-xs">{t.submission_deadline ?? "—"}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">
-                        {t.estimated_value != null ? formatCurrency(t.estimated_value, t.currency) : "—"}
+                        {t.estimated_value != null
+                          ? formatCurrency(t.estimated_value, t.currency)
+                          : "—"}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -267,11 +306,19 @@ export function TenderWorkspace() {
             <div className="grid grid-cols-2 gap-3 md:col-span-1">
               <KpiCard
                 label="Avg. days to submit"
-                value={timeMetricsQ.data?.avg_days_to_submit != null ? `${timeMetricsQ.data.avg_days_to_submit}d` : "—"}
+                value={
+                  timeMetricsQ.data?.avg_days_to_submit != null
+                    ? `${timeMetricsQ.data.avg_days_to_submit}d`
+                    : "—"
+                }
               />
               <KpiCard
                 label="Avg. days to decide"
-                value={timeMetricsQ.data?.avg_days_to_decision != null ? `${timeMetricsQ.data.avg_days_to_decision}d` : "—"}
+                value={
+                  timeMetricsQ.data?.avg_days_to_decision != null
+                    ? `${timeMetricsQ.data.avg_days_to_decision}d`
+                    : "—"
+                }
               />
             </div>
             <div className="md:col-span-2">
@@ -356,7 +403,8 @@ function NewTenderDialog() {
         title: title.trim(),
         department_id: departmentId,
         client_id: clientMode === "existing" ? clientId || undefined : undefined,
-        prospect_client_name: clientMode === "prospect" ? prospectClientName.trim() || undefined : undefined,
+        prospect_client_name:
+          clientMode === "prospect" ? prospectClientName.trim() || undefined : undefined,
         service_line_id: serviceLineId || undefined,
         estimated_value: estimatedValue ? Number(estimatedValue) : undefined,
         submission_deadline: submissionDeadline || undefined,
@@ -473,7 +521,11 @@ function NewTenderDialog() {
           </div>
           <div>
             <Label>Description</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
           </div>
         </div>
         <DialogFooter>

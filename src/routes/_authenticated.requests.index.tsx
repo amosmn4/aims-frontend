@@ -40,7 +40,15 @@ export const Route = createFileRoute("/_authenticated/requests/")({
   component: ClientRequestsWorkspace,
 });
 
-const FUNNEL_STAGES: ClientRequestStage[] = ["new", "assigned", "engaging", "proposal", "won", "lost", "withdrawn"];
+const FUNNEL_STAGES: ClientRequestStage[] = [
+  "new",
+  "assigned",
+  "engaging",
+  "proposal",
+  "won",
+  "lost",
+  "withdrawn",
+];
 const FUNNEL_COLORS: Record<string, string> = {
   new: "#8C8C8C",
   assigned: "#085599",
@@ -85,7 +93,13 @@ export function ClientRequestsWorkspace() {
   const summary = summaryQ.data ?? [];
   const totalRequests = summary.reduce((sum, s) => sum + s.count, 0);
   const inPipeline = summary
-    .filter((s) => s.stage === "new" || s.stage === "assigned" || s.stage === "engaging" || s.stage === "proposal")
+    .filter(
+      (s) =>
+        s.stage === "new" ||
+        s.stage === "assigned" ||
+        s.stage === "engaging" ||
+        s.stage === "proposal",
+    )
     .reduce((sum, s) => sum + s.count, 0);
   const convertedCount = summary.find((s) => s.stage === "won")?.count ?? 0;
   const lostCount = summary.find((s) => s.stage === "lost")?.count ?? 0;
@@ -93,9 +107,12 @@ export function ClientRequestsWorkspace() {
   const resolvedCount = convertedCount + lostCount + withdrawnCount;
   const conversionRate = resolvedCount > 0 ? convertedCount / resolvedCount : null;
 
+  // Pass-through funnel: cumulative_count is "how many requests ever reached at least this
+  // stage" (never shrinks as requests advance, only when one's deleted) — not the live `count`
+  // of what's sitting in that exact stage right now, which is what a Kanban column shows.
   const funnelData = FUNNEL_STAGES.map((s) => ({
     stage: CLIENT_REQUEST_STAGE_LABELS[s],
-    value: summary.find((r) => r.stage === s)?.count ?? 0,
+    value: summary.find((r) => r.stage === s)?.cumulative_count ?? 0,
     color: FUNNEL_COLORS[s],
   }));
 
@@ -139,7 +156,12 @@ export function ClientRequestsWorkspace() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="relative flex-1 min-w-40">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title…" className="pl-7" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search title…"
+                className="pl-7"
+              />
             </div>
             <div className="w-40">
               <Select value={departmentId} onValueChange={setDepartmentId}>
@@ -172,7 +194,10 @@ export function ClientRequestsWorkspace() {
               </Select>
             </div>
             <div className="w-36">
-              <Select value={stage} onValueChange={(v) => setStage(v as ClientRequestStage | "all")}>
+              <Select
+                value={stage}
+                onValueChange={(v) => setStage(v as ClientRequestStage | "all")}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -193,7 +218,9 @@ export function ClientRequestsWorkspace() {
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
           ) : (requestsQ.data ?? []).length === 0 ? (
-            <div className="text-xs text-muted-foreground py-6 text-center">No requests match these filters.</div>
+            <div className="text-xs text-muted-foreground py-6 text-center">
+              No requests match these filters.
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -212,14 +239,22 @@ export function ClientRequestsWorkspace() {
                     <TableRow
                       key={r.id}
                       className="cursor-pointer hover:bg-secondary/40"
-                      onClick={() => navigate({ to: "/requests/$requestId", params: { requestId: r.id } })}
+                      onClick={() =>
+                        navigate({ to: "/requests/$requestId", params: { requestId: r.id } })
+                      }
                     >
                       <TableCell className="font-medium">
-                        <Link to="/requests/$requestId" params={{ requestId: r.id }} className="hover:underline">
+                        <Link
+                          to="/requests/$requestId"
+                          params={{ requestId: r.id }}
+                          className="hover:underline"
+                        >
                           {r.title}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-xs">{r.client_name ?? r.prospect_client_name ?? "—"}</TableCell>
+                      <TableCell className="text-xs">
+                        {r.client_name ?? r.prospect_client_name ?? "—"}
+                      </TableCell>
                       <TableCell className="text-xs">{SOURCE_LABELS[r.source]}</TableCell>
                       <TableCell className="text-xs">{r.department_name ?? "Unrouted"}</TableCell>
                       <TableCell>
@@ -228,7 +263,9 @@ export function ClientRequestsWorkspace() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right text-xs tabular-nums">
-                        {r.estimated_value != null ? formatCurrency(r.estimated_value, r.currency) : "—"}
+                        {r.estimated_value != null
+                          ? formatCurrency(r.estimated_value, r.currency)
+                          : "—"}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -250,7 +287,9 @@ export function ClientRequestsWorkspace() {
             {(timeInStageQ.data ?? []).map((entry) => (
               <div key={entry.stage} className="rounded-md border p-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium">{CLIENT_REQUEST_STAGE_LABELS[entry.stage]}</span>
+                  <span className="text-xs font-medium">
+                    {CLIENT_REQUEST_STAGE_LABELS[entry.stage]}
+                  </span>
                   {entry.stuck_count > 0 && (
                     <Badge variant="secondary" className="bg-warning/15 text-warning">
                       {entry.stuck_count} waiting

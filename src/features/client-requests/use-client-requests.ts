@@ -93,8 +93,15 @@ export interface ClientRequestRow {
 
 export interface ClientRequestPipelineStage {
   stage: ClientRequestStage;
+  /** How many requests currently sit in exactly this stage right now — for "needs attention". */
   count: number;
   total_value: number;
+  /** How many requests have EVER reached at least this stage (pass-through funnel: never shrinks
+   * as requests advance, only when one is deleted) — this is what the funnel chart should render,
+   * not `count`. */
+  cumulative_count: number;
+  /** cumulative_count / previous stage's cumulative_count * 100 — null for the first stage. */
+  conversion_pct: number | null;
 }
 
 export interface LostBreakdownEntry {
@@ -257,13 +264,21 @@ export function useClientRequestPipelineSummary(
   return useQuery({
     queryKey: ["client-requests", "pipeline-summary", filters],
     queryFn: async () => {
-      const raw = await apiJson<{ stage: ClientRequestStage; count: number; totalValue: number }[]>(
-        `/client-requests/pipeline-summary${buildQuery(filters)}`,
-      );
+      const raw = await apiJson<
+        {
+          stage: ClientRequestStage;
+          count: number;
+          totalValue: number;
+          cumulativeCount: number;
+          conversionPct: number | null;
+        }[]
+      >(`/client-requests/pipeline-summary${buildQuery(filters)}`);
       return raw.map((r): ClientRequestPipelineStage => ({
         stage: r.stage,
         count: r.count,
         total_value: r.totalValue,
+        cumulative_count: r.cumulativeCount,
+        conversion_pct: r.conversionPct,
       }));
     },
   });

@@ -75,8 +75,15 @@ export interface TenderRow {
 
 export interface TenderPipelineStage {
   stage: TenderStage;
+  /** How many tenders currently sit in exactly this stage right now — for "needs attention". */
   count: number;
   total_value: number;
+  /** How many tenders have EVER reached at least this stage (pass-through funnel: never shrinks
+   * as tenders advance, only when one is deleted) — this is what the funnel chart should render,
+   * not `count`. */
+  cumulative_count: number;
+  /** cumulative_count / previous stage's cumulative_count * 100 — null for the first stage. */
+  conversion_pct: number | null;
 }
 
 export interface TenderResourceRow {
@@ -289,13 +296,21 @@ export function useTenderPipelineSummary(
   return useQuery({
     queryKey: ["tenders", "pipeline-summary", filters],
     queryFn: async () => {
-      const raw = await apiJson<{ stage: TenderStage; count: number; totalValue: number }[]>(
-        `/tenders/pipeline-summary${buildQuery(filters)}`,
-      );
+      const raw = await apiJson<
+        {
+          stage: TenderStage;
+          count: number;
+          totalValue: number;
+          cumulativeCount: number;
+          conversionPct: number | null;
+        }[]
+      >(`/tenders/pipeline-summary${buildQuery(filters)}`);
       return raw.map((r): TenderPipelineStage => ({
         stage: r.stage,
         count: r.count,
         total_value: r.totalValue,
+        cumulative_count: r.cumulativeCount,
+        conversion_pct: r.conversionPct,
       }));
     },
   });

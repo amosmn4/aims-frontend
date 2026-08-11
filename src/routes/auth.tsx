@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -25,6 +25,7 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && session) navigate({ to: homeRouteFor(roles) });
@@ -33,13 +34,17 @@ function AuthPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setError(null);
     try {
       const newRoles = await login(email, password);
       toast.success("Welcome back.");
       navigate({ to: homeRouteFor(newRoles) });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Authentication failed";
-      toast.error(msg);
+      // The backend already sends a specific, human-readable reason (wrong password vs
+      // unregistered email vs deactivated account vs malformed email) — surface that exact
+      // text here on the page itself, not just a toast that can be missed or dismissed before
+      // it's read.
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -95,6 +100,16 @@ function AuthPage() {
           <h2 className="text-2xl font-semibold">Sign in</h2>
           <p className="text-sm text-muted-foreground mt-1">Access your Amsol workspace.</p>
 
+          {error && (
+            <div
+              role="alert"
+              className="mt-4 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
+            >
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
               <Label htmlFor="email">Work email</Label>
@@ -102,7 +117,10 @@ function AuthPage() {
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setError(null);
+                }}
                 required
                 autoComplete="email"
               />
@@ -112,7 +130,10 @@ function AuthPage() {
               <PasswordInput
                 id="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError(null);
+                }}
                 required
                 minLength={6}
                 autoComplete="current-password"

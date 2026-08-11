@@ -351,9 +351,11 @@ function Dashboard() {
     lost: "#D64545",
     withdrawn: "#94a3b8",
   };
+  // Pass-through funnel: cumulative_count is "how many tenders ever reached at least this
+  // stage" (never shrinks as tenders advance, only when one's deleted) — not the live `count`.
   const tenderFunnel: FunnelStage[] = TENDER_FUNNEL_STAGE_ORDER.map((stage) => ({
     stage: TENDER_STAGE_LABELS[stage],
-    value: tenderSummary.find((r) => r.stage === stage)?.count ?? 0,
+    value: tenderSummary.find((r) => r.stage === stage)?.cumulative_count ?? 0,
     color: TENDER_FUNNEL_COLORS[stage],
   }));
 
@@ -385,9 +387,10 @@ function Dashboard() {
     lost: "#D64545",
     withdrawn: "#94a3b8",
   };
+  // Pass-through funnel — see the tender funnel's identical comment above.
   const requestFunnel: FunnelStage[] = REQUEST_FUNNEL_STAGE_ORDER.map((stage) => ({
     stage: CLIENT_REQUEST_STAGE_LABELS[stage],
-    value: requestSummary.find((r) => r.stage === stage)?.count ?? 0,
+    value: requestSummary.find((r) => r.stage === stage)?.cumulative_count ?? 0,
     color: REQUEST_FUNNEL_COLORS[stage],
   }));
   const requestLostBreakdown = requestLostBreakdownQ.data ?? [];

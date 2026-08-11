@@ -17,7 +17,15 @@ export const Route = createFileRoute("/_authenticated/reports/departments/tender
   component: TenderReport,
 });
 
-const FUNNEL_STAGES: TenderStage[] = ["identified", "applying", "submitted", "evaluation", "won", "lost", "withdrawn"];
+const FUNNEL_STAGES: TenderStage[] = [
+  "identified",
+  "applying",
+  "submitted",
+  "evaluation",
+  "won",
+  "lost",
+  "withdrawn",
+];
 const FUNNEL_COLORS: Record<string, string> = {
   identified: "#8C8C8C",
   applying: "#085599",
@@ -63,12 +71,19 @@ function PipelineSummary() {
   const lostCount = summary.find((s) => s.stage === "lost")?.count ?? 0;
   const winRate = wonCount + lostCount > 0 ? wonCount / (wonCount + lostCount) : null;
   const pipelineValue = summary
-    .filter((s) => s.stage === "identified" || s.stage === "applying" || s.stage === "submitted" || s.stage === "evaluation")
+    .filter(
+      (s) =>
+        s.stage === "identified" ||
+        s.stage === "applying" ||
+        s.stage === "submitted" ||
+        s.stage === "evaluation",
+    )
     .reduce((sum, s) => sum + s.total_value, 0);
 
+  // Pass-through funnel — see _authenticated.tender.index.tsx's identical comment.
   const funnelData = FUNNEL_STAGES.map((s) => ({
     stage: TENDER_STAGE_LABELS[s],
-    value: summary.find((r) => r.stage === s)?.count ?? 0,
+    value: summary.find((r) => r.stage === s)?.cumulative_count ?? 0,
     color: FUNNEL_COLORS[s],
   }));
 
@@ -79,7 +94,9 @@ function PipelineSummary() {
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
       ) : totalTenders === 0 ? (
-        <div className="text-xs text-muted-foreground py-6 text-center">No tenders recorded yet.</div>
+        <div className="text-xs text-muted-foreground py-6 text-center">
+          No tenders recorded yet.
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 min-w-0 overflow-hidden">
@@ -87,8 +104,12 @@ function PipelineSummary() {
           </div>
           <div className="space-y-3">
             <div>
-              <div className="text-xs uppercase tracking-wider text-muted-foreground">Pipeline value</div>
-              <div className="text-xl font-semibold tabular-nums">{formatCurrency(pipelineValue)}</div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                Pipeline value
+              </div>
+              <div className="text-xl font-semibold tabular-nums">
+                {formatCurrency(pipelineValue)}
+              </div>
             </div>
             <div>
               <div className="text-xs uppercase tracking-wider text-muted-foreground">Win rate</div>
@@ -129,7 +150,8 @@ function RecentTenders() {
                 <div className="text-sm font-medium truncate">{t.title}</div>
                 <div className="text-[0.6875rem] text-muted-foreground">
                   {t.department_name}
-                  {(t.client_name ?? t.prospect_client_name) && ` · ${t.client_name ?? t.prospect_client_name}`}
+                  {(t.client_name ?? t.prospect_client_name) &&
+                    ` · ${t.client_name ?? t.prospect_client_name}`}
                 </div>
               </div>
               <Badge className={TENDER_STAGE_STYLES[t.stage]} variant="secondary">
