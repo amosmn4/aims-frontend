@@ -256,10 +256,16 @@ export function useClientRequestPipelineSummary(
 ) {
   return useQuery({
     queryKey: ["client-requests", "pipeline-summary", filters],
-    queryFn: async () =>
-      apiJson<ClientRequestPipelineStage[]>(
+    queryFn: async () => {
+      const raw = await apiJson<{ stage: ClientRequestStage; count: number; totalValue: number }[]>(
         `/client-requests/pipeline-summary${buildQuery(filters)}`,
-      ),
+      );
+      return raw.map((r): ClientRequestPipelineStage => ({
+        stage: r.stage,
+        count: r.count,
+        total_value: r.totalValue,
+      }));
+    },
   });
 }
 

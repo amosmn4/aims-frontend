@@ -288,8 +288,16 @@ export function useTenderPipelineSummary(
 ) {
   return useQuery({
     queryKey: ["tenders", "pipeline-summary", filters],
-    queryFn: async () =>
-      apiJson<TenderPipelineStage[]>(`/tenders/pipeline-summary${buildQuery(filters)}`),
+    queryFn: async () => {
+      const raw = await apiJson<{ stage: TenderStage; count: number; totalValue: number }[]>(
+        `/tenders/pipeline-summary${buildQuery(filters)}`,
+      );
+      return raw.map((r): TenderPipelineStage => ({
+        stage: r.stage,
+        count: r.count,
+        total_value: r.totalValue,
+      }));
+    },
   });
 }
 
