@@ -25,6 +25,15 @@ function AuthenticatedLayout() {
     if (!loading && !user) navigate({ to: "/auth" });
   }, [loading, user, navigate]);
 
+  // Fires when a background silent refresh fails mid-session (idle timeout elapsed, session
+  // revoked, etc) — without this, the user would just see broken/401ing data instead of being
+  // sent back to log in. See refreshAccessToken in lib/api-client.ts.
+  useEffect(() => {
+    const onExpired = () => navigate({ to: "/auth" });
+    window.addEventListener("aims:session-expired", onExpired);
+    return () => window.removeEventListener("aims:session-expired", onExpired);
+  }, [navigate]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">

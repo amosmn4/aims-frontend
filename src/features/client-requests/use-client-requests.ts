@@ -1,5 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
+import type { PaginatedResponse } from "@/hooks/use-pagination";
 
 export type ClientRequestStage =
   "new" | "assigned" | "engaging" | "proposal" | "won" | "lost" | "withdrawn";
@@ -239,11 +240,26 @@ function buildQuery(filters: object): string {
 
 /* ---------- Queries ---------- */
 
-export function useClientRequests(filters: ClientRequestFilters = {}) {
+// See useTenders' matching overload comment (use-tender.ts) — same reasoning.
+export function useClientRequests(
+  filters?: ClientRequestFilters,
+): UseQueryResult<ClientRequestRow[]>;
+export function useClientRequests(
+  filters: ClientRequestFilters,
+  pagination: { page: number; pageSize: number },
+): UseQueryResult<ClientRequestRow[] | PaginatedResponse<ClientRequestRow>>;
+export function useClientRequests(
+  filters: ClientRequestFilters = {},
+  pagination: { page?: number; pageSize?: number } = {},
+) {
   return useQuery({
-    queryKey: ["client-requests", filters],
-    queryFn: async () =>
-      (await apiJson<BackendRequest[]>(`/client-requests${buildQuery(filters)}`)).map(mapRequest),
+    queryKey: ["client-requests", filters, pagination],
+    queryFn: async () => {
+      const raw = await apiJson<BackendRequest[] | PaginatedResponse<BackendRequest>>(
+        `/client-requests${buildQuery({ ...filters, ...pagination })}`,
+      );
+      return Array.isArray(raw) ? raw.map(mapRequest) : { ...raw, data: raw.data.map(mapRequest) };
+    },
   });
 }
 

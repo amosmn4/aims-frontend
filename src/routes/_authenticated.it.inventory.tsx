@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
-import { Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Download, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import {
   useInventoryItems,
   useSaveInventoryItem,
@@ -11,10 +11,15 @@ import {
   INVENTORY_CATEGORY_LABELS,
   INVENTORY_STATUS_LABELS,
   INVENTORY_STATUS_STYLES,
+  INVENTORY_CONDITION_LABELS,
+  INVENTORY_CONDITION_STYLES,
+  INVENTORY_CONDITION_ROW_STYLES,
   type InventoryItemRow,
   type InventoryCategory,
   type InventoryStatus,
+  type InventoryCondition,
 } from "@/features/it/use-inventory";
+import { exportInventoryPdf } from "@/features/it/inventory-pdf";
 import { apiJson } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
 import { usePagination } from "@/hooks/use-pagination";
@@ -67,26 +72,46 @@ function InventoryPage() {
 
   const [category, setCategory] = useState<InventoryCategory | "">("");
   const [status, setStatus] = useState<InventoryStatus | "">("");
+  const [condition, setCondition] = useState<InventoryCondition | "">("");
   const [officeId, setOfficeId] = useState("");
   const [q, setQ] = useState("");
   const { page, pageSize, setPage, setPageSize } = usePagination(25);
 
-  const itemsQ = useInventoryItems(
-    {
-      category: category || undefined,
-      status: status || undefined,
-      officeId: officeId || undefined,
-      q: q.trim() || undefined,
-    },
-    { page, pageSize },
-  );
+  const activeFilters = {
+    category: category || undefined,
+    status: status || undefined,
+    condition: condition || undefined,
+    officeId: officeId || undefined,
+    q: q.trim() || undefined,
+  };
+  const itemsQ = useInventoryItems(activeFilters, { page, pageSize });
+  const allMatchingQ = useInventoryItems(activeFilters);
   const deleteItem = useDeleteInventoryItem();
   const [editing, setEditing] = useState<InventoryItemRow | "new" | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const result = itemsQ.data;
   const items = result ? (Array.isArray(result) ? result : result.data) : [];
   const total = result && !Array.isArray(result) ? result.total : items.length;
   const startIndex = (page - 1) * pageSize;
+
+  const exportPdf = async () => {
+    setExporting(true);
+    try {
+      const all = allMatchingQ.data ?? [];
+      const bits = [
+        category && INVENTORY_CATEGORY_LABELS[category],
+        status && INVENTORY_STATUS_LABELS[status],
+        condition && INVENTORY_CONDITION_LABELS[condition],
+        q.trim() && `“${q.trim()}”`,
+      ].filter(Boolean);
+      exportInventoryPdf(all, bits.length ? bits.join(" · ") : undefined);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to export PDF");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -98,11 +123,21 @@ function InventoryPage() {
             status.
           </p>
         </div>
-        {canManage && (
-          <Button size="sm" onClick={() => setEditing("new")}>
-            <Plus className="h-4 w-4 mr-1" /> New item
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={exportPdf} disabled={exporting}>
+            {exporting ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-1" />
+            )}
+            Export PDF
           </Button>
-        )}
+          {canManage && (
+            <Button size="sm" onClick={() => setEditing("new")}>
+              <Plus className="h-4 w-4 mr-1" /> New item
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="rounded-lg border bg-card p-3 flex flex-wrap items-end gap-3">
@@ -160,6 +195,27 @@ function InventoryPage() {
             </SelectContent>
           </Select>
         </div>
+        <div className="w-40">
+          <Select
+            value={condition || ALL}
+            onValueChange={(v) => {
+              setCondition(v === ALL ? "" : (v as InventoryCondition));
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder="Condition" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All conditions</SelectItem>
+              {Object.entries(INVENTORY_CONDITION_LABELS).map(([v, label]) => (
+                <SelectItem key={v} value={v}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="w-44">
           <Select
             value={officeId || ALL}
@@ -201,6 +257,7 @@ function InventoryPage() {
                   <TableHead>Asset tag</TableHead>
                   <TableHead>Device</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Condition</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Assigned to</TableHead>
                   <TableHead>Office</TableHead>
@@ -209,7 +266,10 @@ function InventoryPage() {
               </TableHeader>
               <TableBody>
                 {items.map((item, i) => (
-                  <TableRow key={item.id}>
+                  <TableRow
+                    key={item.id}
+                    className={INVENTORY_CONDITION_ROW_STYLES[item.condition]}
+                  >
                     <TableCell className="text-xs text-muted-foreground tabular-nums">
                       {startIndex + i + 1}
                     </TableCell>
@@ -229,6 +289,14 @@ function InventoryPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       {INVENTORY_CATEGORY_LABELS[item.category]}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={INVENTORY_CONDITION_STYLES[item.condition]}
+                        variant="secondary"
+                      >
+                        {INVENTORY_CONDITION_LABELS[item.condition]}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge className={INVENTORY_STATUS_STYLES[item.status]} variant="secondary">
@@ -318,6 +386,7 @@ function EditItemForm({ value, onDone }: { value: InventoryItemRow | null; onDon
   const [description, setDescription] = useState(value?.description ?? "");
   const [category, setCategory] = useState<InventoryCategory>(value?.category ?? "laptop");
   const [status, setStatus] = useState<InventoryStatus>(value?.status ?? "in_use");
+  const [condition, setCondition] = useState<InventoryCondition>(value?.condition ?? "good");
   const [brand, setBrand] = useState(value?.brand ?? "");
   const [model, setModel] = useState(value?.model ?? "");
   const [serialNumber, setSerialNumber] = useState(value?.serial_number ?? "");
@@ -340,6 +409,7 @@ function EditItemForm({ value, onDone }: { value: InventoryItemRow | null; onDon
         description: description || undefined,
         category,
         status,
+        condition,
         brand: brand || undefined,
         model: model || undefined,
         serialNumber: serialNumber || undefined,
@@ -423,6 +493,21 @@ function EditItemForm({ value, onDone }: { value: InventoryItemRow | null; onDon
               </SelectContent>
             </Select>
           </div>
+        </div>
+        <div>
+          <Label>Condition</Label>
+          <Select value={condition} onValueChange={(v) => setCondition(v as InventoryCondition)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(INVENTORY_CONDITION_LABELS).map(([v, label]) => (
+                <SelectItem key={v} value={v}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>

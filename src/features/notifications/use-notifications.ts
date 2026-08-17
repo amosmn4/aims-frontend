@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
+import { useIsIdle } from "@/hooks/use-idle";
+
+// Pause background polling after 5 minutes with no real interaction — well under the session's
+// own idle timeout, so a tab left open-but-unused stops manufacturing "activity" that would
+// otherwise keep silently renewing the session forever. See hooks/use-idle.ts.
+const IDLE_POLL_PAUSE_MS = 5 * 60_000;
 
 export type NotificationType =
   | "task_due"
@@ -64,18 +70,21 @@ function mapNotification(n: BackendNotification): NotificationRow {
 }
 
 export function useNotifications() {
+  const isIdle = useIsIdle(IDLE_POLL_PAUSE_MS);
   return useQuery({
     queryKey: ["notifications"],
-    queryFn: async () => (await apiJson<BackendNotification[]>("/notifications")).map(mapNotification),
-    refetchInterval: 60_000,
+    queryFn: async () =>
+      (await apiJson<BackendNotification[]>("/notifications")).map(mapNotification),
+    refetchInterval: isIdle ? false : 60_000,
   });
 }
 
 export function useUnreadNotificationCount() {
+  const isIdle = useIsIdle(IDLE_POLL_PAUSE_MS);
   return useQuery({
     queryKey: ["notifications", "unread-count"],
     queryFn: () => apiJson<number>("/notifications/unread-count"),
-    refetchInterval: 60_000,
+    refetchInterval: isIdle ? false : 60_000,
   });
 }
 

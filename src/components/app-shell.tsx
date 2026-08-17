@@ -19,6 +19,8 @@ import {
   Workflow,
   Compass,
   CalendarClock,
+  Laptop2,
+  Droplets,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth, homeRouteFor, departmentScopeFor, ROLE_LABELS, type AppRole } from "@/lib/auth";
@@ -40,6 +42,7 @@ export interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   match?: string[];
   adminOnly?: boolean;
+  extraRoles?: AppRole[];
   children?: NavChild[];
 }
 
@@ -88,6 +91,7 @@ const NAV: NavItem[] = [
   },
   { to: "/documents", label: "Documents", icon: FolderArchive },
   { to: "/calendar", label: "Calendar", icon: CalendarClock },
+  { to: "/it/inventory", label: "Inventory", icon: Laptop2, adminOnly: true },
   {
     to: "/reports",
     label: "Reports",
@@ -108,6 +112,23 @@ const NAV: NavItem[] = [
       },
       { to: "/reports/departments/tender", label: "Tender", role: "tender" },
       { to: "/reports/projects", label: "Projects — All submissions" },
+    ],
+  },
+  {
+    to: "/water",
+    label: "Water Project",
+    icon: Droplets,
+    adminOnly: true,
+    extraRoles: ["water"],
+    match: ["/water"],
+    children: [
+      { to: "/water", label: "Dashboard" },
+      { to: "/water/zones", label: "Zones" },
+      { to: "/water/meters", label: "Meters Registry" },
+      { to: "/water/customers", label: "Customers" },
+      { to: "/water/readings", label: "Bulk & Main Readings" },
+      { to: "/water/upload", label: "Upload & Analytics" },
+      { to: "/water/reports", label: "Reports" },
     ],
   },
   {
@@ -196,8 +217,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Admin/CEO and anyone spanning multiple departments (or none) keep the nav below unchanged.
   const departmentScope = departmentScopeFor(roles);
   const visibleNav = departmentScope
-    ? buildDepartmentNav(departmentScope)
-    : NAV.filter((i) => !i.adminOnly || isAdminOrCeo);
+    ? buildDepartmentNav(departmentScope, hasRole("water"))
+    : NAV.filter(
+        (i) => !i.adminOnly || isAdminOrCeo || (i.extraRoles ? hasRole(i.extraRoles) : false),
+      );
 
   const LayoutToggle = (
     <button

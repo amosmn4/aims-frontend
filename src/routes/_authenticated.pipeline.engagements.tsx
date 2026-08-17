@@ -191,6 +191,7 @@ export function EngagementBoard({ departmentId }: { departmentId?: string } = {}
         getStage={(r) => r.stage}
         getId={(r) => r.id}
         onMove={move}
+        defaultVisiblePerColumn={5}
         renderCard={(r) => (
           <EngagementCard
             r={r}

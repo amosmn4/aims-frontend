@@ -41,6 +41,10 @@ async function parseError(res: Response) {
 /** Exchanges the httpOnly refresh cookie for a new access token. Deduped across concurrent callers. */
 export function refreshAccessToken(): Promise<boolean> {
   if (!refreshPromise) {
+    // Distinguishes "was logged in, session just expired" from "never had a session" (e.g. the
+    // very first ensureSession() call on a fresh visit to /auth) — only the former should
+    // interrupt whatever the user is doing to send them to the login page.
+    const hadSession = accessToken !== null;
     refreshPromise = fetch(`${API_URL}/auth/refresh`, { method: "POST", credentials: "include" })
       .then(async (res) => {
         if (!res.ok) {
@@ -57,6 +61,9 @@ export function refreshAccessToken(): Promise<boolean> {
       })
       .then((ok) => {
         sessionPromise = Promise.resolve(ok);
+        if (!ok && hadSession && typeof window !== "undefined") {
+          window.dispatchEvent(new Event("aims:session-expired"));
+        }
         return ok;
       })
       .finally(() => {

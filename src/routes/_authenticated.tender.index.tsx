@@ -17,6 +17,9 @@ import { useDepartments } from "@/features/clients/use-clients-contracts";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
 import { FunnelChart } from "@/components/funnel-chart";
+import { DateRangeFilter, type DateRange } from "@/components/date-range-filter";
+import { usePagination } from "@/hooks/use-pagination";
+import { PaginationBar } from "@/components/pagination-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -85,24 +88,40 @@ export function TenderWorkspace() {
   const [serviceLineId, setServiceLineId] = useState("all");
   const [stage, setStage] = useState<TenderStage | "all">("all");
   const [q, setQ] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange>({});
+  const { page, pageSize, setPage, setPageSize } = usePagination(25);
 
   const filters = {
     departmentId: departmentId === "all" ? undefined : departmentId,
     serviceLineId: serviceLineId === "all" ? undefined : serviceLineId,
     stage: stage === "all" ? undefined : stage,
     q: q.trim() || undefined,
+    dateFrom: dateRange.from,
+    dateTo: dateRange.to,
   };
 
-  const tendersQ = useTenders(filters);
+  const tendersQ = useTenders(filters, { page, pageSize });
+  const tendersResult = tendersQ.data;
+  const tenders = tendersResult
+    ? Array.isArray(tendersResult)
+      ? tendersResult
+      : tendersResult.data
+    : [];
+  const tendersTotal =
+    tendersResult && !Array.isArray(tendersResult) ? tendersResult.total : tenders.length;
   const summaryQ = useTenderPipelineSummary({
     departmentId: filters.departmentId,
     serviceLineId: filters.serviceLineId,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
   });
   const departmentsQ = useDepartments();
   const serviceLinesQ = useServiceLines();
   const timeMetricsQ = useTenderTimeMetrics({
     departmentId: filters.departmentId,
     serviceLineId: filters.serviceLineId,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
   });
 
   const summary = summaryQ.data ?? [];
@@ -180,13 +199,22 @@ export function TenderWorkspace() {
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setPage(1);
+                }}
                 placeholder="Search title…"
                 className="pl-7"
               />
             </div>
             <div className="w-40">
-              <Select value={departmentId} onValueChange={setDepartmentId}>
+              <Select
+                value={departmentId}
+                onValueChange={(v) => {
+                  setDepartmentId(v);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -201,7 +229,13 @@ export function TenderWorkspace() {
               </Select>
             </div>
             <div className="w-40">
-              <Select value={serviceLineId} onValueChange={setServiceLineId}>
+              <Select
+                value={serviceLineId}
+                onValueChange={(v) => {
+                  setServiceLineId(v);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -216,7 +250,13 @@ export function TenderWorkspace() {
               </Select>
             </div>
             <div className="w-36">
-              <Select value={stage} onValueChange={(v) => setStage(v as TenderStage | "all")}>
+              <Select
+                value={stage}
+                onValueChange={(v) => {
+                  setStage(v as TenderStage | "all");
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -230,13 +270,20 @@ export function TenderWorkspace() {
                 </SelectContent>
               </Select>
             </div>
+            <DateRangeFilter
+              value={dateRange}
+              onChange={(r) => {
+                setDateRange(r);
+                setPage(1);
+              }}
+            />
           </div>
 
           {tendersQ.isLoading ? (
             <div className="py-8 flex justify-center">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
-          ) : (tendersQ.data ?? []).length === 0 ? (
+          ) : tenders.length === 0 ? (
             <div className="text-xs text-muted-foreground py-6 text-center">
               No tenders match these filters.
             </div>
@@ -254,7 +301,7 @@ export function TenderWorkspace() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(tendersQ.data ?? []).map((t) => (
+                  {tenders.map((t) => (
                     <TableRow
                       key={t.id}
                       className="cursor-pointer hover:bg-secondary/40"
@@ -290,6 +337,13 @@ export function TenderWorkspace() {
                   ))}
                 </TableBody>
               </Table>
+              <PaginationBar
+                page={page}
+                pageSize={pageSize}
+                total={tendersTotal}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+              />
             </div>
           )}
         </div>

@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Loader2, Plus, Pencil, Trash2, Users, Mail, Phone, Star } from "lucide-react";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
-import { useClients } from "@/features/finance/use-finance-data";
+import { useClients, useClientFacets } from "@/features/finance/use-finance-data";
 import {
   useClientContacts,
   useSaveClient,
@@ -13,6 +13,8 @@ import {
   useProfilesLite,
   type ClientContactRow,
 } from "@/features/clients/use-clients-contracts";
+import { usePagination } from "@/hooks/use-pagination";
+import { PaginationBar } from "@/components/pagination-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,46 +62,38 @@ const emptyClient: ClientDraft = {
 };
 
 function ClientsList() {
-  const clientsQ = useClients();
+  const [search, setSearch] = useState("");
+  const [industry, setIndustry] = useState("all");
+  const [segment, setSegment] = useState("all");
+  const { page, pageSize, setPage, setPageSize } = usePagination(25);
+
+  const clientsQ = useClients(
+    {
+      industry: industry === "all" ? undefined : industry,
+      segment: segment === "all" ? undefined : segment,
+      q: search.trim() || undefined,
+    },
+    { page, pageSize },
+  );
+  const facetsQ = useClientFacets();
   const profilesQ = useProfilesLite();
   const save = useSaveClient();
   const del = useDeleteClient();
 
-  const [search, setSearch] = useState("");
-  const [industry, setIndustry] = useState("all");
-  const [segment, setSegment] = useState("all");
   const [editing, setEditing] = useState<ClientDraft | null>(null);
   const [contactsFor, setContactsFor] = useState<{ id: string; name: string } | null>(null);
 
-  const industries = useMemo(() => {
-    const s = new Set<string>();
-    (clientsQ.data ?? []).forEach((c) => {
-      const v = (c as unknown as { industry?: string | null }).industry;
-      if (v) s.add(v);
-    });
-    return Array.from(s).sort();
-  }, [clientsQ.data]);
-  const segments = useMemo(() => {
-    const s = new Set<string>();
-    (clientsQ.data ?? []).forEach((c) => {
-      const v = (c as unknown as { segment?: string | null }).segment;
-      if (v) s.add(v);
-    });
-    return Array.from(s).sort();
-  }, [clientsQ.data]);
+  const industries = facetsQ.data?.industries ?? [];
+  const segments = facetsQ.data?.segments ?? [];
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return (clientsQ.data ?? []).filter((c) => {
-      const ind = (c as unknown as { industry?: string | null }).industry ?? "";
-      const seg = (c as unknown as { segment?: string | null }).segment ?? "";
-      if (industry !== "all" && ind !== industry) return false;
-      if (segment !== "all" && seg !== segment) return false;
-      if (q && !c.name.toLowerCase().includes(q) && !(c.code ?? "").toLowerCase().includes(q))
-        return false;
-      return true;
-    });
-  }, [clientsQ.data, search, industry, segment]);
+  const clientsResult = clientsQ.data;
+  const filtered = clientsResult
+    ? Array.isArray(clientsResult)
+      ? clientsResult
+      : clientsResult.data
+    : [];
+  const clientsTotal =
+    clientsResult && !Array.isArray(clientsResult) ? clientsResult.total : filtered.length;
 
   const profileMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -154,10 +148,19 @@ function ClientsList() {
         <Input
           placeholder="Search name or code…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
           className="max-w-xs h-9"
         />
-        <Select value={industry} onValueChange={setIndustry}>
+        <Select
+          value={industry}
+          onValueChange={(v) => {
+            setIndustry(v);
+            setPage(1);
+          }}
+        >
           <SelectTrigger className="w-40 h-9">
             <SelectValue placeholder="Industry" />
           </SelectTrigger>
@@ -170,7 +173,13 @@ function ClientsList() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={segment} onValueChange={setSegment}>
+        <Select
+          value={segment}
+          onValueChange={(v) => {
+            setSegment(v);
+            setPage(1);
+          }}
+        >
           <SelectTrigger className="w-40 h-9">
             <SelectValue placeholder="Segment" />
           </SelectTrigger>
@@ -218,11 +227,9 @@ function ClientsList() {
                   </tr>
                 )}
                 {filtered.map((c) => {
-                  const ind = (c as unknown as { industry?: string | null }).industry ?? "";
-                  const seg = (c as unknown as { segment?: string | null }).segment ?? "";
-                  const am =
-                    (c as unknown as { account_manager_id?: string | null }).account_manager_id ??
-                    null;
+                  const ind = c.industry ?? "";
+                  const seg = c.segment ?? "";
+                  const am = c.account_manager_id;
                   return (
                     <tr key={c.id} className="border-t hover:bg-secondary/20">
                       <td className="px-3 py-2 font-medium">{c.name}</td>
@@ -274,6 +281,13 @@ function ClientsList() {
                 })}
               </tbody>
             </table>
+            <PaginationBar
+              page={page}
+              pageSize={pageSize}
+              total={clientsTotal}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
           </div>
         )}
       </div>

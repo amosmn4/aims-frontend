@@ -53,6 +53,7 @@ const ALL_ROLES: AppRole[] = [
   "it",
   "marketing",
   "tender",
+  "water",
   "department_head",
   "account_manager",
   "general_staff",
@@ -81,15 +82,14 @@ const emptyCreateForm = {
 };
 
 function UsersAdmin() {
-  const { isAdminOrCeo, profile, hasRole } = useAuth();
+  const { isAdminOrCeo, profile } = useAuth();
   const qc = useQueryClient();
 
-  // The System Administrator role is seeded and self-managed — only someone who already holds
-  // it can see it as an option anywhere, including the CEO (who otherwise has full admin access
-  // everywhere else in AIMS). The backend enforces this independently (grants are rejected,
-  // system_admin users are excluded from the list entirely for any other viewer) — this just
-  // keeps the option from being offered in the UI to begin with.
-  const visibleRoles = ALL_ROLES.filter((r) => r !== "system_admin" || hasRole("system_admin"));
+  // The System Administrator role/account never appears in this screen — not in the list, not
+  // as a grantable role option — for anyone, including another system admin. It's seeded and
+  // self-managed outside this UI. The backend enforces the same rule independently (grants are
+  // rejected, system_admin users are excluded from the list query entirely).
+  const visibleRoles = ALL_ROLES.filter((r) => r !== "system_admin");
 
   const { page, pageSize, setPage, setPageSize } = usePagination(25);
 

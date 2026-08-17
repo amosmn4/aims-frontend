@@ -1,5 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
+import type { PaginatedResponse } from "@/hooks/use-pagination";
 
 export type TenderStage =
   "identified" | "applying" | "submitted" | "evaluation" | "won" | "lost" | "withdrawn";
@@ -258,6 +259,10 @@ export interface TenderFilters {
   q?: string;
   deadlineFrom?: string;
   deadlineTo?: string;
+  /** Period filter — when the tender entered the pipeline (`createdAt`), distinct from
+   * `deadlineFrom`/`deadlineTo` which filter on submission deadline. */
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 function buildQuery(filters: object): string {
@@ -271,11 +276,28 @@ function buildQuery(filters: object): string {
 
 /* ---------- Queries ---------- */
 
-export function useTenders(filters: TenderFilters = {}) {
+// Overloaded so a caller that never passes pagination (the vast majority — dropdowns, funnels,
+// "give me everything") gets a plain `TenderRow[]` back at the type level, matching what
+// `maybePaginate` actually returns at runtime when no page/pageSize is sent — only a caller that
+// passes concrete `{page, pageSize}` (a real list page) sees the `TenderRow[] | Paginated<...>`
+// union it then has to narrow.
+export function useTenders(filters?: TenderFilters): UseQueryResult<TenderRow[]>;
+export function useTenders(
+  filters: TenderFilters,
+  pagination: { page: number; pageSize: number },
+): UseQueryResult<TenderRow[] | PaginatedResponse<TenderRow>>;
+export function useTenders(
+  filters: TenderFilters = {},
+  pagination: { page?: number; pageSize?: number } = {},
+) {
   return useQuery({
-    queryKey: ["tenders", filters],
-    queryFn: async () =>
-      (await apiJson<BackendTender[]>(`/tenders${buildQuery(filters)}`)).map(mapTender),
+    queryKey: ["tenders", filters, pagination],
+    queryFn: async () => {
+      const raw = await apiJson<BackendTender[] | PaginatedResponse<BackendTender>>(
+        `/tenders${buildQuery({ ...filters, ...pagination })}`,
+      );
+      return Array.isArray(raw) ? raw.map(mapTender) : { ...raw, data: raw.data.map(mapTender) };
+    },
   });
 }
 
@@ -290,7 +312,7 @@ export function useTender(id: string | undefined) {
 export function useTenderPipelineSummary(
   filters: Pick<
     TenderFilters,
-    "departmentId" | "serviceLineId" | "deadlineFrom" | "deadlineTo"
+    "departmentId" | "serviceLineId" | "deadlineFrom" | "deadlineTo" | "dateFrom" | "dateTo"
   > = {},
 ) {
   return useQuery({
@@ -325,7 +347,7 @@ export interface TenderTimeMetrics {
 export function useTenderTimeMetrics(
   filters: Pick<
     TenderFilters,
-    "departmentId" | "serviceLineId" | "deadlineFrom" | "deadlineTo"
+    "departmentId" | "serviceLineId" | "deadlineFrom" | "deadlineTo" | "dateFrom" | "dateTo"
   > = {},
 ) {
   return useQuery({
@@ -591,98 +613,6 @@ export function useDeleteTimeEntry(tenderId: string) {
 
 /* ================= Financial resourcing ================= */
 
-export const TENDER_COST_CATEGORY_SUGGESTIONS = [
-  "travel",
-  "printing",
-  "consultant",
-  "materials",
-  "other",
-];
-
-export interface TenderCostItemRow {
-  id: string;
-  tender_id: string;
-  category: string;
-  description: string;
-  amount: number;
-  created_at: string;
-}
-
-type BackendCostItem = {
-  id: string;
-  tenderId: string;
-  category: string;
-  description: string;
-  amount: number | string;
-  createdAt: string;
-};
-
-function mapCostItem(c: BackendCostItem): TenderCostItemRow {
-  return {
-    id: c.id,
-    tender_id: c.tenderId,
-    category: c.category,
-    description: c.description,
-    amount: Number(c.amount),
-    created_at: c.createdAt,
-  };
-}
-
-export function useTenderCostItems(tenderId: string | undefined) {
-  return useQuery({
-    queryKey: ["tenders", tenderId, "cost-items"],
-    enabled: !!tenderId,
-    queryFn: async () =>
-      (await apiJson<BackendCostItem[]>(`/tenders/${tenderId}/cost-items`)).map(mapCostItem),
-  });
-}
-
-export function useSaveTenderCostItem(tenderId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: {
-      id?: string;
-      category?: string;
-      description: string;
-      amount: number;
-    }) => {
-      const body = {
-        category: input.category || undefined,
-        description: input.description,
-        amount: input.amount,
-      };
-      if (input.id) {
-        await apiJson(`/tenders/cost-items/${input.id}`, {
-          method: "PATCH",
-          body: JSON.stringify(body),
-        });
-      } else {
-        await apiJson(`/tenders/${tenderId}/cost-items`, {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-      }
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "cost-items"] });
-      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "financials-summary"] });
-    },
-  });
-}
-
-export function useDeleteTenderCostItem(tenderId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (itemId: string) => {
-      await apiJson(`/tenders/cost-items/${itemId}`, { method: "DELETE" });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "cost-items"] });
-      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "financials-summary"] });
-    },
-  });
-}
-
 export type TenderBondType = "bid_bond" | "performance_bond" | "other";
 export type TenderBondStatus = "pending" | "lodged" | "released" | "forfeited";
 
@@ -893,7 +823,6 @@ export function useDeleteTenderPricingItem(tenderId: string) {
 
 export interface TenderFinancialsSummary {
   human_cost: number;
-  other_cost_total: number;
   total_cost_to_pursue: number;
   bid_price: number;
   bonds_total: number;
@@ -907,7 +836,6 @@ export function useTenderFinancialsSummary(tenderId: string | undefined) {
     queryFn: async () => {
       const raw = await apiJson<{
         humanCost: number;
-        otherCostTotal: number;
         totalCostToPursue: number;
         bidPrice: number;
         bondsTotal: number;
@@ -915,7 +843,6 @@ export function useTenderFinancialsSummary(tenderId: string | undefined) {
       }>(`/tenders/${tenderId}/financials-summary`);
       return {
         human_cost: raw.humanCost,
-        other_cost_total: raw.otherCostTotal,
         total_cost_to_pursue: raw.totalCostToPursue,
         bid_price: raw.bidPrice,
         bonds_total: raw.bondsTotal,
@@ -1038,6 +965,24 @@ export function useApplyRequirementTemplate(tenderId: string) {
       });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders", tenderId, "requirements"] }),
+  });
+}
+
+export function useApplyLibraryDocument(tenderId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (libraryDocumentId: string) => {
+      await apiJson(
+        `/tenders/${tenderId}/requirements/apply-library-document/${libraryDocumentId}`,
+        {
+          method: "POST",
+        },
+      );
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "requirements"] });
+      qc.invalidateQueries({ queryKey: ["documents", "list"] });
+    },
   });
 }
 

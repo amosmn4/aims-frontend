@@ -6,6 +6,7 @@ import { confirmDialog } from "@/components/confirm-dialog";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import {
   useContracts,
+  useContractsSummary,
   useSaveContract,
   useDeleteContract,
   useDepartments,
@@ -18,6 +19,8 @@ import {
   type BillingFrequency,
 } from "@/features/clients/use-clients-contracts";
 import { formatCurrency } from "@/features/finance/finance";
+import { usePagination } from "@/hooks/use-pagination";
+import { PaginationBar } from "@/components/pagination-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -91,7 +94,15 @@ function ContractsList() {
   const [deptFilter, setDeptFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
-  const contractsQ = useContracts({ departmentId: deptFilter === "all" ? null : deptFilter });
+  const { page, pageSize, setPage, setPageSize } = usePagination(25);
+
+  const filters = {
+    departmentId: deptFilter === "all" ? null : deptFilter,
+    status: statusFilter === "all" ? undefined : (statusFilter as ContractStatus),
+    q: search.trim() || undefined,
+  };
+  const contractsQ = useContracts(filters, { page, pageSize });
+  const summaryQ = useContractsSummary(filters);
   const save = useSaveContract();
   const del = useDeleteContract();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -113,36 +124,21 @@ function ContractsList() {
     [linesQ.data],
   );
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return (contractsQ.data ?? []).filter((c) => {
-      if (statusFilter !== "all" && c.status !== statusFilter) return false;
-      if (q) {
-        const client = clientMap.get(c.client_id)?.name ?? "";
-        if (
-          !c.title.toLowerCase().includes(q) &&
-          !(c.contract_number ?? "").toLowerCase().includes(q) &&
-          !client.toLowerCase().includes(q)
-        )
-          return false;
-      }
-      return true;
-    });
-  }, [contractsQ.data, statusFilter, search, clientMap]);
+  const contractsResult = contractsQ.data;
+  const filtered = contractsResult
+    ? Array.isArray(contractsResult)
+      ? contractsResult
+      : contractsResult.data
+    : [];
+  const contractsTotal =
+    contractsResult && !Array.isArray(contractsResult) ? contractsResult.total : filtered.length;
 
-  const totals = useMemo(() => {
-    let total = 0,
-      active = 0,
-      activeVal = 0;
-    for (const c of filtered) {
-      total += Number(c.value);
-      if (c.status === "active") {
-        active++;
-        activeVal += Number(c.value);
-      }
-    }
-    return { count: filtered.length, total, active, activeVal };
-  }, [filtered]);
+  const totals = {
+    count: summaryQ.data?.count ?? 0,
+    total: summaryQ.data?.value ?? 0,
+    active: summaryQ.data?.active_count ?? 0,
+    activeVal: summaryQ.data?.active_value ?? 0,
+  };
 
   const submit = async () => {
     if (!draft) return;
@@ -228,10 +224,19 @@ function ContractsList() {
         <Input
           placeholder="Search title, number, client…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
           className="max-w-xs h-9"
         />
-        <Select value={deptFilter} onValueChange={setDeptFilter}>
+        <Select
+          value={deptFilter}
+          onValueChange={(v) => {
+            setDeptFilter(v);
+            setPage(1);
+          }}
+        >
           <SelectTrigger className="w-44 h-9">
             <SelectValue placeholder="Department" />
           </SelectTrigger>
@@ -244,7 +249,13 @@ function ContractsList() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select
+          value={statusFilter}
+          onValueChange={(v) => {
+            setStatusFilter(v);
+            setPage(1);
+          }}
+        >
           <SelectTrigger className="w-36 h-9">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -383,6 +394,13 @@ function ContractsList() {
                 ))}
               </tbody>
             </table>
+            <PaginationBar
+              page={page}
+              pageSize={pageSize}
+              total={contractsTotal}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
           </div>
         )}
       </div>

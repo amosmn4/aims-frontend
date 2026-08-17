@@ -13,6 +13,7 @@ import { Route as SetPasswordRouteImport } from './routes/set-password'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedWaterRouteImport } from './routes/_authenticated.water'
 import { Route as AuthenticatedTenderRouteImport } from './routes/_authenticated.tender'
 import { Route as AuthenticatedRequestsRouteImport } from './routes/_authenticated.requests'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated.reports'
@@ -29,6 +30,7 @@ import { Route as AuthenticatedDepartmentsRouteImport } from './routes/_authenti
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated.clients'
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated.calendar'
+import { Route as AuthenticatedWaterIndexRouteImport } from './routes/_authenticated.water.index'
 import { Route as AuthenticatedTenderIndexRouteImport } from './routes/_authenticated.tender.index'
 import { Route as AuthenticatedRequestsIndexRouteImport } from './routes/_authenticated.requests.index'
 import { Route as AuthenticatedReportsIndexRouteImport } from './routes/_authenticated.reports.index'
@@ -41,6 +43,12 @@ import { Route as AuthenticatedHrIndexRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedFinanceIndexRouteImport } from './routes/_authenticated.finance.index'
 import { Route as AuthenticatedDepartmentsIndexRouteImport } from './routes/_authenticated.departments.index'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated.clients.index'
+import { Route as AuthenticatedWaterZonesRouteImport } from './routes/_authenticated.water.zones'
+import { Route as AuthenticatedWaterUploadRouteImport } from './routes/_authenticated.water.upload'
+import { Route as AuthenticatedWaterReportsRouteImport } from './routes/_authenticated.water.reports'
+import { Route as AuthenticatedWaterReadingsRouteImport } from './routes/_authenticated.water.readings'
+import { Route as AuthenticatedWaterMetersRouteImport } from './routes/_authenticated.water.meters'
+import { Route as AuthenticatedWaterCustomersRouteImport } from './routes/_authenticated.water.customers'
 import { Route as AuthenticatedTenderWorkspaceRouteImport } from './routes/_authenticated.tender.workspace'
 import { Route as AuthenticatedTenderTasksRouteImport } from './routes/_authenticated.tender.tasks'
 import { Route as AuthenticatedTenderSharedProjectsRouteImport } from './routes/_authenticated.tender.shared-projects'
@@ -148,6 +156,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedWaterRoute = AuthenticatedWaterRouteImport.update({
+  id: '/water',
+  path: '/water',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedTenderRoute = AuthenticatedTenderRouteImport.update({
   id: '/tender',
   path: '/tender',
@@ -229,6 +242,11 @@ const AuthenticatedCalendarRoute = AuthenticatedCalendarRouteImport.update({
   path: '/calendar',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedWaterIndexRoute = AuthenticatedWaterIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedWaterRoute,
+} as any)
 const AuthenticatedTenderIndexRoute =
   AuthenticatedTenderIndexRouteImport.update({
     id: '/',
@@ -298,6 +316,41 @@ const AuthenticatedClientsIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedClientsRoute,
+  } as any)
+const AuthenticatedWaterZonesRoute = AuthenticatedWaterZonesRouteImport.update({
+  id: '/zones',
+  path: '/zones',
+  getParentRoute: () => AuthenticatedWaterRoute,
+} as any)
+const AuthenticatedWaterUploadRoute =
+  AuthenticatedWaterUploadRouteImport.update({
+    id: '/upload',
+    path: '/upload',
+    getParentRoute: () => AuthenticatedWaterRoute,
+  } as any)
+const AuthenticatedWaterReportsRoute =
+  AuthenticatedWaterReportsRouteImport.update({
+    id: '/reports',
+    path: '/reports',
+    getParentRoute: () => AuthenticatedWaterRoute,
+  } as any)
+const AuthenticatedWaterReadingsRoute =
+  AuthenticatedWaterReadingsRouteImport.update({
+    id: '/readings',
+    path: '/readings',
+    getParentRoute: () => AuthenticatedWaterRoute,
+  } as any)
+const AuthenticatedWaterMetersRoute =
+  AuthenticatedWaterMetersRouteImport.update({
+    id: '/meters',
+    path: '/meters',
+    getParentRoute: () => AuthenticatedWaterRoute,
+  } as any)
+const AuthenticatedWaterCustomersRoute =
+  AuthenticatedWaterCustomersRouteImport.update({
+    id: '/customers',
+    path: '/customers',
+    getParentRoute: () => AuthenticatedWaterRoute,
   } as any)
 const AuthenticatedTenderWorkspaceRoute =
   AuthenticatedTenderWorkspaceRouteImport.update({
@@ -830,6 +883,7 @@ export interface FileRoutesByFullPath {
   '/reports': typeof AuthenticatedReportsRouteWithChildren
   '/requests': typeof AuthenticatedRequestsRouteWithChildren
   '/tender': typeof AuthenticatedTenderRouteWithChildren
+  '/water': typeof AuthenticatedWaterRouteWithChildren
   '/admin/audit': typeof AuthenticatedAdminAuditRoute
   '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
@@ -904,6 +958,12 @@ export interface FileRoutesByFullPath {
   '/tender/shared-projects': typeof AuthenticatedTenderSharedProjectsRoute
   '/tender/tasks': typeof AuthenticatedTenderTasksRoute
   '/tender/workspace': typeof AuthenticatedTenderWorkspaceRoute
+  '/water/customers': typeof AuthenticatedWaterCustomersRoute
+  '/water/meters': typeof AuthenticatedWaterMetersRoute
+  '/water/readings': typeof AuthenticatedWaterReadingsRoute
+  '/water/reports': typeof AuthenticatedWaterReportsRoute
+  '/water/upload': typeof AuthenticatedWaterUploadRoute
+  '/water/zones': typeof AuthenticatedWaterZonesRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/departments/': typeof AuthenticatedDepartmentsIndexRoute
   '/finance/': typeof AuthenticatedFinanceIndexRoute
@@ -916,6 +976,7 @@ export interface FileRoutesByFullPath {
   '/reports/': typeof AuthenticatedReportsIndexRoute
   '/requests/': typeof AuthenticatedRequestsIndexRoute
   '/tender/': typeof AuthenticatedTenderIndexRoute
+  '/water/': typeof AuthenticatedWaterIndexRoute
   '/clients/contracts/$id': typeof AuthenticatedClientsContractsIdRoute
   '/engagements/$anchorType/$anchorId': typeof AuthenticatedEngagementsAnchorTypeAnchorIdRoute
   '/finance/reports/$id': typeof AuthenticatedFinanceReportsIdRoute
@@ -1009,6 +1070,12 @@ export interface FileRoutesByTo {
   '/tender/shared-projects': typeof AuthenticatedTenderSharedProjectsRoute
   '/tender/tasks': typeof AuthenticatedTenderTasksRoute
   '/tender/workspace': typeof AuthenticatedTenderWorkspaceRoute
+  '/water/customers': typeof AuthenticatedWaterCustomersRoute
+  '/water/meters': typeof AuthenticatedWaterMetersRoute
+  '/water/readings': typeof AuthenticatedWaterReadingsRoute
+  '/water/reports': typeof AuthenticatedWaterReportsRoute
+  '/water/upload': typeof AuthenticatedWaterUploadRoute
+  '/water/zones': typeof AuthenticatedWaterZonesRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/departments': typeof AuthenticatedDepartmentsIndexRoute
   '/finance': typeof AuthenticatedFinanceIndexRoute
@@ -1021,6 +1088,7 @@ export interface FileRoutesByTo {
   '/reports': typeof AuthenticatedReportsIndexRoute
   '/requests': typeof AuthenticatedRequestsIndexRoute
   '/tender': typeof AuthenticatedTenderIndexRoute
+  '/water': typeof AuthenticatedWaterIndexRoute
   '/clients/contracts/$id': typeof AuthenticatedClientsContractsIdRoute
   '/engagements/$anchorType/$anchorId': typeof AuthenticatedEngagementsAnchorTypeAnchorIdRoute
   '/finance/reports/$id': typeof AuthenticatedFinanceReportsIdRoute
@@ -1057,6 +1125,7 @@ export interface FileRoutesById {
   '/_authenticated/reports': typeof AuthenticatedReportsRouteWithChildren
   '/_authenticated/requests': typeof AuthenticatedRequestsRouteWithChildren
   '/_authenticated/tender': typeof AuthenticatedTenderRouteWithChildren
+  '/_authenticated/water': typeof AuthenticatedWaterRouteWithChildren
   '/_authenticated/admin/audit': typeof AuthenticatedAdminAuditRoute
   '/_authenticated/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
@@ -1131,6 +1200,12 @@ export interface FileRoutesById {
   '/_authenticated/tender/shared-projects': typeof AuthenticatedTenderSharedProjectsRoute
   '/_authenticated/tender/tasks': typeof AuthenticatedTenderTasksRoute
   '/_authenticated/tender/workspace': typeof AuthenticatedTenderWorkspaceRoute
+  '/_authenticated/water/customers': typeof AuthenticatedWaterCustomersRoute
+  '/_authenticated/water/meters': typeof AuthenticatedWaterMetersRoute
+  '/_authenticated/water/readings': typeof AuthenticatedWaterReadingsRoute
+  '/_authenticated/water/reports': typeof AuthenticatedWaterReportsRoute
+  '/_authenticated/water/upload': typeof AuthenticatedWaterUploadRoute
+  '/_authenticated/water/zones': typeof AuthenticatedWaterZonesRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/departments/': typeof AuthenticatedDepartmentsIndexRoute
   '/_authenticated/finance/': typeof AuthenticatedFinanceIndexRoute
@@ -1143,6 +1218,7 @@ export interface FileRoutesById {
   '/_authenticated/reports/': typeof AuthenticatedReportsIndexRoute
   '/_authenticated/requests/': typeof AuthenticatedRequestsIndexRoute
   '/_authenticated/tender/': typeof AuthenticatedTenderIndexRoute
+  '/_authenticated/water/': typeof AuthenticatedWaterIndexRoute
   '/_authenticated/clients/contracts/$id': typeof AuthenticatedClientsContractsIdRoute
   '/_authenticated/engagements/$anchorType/$anchorId': typeof AuthenticatedEngagementsAnchorTypeAnchorIdRoute
   '/_authenticated/finance/reports/$id': typeof AuthenticatedFinanceReportsIdRoute
@@ -1179,6 +1255,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/requests'
     | '/tender'
+    | '/water'
     | '/admin/audit'
     | '/admin/departments'
     | '/admin/users'
@@ -1253,6 +1330,12 @@ export interface FileRouteTypes {
     | '/tender/shared-projects'
     | '/tender/tasks'
     | '/tender/workspace'
+    | '/water/customers'
+    | '/water/meters'
+    | '/water/readings'
+    | '/water/reports'
+    | '/water/upload'
+    | '/water/zones'
     | '/clients/'
     | '/departments/'
     | '/finance/'
@@ -1265,6 +1348,7 @@ export interface FileRouteTypes {
     | '/reports/'
     | '/requests/'
     | '/tender/'
+    | '/water/'
     | '/clients/contracts/$id'
     | '/engagements/$anchorType/$anchorId'
     | '/finance/reports/$id'
@@ -1358,6 +1442,12 @@ export interface FileRouteTypes {
     | '/tender/shared-projects'
     | '/tender/tasks'
     | '/tender/workspace'
+    | '/water/customers'
+    | '/water/meters'
+    | '/water/readings'
+    | '/water/reports'
+    | '/water/upload'
+    | '/water/zones'
     | '/clients'
     | '/departments'
     | '/finance'
@@ -1370,6 +1460,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/requests'
     | '/tender'
+    | '/water'
     | '/clients/contracts/$id'
     | '/engagements/$anchorType/$anchorId'
     | '/finance/reports/$id'
@@ -1405,6 +1496,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports'
     | '/_authenticated/requests'
     | '/_authenticated/tender'
+    | '/_authenticated/water'
     | '/_authenticated/admin/audit'
     | '/_authenticated/admin/departments'
     | '/_authenticated/admin/users'
@@ -1479,6 +1571,12 @@ export interface FileRouteTypes {
     | '/_authenticated/tender/shared-projects'
     | '/_authenticated/tender/tasks'
     | '/_authenticated/tender/workspace'
+    | '/_authenticated/water/customers'
+    | '/_authenticated/water/meters'
+    | '/_authenticated/water/readings'
+    | '/_authenticated/water/reports'
+    | '/_authenticated/water/upload'
+    | '/_authenticated/water/zones'
     | '/_authenticated/clients/'
     | '/_authenticated/departments/'
     | '/_authenticated/finance/'
@@ -1491,6 +1589,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports/'
     | '/_authenticated/requests/'
     | '/_authenticated/tender/'
+    | '/_authenticated/water/'
     | '/_authenticated/clients/contracts/$id'
     | '/_authenticated/engagements/$anchorType/$anchorId'
     | '/_authenticated/finance/reports/$id'
@@ -1542,6 +1641,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/water': {
+      id: '/_authenticated/water'
+      path: '/water'
+      fullPath: '/water'
+      preLoaderRoute: typeof AuthenticatedWaterRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/tender': {
       id: '/_authenticated/tender'
@@ -1655,6 +1761,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCalendarRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/water/': {
+      id: '/_authenticated/water/'
+      path: '/'
+      fullPath: '/water/'
+      preLoaderRoute: typeof AuthenticatedWaterIndexRouteImport
+      parentRoute: typeof AuthenticatedWaterRoute
+    }
     '/_authenticated/tender/': {
       id: '/_authenticated/tender/'
       path: '/'
@@ -1738,6 +1851,48 @@ declare module '@tanstack/react-router' {
       fullPath: '/clients/'
       preLoaderRoute: typeof AuthenticatedClientsIndexRouteImport
       parentRoute: typeof AuthenticatedClientsRoute
+    }
+    '/_authenticated/water/zones': {
+      id: '/_authenticated/water/zones'
+      path: '/zones'
+      fullPath: '/water/zones'
+      preLoaderRoute: typeof AuthenticatedWaterZonesRouteImport
+      parentRoute: typeof AuthenticatedWaterRoute
+    }
+    '/_authenticated/water/upload': {
+      id: '/_authenticated/water/upload'
+      path: '/upload'
+      fullPath: '/water/upload'
+      preLoaderRoute: typeof AuthenticatedWaterUploadRouteImport
+      parentRoute: typeof AuthenticatedWaterRoute
+    }
+    '/_authenticated/water/reports': {
+      id: '/_authenticated/water/reports'
+      path: '/reports'
+      fullPath: '/water/reports'
+      preLoaderRoute: typeof AuthenticatedWaterReportsRouteImport
+      parentRoute: typeof AuthenticatedWaterRoute
+    }
+    '/_authenticated/water/readings': {
+      id: '/_authenticated/water/readings'
+      path: '/readings'
+      fullPath: '/water/readings'
+      preLoaderRoute: typeof AuthenticatedWaterReadingsRouteImport
+      parentRoute: typeof AuthenticatedWaterRoute
+    }
+    '/_authenticated/water/meters': {
+      id: '/_authenticated/water/meters'
+      path: '/meters'
+      fullPath: '/water/meters'
+      preLoaderRoute: typeof AuthenticatedWaterMetersRouteImport
+      parentRoute: typeof AuthenticatedWaterRoute
+    }
+    '/_authenticated/water/customers': {
+      id: '/_authenticated/water/customers'
+      path: '/customers'
+      fullPath: '/water/customers'
+      preLoaderRoute: typeof AuthenticatedWaterCustomersRouteImport
+      parentRoute: typeof AuthenticatedWaterRoute
     }
     '/_authenticated/tender/workspace': {
       id: '/_authenticated/tender/workspace'
@@ -2735,6 +2890,29 @@ const AuthenticatedTenderRouteChildren: AuthenticatedTenderRouteChildren = {
 const AuthenticatedTenderRouteWithChildren =
   AuthenticatedTenderRoute._addFileChildren(AuthenticatedTenderRouteChildren)
 
+interface AuthenticatedWaterRouteChildren {
+  AuthenticatedWaterCustomersRoute: typeof AuthenticatedWaterCustomersRoute
+  AuthenticatedWaterMetersRoute: typeof AuthenticatedWaterMetersRoute
+  AuthenticatedWaterReadingsRoute: typeof AuthenticatedWaterReadingsRoute
+  AuthenticatedWaterReportsRoute: typeof AuthenticatedWaterReportsRoute
+  AuthenticatedWaterUploadRoute: typeof AuthenticatedWaterUploadRoute
+  AuthenticatedWaterZonesRoute: typeof AuthenticatedWaterZonesRoute
+  AuthenticatedWaterIndexRoute: typeof AuthenticatedWaterIndexRoute
+}
+
+const AuthenticatedWaterRouteChildren: AuthenticatedWaterRouteChildren = {
+  AuthenticatedWaterCustomersRoute: AuthenticatedWaterCustomersRoute,
+  AuthenticatedWaterMetersRoute: AuthenticatedWaterMetersRoute,
+  AuthenticatedWaterReadingsRoute: AuthenticatedWaterReadingsRoute,
+  AuthenticatedWaterReportsRoute: AuthenticatedWaterReportsRoute,
+  AuthenticatedWaterUploadRoute: AuthenticatedWaterUploadRoute,
+  AuthenticatedWaterZonesRoute: AuthenticatedWaterZonesRoute,
+  AuthenticatedWaterIndexRoute: AuthenticatedWaterIndexRoute,
+}
+
+const AuthenticatedWaterRouteWithChildren =
+  AuthenticatedWaterRoute._addFileChildren(AuthenticatedWaterRouteChildren)
+
 interface AuthenticatedRouteChildren {
   AuthenticatedCalendarRoute: typeof AuthenticatedCalendarRoute
   AuthenticatedClientsRoute: typeof AuthenticatedClientsRouteWithChildren
@@ -2752,6 +2930,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRouteWithChildren
   AuthenticatedRequestsRoute: typeof AuthenticatedRequestsRouteWithChildren
   AuthenticatedTenderRoute: typeof AuthenticatedTenderRouteWithChildren
+  AuthenticatedWaterRoute: typeof AuthenticatedWaterRouteWithChildren
   AuthenticatedAdminAuditRoute: typeof AuthenticatedAdminAuditRoute
   AuthenticatedAdminDepartmentsRoute: typeof AuthenticatedAdminDepartmentsRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
@@ -2775,6 +2954,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedReportsRoute: AuthenticatedReportsRouteWithChildren,
   AuthenticatedRequestsRoute: AuthenticatedRequestsRouteWithChildren,
   AuthenticatedTenderRoute: AuthenticatedTenderRouteWithChildren,
+  AuthenticatedWaterRoute: AuthenticatedWaterRouteWithChildren,
   AuthenticatedAdminAuditRoute: AuthenticatedAdminAuditRoute,
   AuthenticatedAdminDepartmentsRoute: AuthenticatedAdminDepartmentsRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,

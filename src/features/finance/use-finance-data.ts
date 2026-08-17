@@ -1,5 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
+import type { PaginatedResponse } from "@/hooks/use-pagination";
 import type { InvoiceRow, PaymentRow } from "./finance";
 
 export type Client = {
@@ -9,6 +10,9 @@ export type Client = {
   country: string | null;
   currency_code: string;
   is_active: boolean;
+  industry: string | null;
+  segment: string | null;
+  account_manager_id: string | null;
 };
 
 export type ServiceLine = {
@@ -34,6 +38,9 @@ type BackendClient = {
   country: string | null;
   currencyCode: string;
   isActive: boolean;
+  industry: string | null;
+  segment: string | null;
+  accountManagerId: string | null;
 };
 
 function mapClient(c: BackendClient): Client {
@@ -44,6 +51,9 @@ function mapClient(c: BackendClient): Client {
     country: c.country,
     currency_code: c.currencyCode,
     is_active: c.isActive,
+    industry: c.industry,
+    segment: c.segment,
+    account_manager_id: c.accountManagerId,
   };
 }
 
@@ -124,10 +134,42 @@ function mapPayment(p: BackendPayment): PaymentRow {
   };
 }
 
-export function useClients() {
+type ClientFilters = { industry?: string; segment?: string; q?: string };
+
+// See useTenders' matching overload comment (features/tender/use-tender.ts) — same reasoning.
+// This hook in particular has ~15 call sites across the app that only ever call it bare (picker
+// dropdowns) — the overload is what keeps every one of them type-checking as a plain `Client[]`.
+export function useClients(filters?: ClientFilters): UseQueryResult<Client[]>;
+export function useClients(
+  filters: ClientFilters,
+  pagination: { page: number; pageSize: number },
+): UseQueryResult<Client[] | PaginatedResponse<Client>>;
+export function useClients(
+  filters: ClientFilters = {},
+  pagination: { page?: number; pageSize?: number } = {},
+) {
   return useQuery({
-    queryKey: ["finance", "clients"],
-    queryFn: async () => (await apiJson<BackendClient[]>("/clients")).map(mapClient),
+    queryKey: ["finance", "clients", filters, pagination],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (filters.industry) params.set("industry", filters.industry);
+      if (filters.segment) params.set("segment", filters.segment);
+      if (filters.q) params.set("q", filters.q);
+      if (pagination.page) params.set("page", String(pagination.page));
+      if (pagination.pageSize) params.set("pageSize", String(pagination.pageSize));
+      const qs = params.toString();
+      const raw = await apiJson<BackendClient[] | PaginatedResponse<BackendClient>>(
+        `/clients${qs ? `?${qs}` : ""}`,
+      );
+      return Array.isArray(raw) ? raw.map(mapClient) : { ...raw, data: raw.data.map(mapClient) };
+    },
+  });
+}
+
+export function useClientFacets() {
+  return useQuery({
+    queryKey: ["finance", "clients", "facets"],
+    queryFn: () => apiJson<{ industries: string[]; segments: string[] }>("/clients/facets"),
   });
 }
 

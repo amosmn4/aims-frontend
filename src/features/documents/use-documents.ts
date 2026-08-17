@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, apiJson } from "@/lib/api-client";
 
 export type DocumentResourceType =
-  "project" | "task" | "finance_report" | "tender" | "client_request";
+  "project" | "task" | "finance_report" | "tender" | "client_request" | "tender_document_library";
 export type LibraryResourceType = DocumentResourceType | "contract";
 export type DocumentAccessType = "everyone" | "department" | "user";
 
@@ -13,6 +13,7 @@ export const RESOURCE_TYPE_LABELS: Record<LibraryResourceType, string> = {
   tender: "Tender",
   client_request: "Client request",
   contract: "Contract",
+  tender_document_library: "Mandatory documents library",
 };
 
 export const ACCESS_TYPE_LABELS: Record<DocumentAccessType, string> = {

@@ -7,6 +7,7 @@ import {
   CalendarClock,
   BarChart3,
   Workflow,
+  Droplets,
 } from "lucide-react";
 import type { NavItem } from "@/components/app-shell";
 import type { DepartmentCode } from "@/lib/auth";
@@ -62,7 +63,10 @@ const DEPARTMENT_LABEL: Record<DepartmentCode, string> = {
   operations: "Operations",
 };
 
-export function buildDepartmentNav(code: DepartmentCode): NavItem[] {
+// `hasWaterAccess` covers the edge case of a user who holds both a department role and the
+// separate "water" module grant — without this they'd lose the Water Project link entirely,
+// since a department-scoped user sees this nav instead of the global one (see app-shell.tsx).
+export function buildDepartmentNav(code: DepartmentCode, hasWaterAccess = false): NavItem[] {
   const base = `/${code}`;
   return [
     { to: base, label: "Dashboard", icon: LayoutDashboard, match: [base] },
@@ -99,5 +103,8 @@ export function buildDepartmentNav(code: DepartmentCode): NavItem[] {
       icon: FolderArchive,
       match: [`${base}/documents`],
     },
+    ...(hasWaterAccess
+      ? [{ to: "/water", label: "Water Project", icon: Droplets, match: ["/water"] }]
+      : []),
   ];
 }

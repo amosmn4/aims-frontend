@@ -10,6 +10,7 @@ export type AppRole =
   | "marketing"
   | "tender"
   | "operations"
+  | "water"
   | "department_head"
   | "account_manager"
   | "general_staff";
@@ -192,6 +193,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   marketing: "Marketing",
   tender: "Tender",
   operations: "Operations",
+  water: "Water Project",
   department_head: "Department Head",
   account_manager: "Account Manager",
   general_staff: "General Staff",

@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2, Upload, Eye, Download } from "lucide-react";
 import { RequireRole } from "@/components/require-role";
 import { useAuth } from "@/lib/auth";
 import {
@@ -16,9 +17,6 @@ import {
   useLogTime,
   useDeleteTimeEntry,
   useTenderCostSummary,
-  useTenderCostItems,
-  useSaveTenderCostItem,
-  useDeleteTenderCostItem,
   useTenderBonds,
   useSaveTenderBond,
   useDeleteTenderBond,
@@ -30,12 +28,12 @@ import {
   useSaveTenderRequirement,
   useDeleteTenderRequirement,
   useApplyRequirementTemplate,
+  useApplyLibraryDocument,
   useSaveRequirementsAsTemplate,
   useRequirementTemplates,
   TENDER_STAGES,
   TENDER_STAGE_LABELS,
   TENDER_STAGE_STYLES,
-  TENDER_COST_CATEGORY_SUGGESTIONS,
   TENDER_BOND_TYPE_LABELS,
   TENDER_BOND_STATUS_LABELS,
   TENDER_BOND_STATUS_STYLES,
@@ -51,7 +49,15 @@ import { useProfilesLite } from "@/features/clients/use-clients-contracts";
 import { ClientPicker } from "@/features/clients/client-picker";
 import { formatCurrency } from "@/features/finance/finance";
 import { AttachmentsPanel } from "@/features/documents/attachments-panel";
-import { useDocuments } from "@/features/documents/use-documents";
+import {
+  useDocuments,
+  useUploadDocument,
+  useDeleteDocument,
+  downloadDocument,
+  formatFileSize,
+  type DocumentRow,
+} from "@/features/documents/use-documents";
+import { apiFetch } from "@/lib/api-client";
 import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
 import { EntityBreadcrumb, type BreadcrumbSegment } from "@/components/entity-breadcrumb";
 import { Button } from "@/components/ui/button";
@@ -59,6 +65,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -844,154 +851,322 @@ function FinancialsTab({
         />
       </div>
 
-      <CostItemsSection tenderId={tenderId} canManage={canManage} />
       <BondsSection tenderId={tenderId} canManage={canManage} />
       <PricingItemsSection tenderId={tenderId} canManage={canManage} />
+      <FinancialBreakdownSection tenderId={tenderId} canManage={canManage} />
     </div>
   );
 }
 
-function CostItemsSection({ tenderId, canManage }: { tenderId: string; canManage: boolean }) {
-  const itemsQ = useTenderCostItems(tenderId);
-  const deleteItem = useDeleteTenderCostItem(tenderId);
-  const total = (itemsQ.data ?? []).reduce((sum, i) => sum + i.amount, 0);
+const FINANCIAL_BREAKDOWN_TAG = "financial_breakdown";
+
+function FinancialBreakdownSection({
+  tenderId,
+  canManage,
+}: {
+  tenderId: string;
+  canManage: boolean;
+}) {
+  const documentsQ = useDocuments({
+    resourceType: "tender",
+    resourceId: tenderId,
+    tag: FINANCIAL_BREAKDOWN_TAG,
+  });
+  const deleteDocument = useDeleteDocument();
+  const [previewDoc, setPreviewDoc] = useState<DocumentRow | null>(null);
+  const docs = documentsQ.data ?? [];
 
   return (
     <div className="rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold">Cost items (pursuing this bid)</div>
-        {canManage && <CostItemDialog tenderId={tenderId} />}
+        <div>
+          <div className="text-sm font-semibold">Financial breakdown upload</div>
+          <div className="text-xs text-muted-foreground">
+            Attach the pricing spreadsheet or document prepared for this bid.
+          </div>
+        </div>
+        {canManage && <FinancialBreakdownUploadDialog tenderId={tenderId} />}
       </div>
-      {itemsQ.isLoading ? (
+      {documentsQ.isLoading ? (
         <div className="py-6 flex justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
-      ) : (itemsQ.data ?? []).length === 0 ? (
-        <div className="text-xs text-muted-foreground py-4 text-center">No cost items yet.</div>
+      ) : docs.length === 0 ? (
+        <div className="text-xs text-muted-foreground py-4 text-center">
+          No financial breakdown uploaded yet.
+        </div>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Description</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              {canManage && <TableHead />}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(itemsQ.data ?? []).map((i) => (
-              <TableRow key={i.id}>
-                <TableCell className="text-sm">{i.description}</TableCell>
-                <TableCell className="text-xs text-muted-foreground capitalize">
-                  {i.category}
-                </TableCell>
-                <TableCell className="text-right text-xs tabular-nums">
-                  {formatCurrency(i.amount)}
-                </TableCell>
+        <div className="space-y-2">
+          {docs.map((doc) => (
+            <div
+              key={doc.id}
+              className="flex items-center justify-between gap-2 rounded-md border px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">{doc.title}</div>
+                <div className="text-xs text-muted-foreground">
+                  {doc.latest_version ? formatFileSize(doc.latest_version.size_bytes) : "—"}
+                  {" · "}
+                  {new Date(doc.created_at).toLocaleDateString()}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Preview"
+                  onClick={() => setPreviewDoc(doc)}
+                >
+                  <Eye className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Download"
+                  onClick={() =>
+                    downloadDocument(doc).catch((err) =>
+                      toast.error(err instanceof Error ? err.message : "Could not open file"),
+                    )
+                  }
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
                 {canManage && (
-                  <TableCell className="text-right">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() =>
-                        deleteItem.mutate(i.id, {
-                          onError: (err) =>
-                            toast.error(err instanceof Error ? err.message : "Failed to delete"),
-                        })
-                      }
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </TableCell>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Delete"
+                    onClick={() =>
+                      deleteDocument.mutate(doc.id, {
+                        onError: (err) =>
+                          toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                      })
+                    }
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
                 )}
-              </TableRow>
-            ))}
-            <TableRow>
-              <TableCell className="text-xs font-semibold" colSpan={2}>
-                Total
-              </TableCell>
-              <TableCell className="text-right text-xs font-semibold tabular-nums">
-                {formatCurrency(total)}
-              </TableCell>
-              {canManage && <TableCell />}
-            </TableRow>
-          </TableBody>
-        </Table>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
+      <FinancialBreakdownPreviewDialog doc={previewDoc} onClose={() => setPreviewDoc(null)} />
     </div>
   );
 }
 
-function CostItemDialog({ tenderId }: { tenderId: string }) {
+function FinancialBreakdownUploadDialog({ tenderId }: { tenderId: string }) {
   const [open, setOpen] = useState(false);
-  const [category, setCategory] = useState("other");
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const save = useSaveTenderCostItem(tenderId);
+  const [title, setTitle] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const upload = useUploadDocument();
 
   const submit = () => {
-    if (!description.trim() || !amount) {
-      toast.error("Description and amount are required");
+    if (!file) {
+      toast.error("Choose a file to upload");
       return;
     }
-    save.mutate(
-      { category, description: description.trim(), amount: Number(amount) },
+    upload.mutate(
+      {
+        file,
+        resourceType: "tender",
+        resourceId: tenderId,
+        title: title.trim() || undefined,
+        category: "financial_breakdown",
+        tags: [FINANCIAL_BREAKDOWN_TAG],
+      },
       {
         onSuccess: () => {
-          toast.success("Cost item added");
+          toast.success("Financial breakdown uploaded");
           setOpen(false);
-          setDescription("");
-          setAmount("");
+          setTitle("");
+          setFile(null);
         },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to add"),
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Upload failed"),
       },
     );
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) {
+          setTitle("");
+          setFile(null);
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button size="sm" variant="outline">
-          <Plus className="h-4 w-4 mr-1" /> Add cost item
+          <Upload className="h-4 w-4 mr-1" /> Upload breakdown
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add cost item</DialogTitle>
+          <DialogTitle>Upload financial breakdown</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <Label>Description</Label>
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Label>Title (optional)</Label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Defaults to the file name"
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Category</Label>
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TENDER_COST_CATEGORY_SUGGESTIONS.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c[0].toUpperCase() + c.slice(1)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Amount</Label>
-              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            </div>
+          <div>
+            <Label>File</Label>
+            <Input
+              type="file"
+              accept=".xlsx,.xls,.csv,.pdf,image/*"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={submit} disabled={save.isPending}>
-            {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Add
+          <Button onClick={submit} disabled={upload.isPending}>
+            {upload.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Upload
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type PreviewKind = "excel" | "pdf" | "image" | "unsupported";
+
+function FinancialBreakdownPreviewDialog({
+  doc,
+  onClose,
+}: {
+  doc: DocumentRow | null;
+  onClose: () => void;
+}) {
+  const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [kind, setKind] = useState<PreviewKind | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!doc) {
+      setRows(null);
+      setBlobUrl(null);
+      setKind(null);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const res = await apiFetch(`/documents/${doc.id}/download`);
+        if (!res.ok) throw new Error(`Could not open file (${res.status})`);
+        const blob = await res.blob();
+        if (cancelled) return;
+        const fileName = doc.latest_version?.file_name ?? doc.title;
+        const mime = doc.latest_version?.mime_type ?? blob.type;
+        const isExcel =
+          /\.(xlsx|xls|csv)$/i.test(fileName) || /spreadsheet|ms-excel|csv/i.test(mime ?? "");
+        const isPdf = /\.pdf$/i.test(fileName) || mime === "application/pdf";
+        const isImage = /^image\//.test(mime ?? "") || /\.(png|jpe?g|gif|webp)$/i.test(fileName);
+
+        if (isExcel) {
+          const buf = await blob.arrayBuffer();
+          const wb = XLSX.read(buf, { type: "array" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+          if (cancelled) return;
+          setRows(json.slice(0, 200));
+          setKind("excel");
+        } else if (isPdf || isImage) {
+          setBlobUrl(URL.createObjectURL(blob));
+          setKind(isPdf ? "pdf" : "image");
+        } else {
+          setKind("unsupported");
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not preview this file");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [doc]);
+
+  useEffect(() => {
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [blobUrl]);
+
+  const columns = rows && rows.length > 0 ? Object.keys(rows[0]) : [];
+
+  return (
+    <Dialog open={!!doc} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader>
+          <DialogTitle>{doc?.title}</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 overflow-auto">
+          {loading ? (
+            <div className="py-12 flex justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : error ? (
+            <div className="text-sm text-destructive py-8 text-center">{error}</div>
+          ) : kind === "excel" ? (
+            rows && rows.length > 0 ? (
+              <div className="overflow-auto rounded-md border">
+                <table className="w-full text-xs">
+                  <thead className="bg-secondary/40 sticky top-0">
+                    <tr>
+                      {columns.map((c) => (
+                        <th key={c} className="px-2 py-1.5 text-left font-medium whitespace-nowrap">
+                          {c}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r, i) => (
+                      <tr key={i} className="border-t">
+                        {columns.map((c) => (
+                          <td key={c} className="px-2 py-1 whitespace-nowrap">
+                            {String(r[c] ?? "")}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground py-8 text-center">
+                This spreadsheet has no rows.
+              </div>
+            )
+          ) : kind === "pdf" && blobUrl ? (
+            <iframe
+              src={blobUrl}
+              className="h-[65vh] w-full rounded-md border"
+              title="Financial breakdown preview"
+            />
+          ) : kind === "image" && blobUrl ? (
+            <img src={blobUrl} alt={doc?.title} className="mx-auto max-w-full rounded-md border" />
+          ) : (
+            <div className="text-xs text-muted-foreground py-8 text-center">
+              Preview isn't available for this file type — use Download instead.
+            </div>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -1335,6 +1510,7 @@ function RequirementsTab({ tenderId, canManage }: { tenderId: string; canManage:
         <div className="text-sm font-semibold">Requirements checklist</div>
         {canManage && (
           <div className="flex gap-2">
+            <ApplyLibraryDocumentsDialog tenderId={tenderId} />
             <ApplyTemplateDialog tenderId={tenderId} />
             <SaveAsTemplateDialog tenderId={tenderId} disabled={(reqsQ.data ?? []).length === 0} />
             <AddRequirementDialog tenderId={tenderId} />
@@ -1564,6 +1740,90 @@ function ApplyTemplateDialog({ tenderId }: { tenderId: string }) {
           <Button onClick={submit} disabled={apply.isPending || !templateId}>
             {apply.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Apply
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ApplyLibraryDocumentsDialog({ tenderId }: { tenderId: string }) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const libraryQ = useDocuments({ resourceType: "tender_document_library" });
+  const apply = useApplyLibraryDocument(tenderId);
+  const library = libraryQ.data ?? [];
+
+  const toggle = (id: string, checked: boolean) => {
+    setSelected((cur) => (checked ? [...cur, id] : cur.filter((x) => x !== id)));
+  };
+
+  const submit = async () => {
+    if (selected.length === 0) {
+      toast.error("Tick at least one document");
+      return;
+    }
+    try {
+      for (const id of selected) {
+        await apply.mutateAsync(id);
+      }
+      toast.success(`${selected.length} document${selected.length === 1 ? "" : "s"} attached`);
+      setOpen(false);
+      setSelected([]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to attach documents");
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setSelected([]);
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          Apply from document library
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Apply mandatory documents</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Tick which of the company&apos;s standard documents apply to this tender — each ticked
+            document is attached here and marked obtained, no re-uploading needed.
+          </p>
+          {libraryQ.isLoading ? (
+            <div className="py-6 flex justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            </div>
+          ) : library.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">
+              The mandatory documents library is empty — add documents to it from the Tender
+              Documents page first.
+            </p>
+          ) : (
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {library.map((doc) => (
+                <label key={doc.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={selected.includes(doc.id)}
+                    onCheckedChange={(checked) => toggle(doc.id, checked === true)}
+                  />
+                  {doc.title}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button onClick={submit} disabled={apply.isPending || selected.length === 0}>
+            {apply.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Attach {selected.length > 0 ? `(${selected.length})` : ""}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -16,7 +16,12 @@ import { useAuth } from "@/lib/auth";
 import { TENDER_PIPELINE_STAGES, deptColor, initials } from "@/features/pipeline/pipeline-theme";
 import { Spine } from "@/components/pipeline/spine";
 import { PipelineBoard } from "@/components/pipeline/pipeline-board";
-import { PipelineDetailSheet, KvGrid, SectionLabel, StageTracker } from "@/components/pipeline/detail-sheet";
+import {
+  PipelineDetailSheet,
+  KvGrid,
+  SectionLabel,
+  StageTracker,
+} from "@/components/pipeline/detail-sheet";
 import { ActivityPane } from "@/components/pipeline/activity-pane";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,7 +78,10 @@ function DropOutAction({
   }
 
   return (
-    <div className="mt-2 space-y-2 rounded-lg border p-2.5" style={{ borderColor: "var(--pipeline-line)" }}>
+    <div
+      className="mt-2 space-y-2 rounded-lg border p-2.5"
+      style={{ borderColor: "var(--pipeline-line)" }}
+    >
       <Select value={stage} onValueChange={(v) => setStage(v as "lost" | "withdrawn")}>
         <SelectTrigger className="h-8 w-full text-xs">
           <SelectValue />
@@ -126,7 +134,8 @@ export function TenderPipelineBoard() {
 
   const tenders = tendersQ.data ?? [];
   const counts: Record<string, number> = {};
-  for (const s of TENDER_PIPELINE_STAGES) counts[s.key] = tenders.filter((t) => t.stage === s.key).length;
+  for (const s of TENDER_PIPELINE_STAGES)
+    counts[s.key] = tenders.filter((t) => t.stage === s.key).length;
 
   const open = tenders.find((t) => t.id === openId) ?? null;
 
@@ -134,7 +143,8 @@ export function TenderPipelineBoard() {
     updateStage.mutate(
       { id, stage: stage as TenderStage },
       {
-        onSuccess: () => toast.success(`Moved to ${TENDER_PIPELINE_STAGES.find((s) => s.key === stage)?.label}`),
+        onSuccess: () =>
+          toast.success(`Moved to ${TENDER_PIPELINE_STAGES.find((s) => s.key === stage)?.label}`),
         onError: (err) => toast.error(err instanceof Error ? err.message : "Move failed"),
       },
     );
@@ -179,8 +189,16 @@ export function TenderPipelineBoard() {
         getStage={(t) => t.stage}
         getId={(t) => t.id}
         onMove={move}
+        defaultVisiblePerColumn={5}
         renderCard={(t) => (
-          <TenderCard t={t} onClick={() => { setOpenId(t.id); setTab("overview"); }} onForward={() => forward(t.id)} />
+          <TenderCard
+            t={t}
+            onClick={() => {
+              setOpenId(t.id);
+              setTab("overview");
+            }}
+            onForward={() => forward(t.id)}
+          />
         )}
       />
 
@@ -198,7 +216,15 @@ export function TenderPipelineBoard() {
   );
 }
 
-function TenderCard({ t, onClick, onForward }: { t: TenderRow; onClick: () => void; onForward: () => void }) {
+function TenderCard({
+  t,
+  onClick,
+  onForward,
+}: {
+  t: TenderRow;
+  onClick: () => void;
+  onForward: () => void;
+}) {
   const c = deptColor(t.department_code);
   const stageDef = TENDER_PIPELINE_STAGES.find((s) => s.key === t.stage);
   const showRequirementsProgress = t.stage === "applying" && !!t.requirements_total;
@@ -220,7 +246,9 @@ function TenderCard({ t, onClick, onForward }: { t: TenderRow; onClick: () => vo
         {t.client_name ?? t.prospect_client_name ?? "—"}
       </div>
       <div className="mt-2 flex items-center justify-between text-[11.5px]">
-        <span className="p-mono font-medium">{formatCurrency(t.estimated_value ?? 0, t.currency)}</span>
+        <span className="p-mono font-medium">
+          {formatCurrency(t.estimated_value ?? 0, t.currency)}
+        </span>
         {t.stage === "won" && (
           <span
             className="rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold"
@@ -240,7 +268,10 @@ function TenderCard({ t, onClick, onForward }: { t: TenderRow; onClick: () => vo
       </div>
       {showRequirementsProgress && (
         <div className="mt-2">
-          <div className="flex items-center justify-between text-[10.5px]" style={{ color: "var(--pipeline-slate)" }}>
+          <div
+            className="flex items-center justify-between text-[10.5px]"
+            style={{ color: "var(--pipeline-slate)" }}
+          >
             <span>Requirements checklist</span>
             <span className="p-mono font-medium">
               {t.requirements_done}/{t.requirements_total} ({requirementsPct}%)
@@ -251,20 +282,28 @@ function TenderCard({ t, onClick, onForward }: { t: TenderRow; onClick: () => vo
               className="prog-mini-fill"
               style={{
                 width: `${requirementsPct}%`,
-                background: requirementsPct === 100 ? "var(--pipeline-teal)" : "var(--pipeline-gold)",
+                background:
+                  requirementsPct === 100 ? "var(--pipeline-teal)" : "var(--pipeline-gold)",
               }}
             />
           </div>
         </div>
       )}
-      <div className="mt-2 flex items-center justify-between border-t pt-2" style={{ borderColor: "var(--pipeline-line)", borderStyle: "dashed" }}>
+      <div
+        className="mt-2 flex items-center justify-between border-t pt-2"
+        style={{ borderColor: "var(--pipeline-line)", borderStyle: "dashed" }}
+      >
         <div className="flex items-center gap-1.5">
           <div className="mini-avatar">{initials(t.account_manager_name)}</div>
           <span className="text-[11px]" style={{ color: "var(--pipeline-slate)" }}>
             {t.account_manager_name ?? "Unassigned"}
           </span>
         </div>
-        {stageDef && <span className="p-mono text-[10.5px]" style={{ color: "var(--pipeline-slate-light)" }}>{t.submission_deadline ?? ""}</span>}
+        {stageDef && (
+          <span className="p-mono text-[10.5px]" style={{ color: "var(--pipeline-slate-light)" }}>
+            {t.submission_deadline ?? ""}
+          </span>
+        )}
       </div>
       {t.stage === "won" && !t.contract_id && (
         <button
@@ -325,7 +364,10 @@ function TenderDetail({
           <span className="p-chip" style={{ background: c.bg, color: c.text }}>
             {tender.department_name}
           </span>
-          <span className="p-chip" style={{ background: "var(--pipeline-line-soft)", color: "var(--pipeline-slate)" }}>
+          <span
+            className="p-chip"
+            style={{ background: "var(--pipeline-line-soft)", color: "var(--pipeline-slate)" }}
+          >
             {TENDER_PIPELINE_STAGES.find((s) => s.key === tender.stage)?.label}
           </span>
         </>
@@ -336,8 +378,14 @@ function TenderDetail({
         <div>
           <KvGrid
             items={[
-              { label: "Issuer / Client", value: tender.client_name ?? tender.prospect_client_name ?? "—" },
-              { label: "Est. Value", value: formatCurrency(tender.estimated_value ?? 0, tender.currency) },
+              {
+                label: "Issuer / Client",
+                value: tender.client_name ?? tender.prospect_client_name ?? "—",
+              },
+              {
+                label: "Est. Value",
+                value: formatCurrency(tender.estimated_value ?? 0, tender.currency),
+              },
               { label: "Deadline", value: tender.submission_deadline ?? "—" },
               { label: "Owner", value: tender.account_manager_name ?? "Unassigned" },
             ]}
@@ -346,7 +394,10 @@ function TenderDetail({
           <StageTracker total={TENDER_PIPELINE_STAGES.length} doneCount={idx} currentIndex={idx} />
           {!!tender.requirements_total && (
             <div className="mt-2">
-              <div className="flex items-center justify-between text-[11px]" style={{ color: "var(--pipeline-slate)" }}>
+              <div
+                className="flex items-center justify-between text-[11px]"
+                style={{ color: "var(--pipeline-slate)" }}
+              >
                 <span>Requirements checklist</span>
                 <span className="p-mono font-medium">
                   {tender.requirements_done}/{tender.requirements_total} resolved
@@ -374,7 +425,9 @@ function TenderDetail({
                 onValueChange={(v) =>
                   updateStage.mutate(
                     { id: tender.id, stage: v as TenderStage },
-                    { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed") },
+                    {
+                      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed"),
+                    },
                   )
                 }
               >
@@ -395,14 +448,21 @@ function TenderDetail({
                 onSubmit={(stage, reason) =>
                   updateStage.mutate(
                     { id: tender.id, stage, lost_reason: reason || undefined },
-                    { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed") },
+                    {
+                      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed"),
+                    },
                   )
                 }
               />
             </div>
           )}
           <div className="mt-4">
-            <Link to="/tender/$tenderId" params={{ tenderId: tender.id }} className="text-xs hover:underline" style={{ color: "var(--pipeline-gold)" }}>
+            <Link
+              to="/tender/$tenderId"
+              params={{ tenderId: tender.id }}
+              className="text-xs hover:underline"
+              style={{ color: "var(--pipeline-gold)" }}
+            >
               Open full tender record (resources, financials, requirements) →
             </Link>
           </div>
@@ -416,7 +476,9 @@ function TenderDetail({
           onAdd={(type, summary) =>
             logActivity.mutate(
               { type, summary },
-              { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to log") },
+              {
+                onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to log"),
+              },
             )
           }
         />
@@ -428,7 +490,11 @@ function TenderDetail({
       }
       footer={
         tender.stage === "won" && !tender.contract_id ? (
-          <Button className="flex-1" onClick={onForward} style={{ background: "var(--pipeline-ink)" }}>
+          <Button
+            className="flex-1"
+            onClick={onForward}
+            style={{ background: "var(--pipeline-ink)" }}
+          >
             Forward to {tender.department_name} →
           </Button>
         ) : (
@@ -481,11 +547,19 @@ function NewTenderForm({ onDone }: { onDone: () => void }) {
       <div className="space-y-3 py-2">
         <div>
           <Label>Tender title</Label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. County Payroll Services Tender" />
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. County Payroll Services Tender"
+          />
         </div>
         <div>
           <Label>Issuing organisation / prospect</Label>
-          <Input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="e.g. Nairobi County Government" />
+          <Input
+            value={issuer}
+            onChange={(e) => setIssuer(e.target.value)}
+            placeholder="e.g. Nairobi County Government"
+          />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -514,7 +588,11 @@ function NewTenderForm({ onDone }: { onDone: () => void }) {
         </div>
       </div>
       <DialogFooter>
-        <Button onClick={submit} disabled={save.isPending} style={{ background: "var(--pipeline-ink)" }}>
+        <Button
+          onClick={submit}
+          disabled={save.isPending}
+          style={{ background: "var(--pipeline-ink)" }}
+        >
           Save
         </Button>
       </DialogFooter>
