@@ -1,13 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useRef, useState, type DragEvent } from "react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { Loader2, UploadCloud } from "lucide-react";
+import { FileSpreadsheet, Loader2, UploadCloud, X } from "lucide-react";
 import {
   useCreateWaterUpload,
   useWaterUploads,
   type UsageUploadRowInput,
 } from "@/features/water/use-water";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -50,26 +51,63 @@ function normalizeRow(row: Record<string, unknown>): UsageUploadRowInput | null 
   return { meterNumber, customerName, unitsSold, amountPaid, recordedAt: recordedAt.toISOString() };
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function WaterUploadPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
+  const [fileSize, setFileSize] = useState(0);
   const [rows, setRows] = useState<UsageUploadRowInput[] | null>(null);
   const [skipped, setSkipped] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
   const create = useCreateWaterUpload();
   const uploadsQ = useWaterUploads();
   const uploads = Array.isArray(uploadsQ.data) ? uploadsQ.data : (uploadsQ.data?.data ?? []);
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: "array", cellDates: true });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
-    const parsed = json.map(normalizeRow);
-    const valid = parsed.filter((r): r is UsageUploadRowInput => r !== null);
-    setSkipped(parsed.length - valid.length);
-    setRows(valid);
-    setFileName(file.name);
+    setIsParsing(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array", cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+      const parsed = json.map(normalizeRow);
+      const valid = parsed.filter((r): r is UsageUploadRowInput => r !== null);
+      if (valid.length === 0) {
+        toast.error(
+          "No valid rows found — check the file has Meter, Customer, Units, Amount and a date column.",
+        );
+        return;
+      }
+      setSkipped(parsed.length - valid.length);
+      setRows(valid);
+      setFileName(file.name);
+      setFileSize(file.size);
+    } catch {
+      toast.error("Couldn't read that file — make sure it's a valid CSV or Excel export.");
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const clearFile = () => {
+    setRows(null);
+    setFileName("");
+    setFileSize(0);
+    setSkipped(0);
+    if (fileInput.current) fileInput.current.value = "";
+  };
+
+  const handleDrop = (e: DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    handleFile(e.dataTransfer.files?.[0]);
   };
 
   const confirmUpload = () => {
@@ -77,11 +115,15 @@ function WaterUploadPage() {
     create.mutate(
       { fileName, rows },
       {
-        onSuccess: () => {
-          toast.success(`${rows.length} usage records added`);
-          setRows(null);
-          setFileName("");
-          if (fileInput.current) fileInput.current.value = "";
+        onSuccess: (result) => {
+          const dupeNote =
+            result.duplicatesSkipped > 0
+              ? ` (${result.duplicatesSkipped} duplicate${result.duplicatesSkipped === 1 ? "" : "s"} already on file, skipped)`
+              : "";
+          toast.success(
+            `${result.recordCount} usage record${result.recordCount === 1 ? "" : "s"} added${dupeNote}`,
+          );
+          clearFile();
         },
         onError: (err) => toast.error(err instanceof Error ? err.message : "Upload failed"),
       },
@@ -100,33 +142,79 @@ function WaterUploadPage() {
 
       <div className="rounded-lg border bg-card p-4">
         <div className="text-sm font-semibold mb-3">Upload dated usage/payment file</div>
-        <div className="rounded-lg border border-dashed p-6 text-center">
-          <UploadCloud className="h-6 w-6 mx-auto text-muted-foreground opacity-60" />
-          <p className="text-xs text-muted-foreground mt-2 mb-3">
-            Expected columns: Meter, Customer, Units, Amount, and a date column (Created At / Date).
-            CSV or Excel.
-          </p>
-          <input
-            ref={fileInput}
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            onChange={(e) => handleFile(e.target.files?.[0])}
-            className="text-xs mx-auto"
-          />
-        </div>
+
+        {!rows ? (
+          <label
+            htmlFor="water-upload-input"
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+            className={cn(
+              "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-10 text-center cursor-pointer transition-colors",
+              isDragging
+                ? "border-primary bg-primary/5"
+                : "border-muted-foreground/25 hover:border-primary/50 hover:bg-secondary/40",
+            )}
+          >
+            {isParsing ? (
+              <Loader2 className="h-8 w-8 text-primary animate-spin" />
+            ) : (
+              <UploadCloud
+                className={cn("h-8 w-8", isDragging ? "text-primary" : "text-muted-foreground/70")}
+              />
+            )}
+            <div className="text-sm font-medium text-foreground">
+              {isParsing ? "Reading file…" : "Click to choose a file, or drag and drop it here"}
+            </div>
+            <p className="text-xs text-muted-foreground max-w-sm">
+              Expected columns: Meter, Customer, Units, Amount, and a date column (Created At /
+              Date). CSV or Excel.
+            </p>
+            <input
+              id="water-upload-input"
+              ref={fileInput}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              onChange={(e) => handleFile(e.target.files?.[0])}
+              className="sr-only"
+            />
+          </label>
+        ) : (
+          <div className="flex items-center justify-between gap-3 rounded-lg border bg-secondary/40 px-4 py-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <FileSpreadsheet className="h-5 w-5 text-primary shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">{fileName}</div>
+                <div className="text-xs text-muted-foreground">{formatFileSize(fileSize)}</div>
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={clearFile}
+              title="Remove file"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
 
         {rows && (
           <div className="mt-4">
             <div className="text-xs text-muted-foreground mb-2">
-              Parsed {rows.length} valid row{rows.length === 1 ? "" : "s"} from{" "}
-              <span className="font-mono">{fileName}</span>
+              Review before confirming — parsed {rows.length} valid row
+              {rows.length === 1 ? "" : "s"} from <span className="font-mono">{fileName}</span>
               {skipped > 0 &&
                 ` — ${skipped} row${skipped === 1 ? "" : "s"} skipped (missing fields)`}
-              .
+              . Nothing is saved until you confirm.
             </div>
-            <div className="overflow-x-auto rounded-md border">
+            <div className="max-h-80 overflow-y-auto overflow-x-auto rounded-md border">
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 bg-card z-10">
                   <TableRow>
                     <TableHead>Meter</TableHead>
                     <TableHead>Customer</TableHead>
@@ -136,7 +224,7 @@ function WaterUploadPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.slice(0, 8).map((r, i) => (
+                  {rows.map((r, i) => (
                     <TableRow key={i}>
                       <TableCell className="font-mono text-xs">{r.meterNumber}</TableCell>
                       <TableCell className="text-xs">{r.customerName}</TableCell>
@@ -151,16 +239,21 @@ function WaterUploadPage() {
                   ))}
                 </TableBody>
               </Table>
-              {rows.length > 8 && (
-                <div className="text-xs text-muted-foreground text-center py-2 border-t">
-                  + {rows.length - 8} more row{rows.length - 8 === 1 ? "" : "s"}
-                </div>
-              )}
             </div>
-            <Button className="mt-3" onClick={confirmUpload} disabled={create.isPending}>
-              {create.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Confirm and add to analytics
-            </Button>
+            <div className="flex gap-2 mt-3">
+              <Button onClick={confirmUpload} disabled={create.isPending}>
+                {create.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Confirm and add to analytics
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={clearFile}
+                disabled={create.isPending}
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
         )}
       </div>

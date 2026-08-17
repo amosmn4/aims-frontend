@@ -53,6 +53,8 @@ export interface WaterMeterRow {
   zone_name: string | null;
   is_active: boolean;
   created_at: string;
+  last_vend_at: string | null;
+  total_vend_count: number;
 }
 
 export interface WaterUsageRecordRow {
@@ -317,6 +319,8 @@ type BackendMeter = {
   zone: { id: string; name: string } | null;
   isActive: boolean;
   createdAt: string;
+  usageRecords?: { recordedAt: string }[];
+  _count?: { usageRecords: number };
 };
 
 function mapMeter(m: BackendMeter): WaterMeterRow {
@@ -332,6 +336,8 @@ function mapMeter(m: BackendMeter): WaterMeterRow {
     zone_name: m.zone?.name ?? null,
     is_active: m.isActive,
     created_at: m.createdAt,
+    last_vend_at: m.usageRecords?.[0]?.recordedAt ?? null,
+    total_vend_count: m._count?.usageRecords ?? 0,
   };
 }
 
@@ -545,11 +551,20 @@ export interface UsageUploadRowInput {
   recordedAt: string;
 }
 
+export interface UsageUploadResult {
+  id: string;
+  recordCount: number;
+  duplicatesSkipped: number;
+}
+
 export function useCreateWaterUpload() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { fileName: string; rows: UsageUploadRowInput[] }) =>
-      apiJson("/water/usage-uploads", { method: "POST", body: JSON.stringify(input) }),
+      apiJson<UsageUploadResult>("/water/usage-uploads", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["water"] });
     },
@@ -717,5 +732,293 @@ export function useWaterReportSummary(filters: { month?: string } = {}) {
         insights: raw.insights,
       } satisfies WaterReportSummary;
     },
+  });
+}
+
+/* ---------- Vending health (row tinting) ---------- */
+
+export type VendingHealth = "active" | "slowing" | "inactive" | "never";
+
+// Recency-based read on how a meter is vending: recent purchases = healthy, a long silence is
+// the strongest signal something needs attention (broken meter, inactive customer, a data gap).
+export function vendingHealth(lastVendAt: string | null): VendingHealth {
+  if (!lastVendAt) return "never";
+  const days = (Date.now() - new Date(lastVendAt).getTime()) / 86_400_000;
+  if (days <= 30) return "active";
+  if (days <= 90) return "slowing";
+  return "inactive";
+}
+
+export const VENDING_HEALTH_LABELS: Record<VendingHealth, string> = {
+  active: "Vending well",
+  slowing: "Slowing down",
+  inactive: "Not vending",
+  never: "No vends yet",
+};
+
+// Light theme-color row tints — deliberately subtle, same convention as Inventory's condition
+// row colors, so the table stays scannable rather than looking like a stoplight.
+export const VENDING_HEALTH_ROW_STYLES: Record<VendingHealth, string> = {
+  active: "bg-success/5",
+  slowing: "bg-warning/8",
+  inactive: "bg-destructive/8",
+  never: "",
+};
+
+export const VENDING_HEALTH_BADGE_STYLES: Record<VendingHealth, string> = {
+  active: "bg-success text-success-foreground",
+  slowing: "bg-warning text-warning-foreground",
+  inactive: "bg-destructive text-destructive-foreground",
+  never: "bg-secondary text-secondary-foreground",
+};
+
+/* ---------- Meter detail (vending history, analytics, insights) ---------- */
+
+export interface WaterMonthlyPoint {
+  month: string;
+  units_sold: number;
+  revenue: number;
+}
+
+type BackendMeterDetail = {
+  meter: {
+    id: string;
+    meterNumber: string;
+    meterType: WaterMeterType;
+    plotNo: string | null;
+    installedAt: string | null;
+    isActive: boolean;
+    createdAt: string;
+    customer: { id: string; name: string; phone: string | null; isActive: boolean } | null;
+    zone: { id: string; name: string } | null;
+  };
+  totals: {
+    unitsSold: number;
+    revenue: number;
+    transactionCount: number;
+    lastVendAt: string | null;
+  };
+  monthly: { month: string; unitsSold: number; revenue: number }[];
+  recentUsage: {
+    id: string;
+    customerId: string | null;
+    customerName: string;
+    unitsSold: number | string;
+    amountPaid: number | string;
+    recordedAt: string;
+    source: "seed" | "upload" | "manual";
+  }[];
+  recentReadings: {
+    id: string;
+    readingDate: string;
+    value: number | string;
+    notes: string | null;
+    createdAt: string;
+  }[];
+};
+
+export interface WaterMeterDetail {
+  id: string;
+  meter_number: string;
+  meter_type: WaterMeterType;
+  plot_no: string | null;
+  installed_at: string | null;
+  is_active: boolean;
+  created_at: string;
+  customer: { id: string; name: string; phone: string | null; is_active: boolean } | null;
+  zone: { id: string; name: string } | null;
+  totals: {
+    units_sold: number;
+    revenue: number;
+    transaction_count: number;
+    last_vend_at: string | null;
+  };
+  monthly: WaterMonthlyPoint[];
+  recent_usage: {
+    id: string;
+    customer_id: string | null;
+    customer_name: string;
+    units_sold: number;
+    amount_paid: number;
+    recorded_at: string;
+    source: "seed" | "upload" | "manual";
+  }[];
+  recent_readings: {
+    id: string;
+    reading_date: string;
+    value: number;
+    notes: string | null;
+    created_at: string;
+  }[];
+}
+
+function mapMeterDetail(d: BackendMeterDetail): WaterMeterDetail {
+  return {
+    id: d.meter.id,
+    meter_number: d.meter.meterNumber,
+    meter_type: d.meter.meterType,
+    plot_no: d.meter.plotNo,
+    installed_at: d.meter.installedAt,
+    is_active: d.meter.isActive,
+    created_at: d.meter.createdAt,
+    customer: d.meter.customer
+      ? {
+          id: d.meter.customer.id,
+          name: d.meter.customer.name,
+          phone: d.meter.customer.phone,
+          is_active: d.meter.customer.isActive,
+        }
+      : null,
+    zone: d.meter.zone,
+    totals: {
+      units_sold: d.totals.unitsSold,
+      revenue: d.totals.revenue,
+      transaction_count: d.totals.transactionCount,
+      last_vend_at: d.totals.lastVendAt,
+    },
+    monthly: d.monthly.map((m) => ({
+      month: m.month,
+      units_sold: m.unitsSold,
+      revenue: m.revenue,
+    })),
+    recent_usage: d.recentUsage.map((r) => ({
+      id: r.id,
+      customer_id: r.customerId,
+      customer_name: r.customerName,
+      units_sold: Number(r.unitsSold),
+      amount_paid: Number(r.amountPaid),
+      recorded_at: r.recordedAt,
+      source: r.source,
+    })),
+    recent_readings: d.recentReadings.map((r) => ({
+      id: r.id,
+      reading_date: r.readingDate,
+      value: Number(r.value),
+      notes: r.notes,
+      created_at: r.createdAt,
+    })),
+  };
+}
+
+export function useWaterMeterDetail(id: string | undefined) {
+  return useQuery({
+    queryKey: ["water", "meters", id, "detail"],
+    queryFn: async () => mapMeterDetail(await apiJson<BackendMeterDetail>(`/water/meters/${id}`)),
+    enabled: !!id,
+  });
+}
+
+/* ---------- Customer detail (vending history, analytics, insights) ---------- */
+
+type BackendCustomerDetail = {
+  customer: {
+    id: string;
+    name: string;
+    phone: string | null;
+    isActive: boolean;
+    createdAt: string;
+    zone: { id: string; name: string } | null;
+    meters: {
+      id: string;
+      meterNumber: string;
+      meterType: WaterMeterType;
+      isActive: boolean;
+      zone: { id: string; name: string } | null;
+    }[];
+  };
+  totals: {
+    unitsSold: number;
+    revenue: number;
+    transactionCount: number;
+    lastVendAt: string | null;
+  };
+  monthly: { month: string; unitsSold: number; revenue: number }[];
+  recentUsage: {
+    id: string;
+    meterId: string;
+    meter: { id: string; meterNumber: string };
+    unitsSold: number | string;
+    amountPaid: number | string;
+    recordedAt: string;
+    source: "seed" | "upload" | "manual";
+  }[];
+};
+
+export interface WaterCustomerDetail {
+  id: string;
+  name: string;
+  phone: string | null;
+  is_active: boolean;
+  created_at: string;
+  zone: { id: string; name: string } | null;
+  meters: {
+    id: string;
+    meter_number: string;
+    meter_type: WaterMeterType;
+    is_active: boolean;
+    zone_name: string | null;
+  }[];
+  totals: {
+    units_sold: number;
+    revenue: number;
+    transaction_count: number;
+    last_vend_at: string | null;
+  };
+  monthly: WaterMonthlyPoint[];
+  recent_usage: {
+    id: string;
+    meter_id: string;
+    meter_number: string;
+    units_sold: number;
+    amount_paid: number;
+    recorded_at: string;
+    source: "seed" | "upload" | "manual";
+  }[];
+}
+
+function mapCustomerDetail(d: BackendCustomerDetail): WaterCustomerDetail {
+  return {
+    id: d.customer.id,
+    name: d.customer.name,
+    phone: d.customer.phone,
+    is_active: d.customer.isActive,
+    created_at: d.customer.createdAt,
+    zone: d.customer.zone,
+    meters: d.customer.meters.map((m) => ({
+      id: m.id,
+      meter_number: m.meterNumber,
+      meter_type: m.meterType,
+      is_active: m.isActive,
+      zone_name: m.zone?.name ?? null,
+    })),
+    totals: {
+      units_sold: d.totals.unitsSold,
+      revenue: d.totals.revenue,
+      transaction_count: d.totals.transactionCount,
+      last_vend_at: d.totals.lastVendAt,
+    },
+    monthly: d.monthly.map((m) => ({
+      month: m.month,
+      units_sold: m.unitsSold,
+      revenue: m.revenue,
+    })),
+    recent_usage: d.recentUsage.map((r) => ({
+      id: r.id,
+      meter_id: r.meterId,
+      meter_number: r.meter.meterNumber,
+      units_sold: Number(r.unitsSold),
+      amount_paid: Number(r.amountPaid),
+      recorded_at: r.recordedAt,
+      source: r.source,
+    })),
+  };
+}
+
+export function useWaterCustomerDetail(id: string | undefined) {
+  return useQuery({
+    queryKey: ["water", "customers", id, "detail"],
+    queryFn: async () =>
+      mapCustomerDetail(await apiJson<BackendCustomerDetail>(`/water/customers/${id}`)),
+    enabled: !!id,
   });
 }

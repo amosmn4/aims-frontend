@@ -41,6 +41,11 @@ export interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   match?: string[];
+  // Paths that should NOT count toward this item being "active" even though they'd otherwise
+  // match a `match` prefix — e.g. Inventory lives at /it/inventory for historical reasons, but
+  // it's its own top-level nav item, not part of the Departments/IT hub, so Departments shouldn't
+  // light up while you're on it.
+  matchExclude?: string[];
   adminOnly?: boolean;
   extraRoles?: AppRole[];
   children?: NavChild[];
@@ -54,6 +59,7 @@ const NAV: NavItem[] = [
     label: "Departments",
     icon: Building2,
     match: ["/departments", "/operations", "/finance", "/hr", "/it", "/marketing", "/tender"],
+    matchExclude: ["/it/inventory"],
     children: [
       { to: "/departments", label: "All Departments" },
       { to: "/operations", label: "Operations", role: "operations" },
@@ -121,15 +127,6 @@ const NAV: NavItem[] = [
     adminOnly: true,
     extraRoles: ["water"],
     match: ["/water"],
-    children: [
-      { to: "/water", label: "Dashboard" },
-      { to: "/water/zones", label: "Zones" },
-      { to: "/water/meters", label: "Meters Registry" },
-      { to: "/water/customers", label: "Customers" },
-      { to: "/water/readings", label: "Bulk & Main Readings" },
-      { to: "/water/upload", label: "Upload & Analytics" },
-      { to: "/water/reports", label: "Reports" },
-    ],
   },
   {
     to: "/admin/users",
@@ -205,8 +202,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const primaryRoleLabel = roles[0] ? ROLE_LABELS[roles[0]] : "Staff";
   const isActive = (item: NavItem) => {
+    const matchesPath = (p: string) =>
+      location.pathname === p || location.pathname.startsWith(p + "/");
+    if (item.matchExclude?.some(matchesPath)) return false;
     const paths = item.match ?? [item.to];
-    return paths.some((p) => location.pathname === p || location.pathname.startsWith(p + "/"));
+    return paths.some(matchesPath);
   };
   const isChildActive = (child: NavChild) =>
     location.pathname === child.to || location.pathname.startsWith(child.to + "/");
@@ -316,7 +316,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                         <Link
                           key={c.to}
                           to={c.to}
-                          className="block px-3 py-1.5 rounded text-xs text-sidebar-foreground/80 hover:bg-white/10"
+                          className={cn(
+                            "block px-3 py-1.5 rounded text-xs text-sidebar-foreground/80 hover:bg-white/10",
+                            isChildActive(c) && "bg-white/10 font-medium text-sidebar-foreground",
+                          )}
                         >
                           {c.label}
                         </Link>

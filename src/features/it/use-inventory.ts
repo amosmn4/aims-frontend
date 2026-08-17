@@ -24,12 +24,14 @@ export const INVENTORY_STATUS_LABELS: Record<InventoryStatus, string> = {
   retired: "Retired",
 };
 
+// Solid theme-color fills (not translucent tints) — reads clearly regardless of the surrounding
+// card/table background, in both light and dark mode.
 export const INVENTORY_STATUS_STYLES: Record<InventoryStatus, string> = {
-  in_use: "bg-success/15 text-success",
+  in_use: "bg-success text-success-foreground",
   idle: "bg-secondary text-secondary-foreground",
-  in_storage: "bg-primary/15 text-primary",
-  under_repair: "bg-warning/15 text-warning",
-  retired: "bg-destructive/15 text-destructive",
+  in_storage: "bg-primary text-primary-foreground",
+  under_repair: "bg-warning text-warning-foreground",
+  retired: "bg-destructive text-destructive-foreground",
 };
 
 export const INVENTORY_CONDITION_LABELS: Record<InventoryCondition, string> = {
@@ -40,10 +42,10 @@ export const INVENTORY_CONDITION_LABELS: Record<InventoryCondition, string> = {
 };
 
 export const INVENTORY_CONDITION_STYLES: Record<InventoryCondition, string> = {
-  good: "bg-success/15 text-success",
-  working: "bg-primary/15 text-primary",
-  needs_attention: "bg-warning/15 text-warning",
-  faulty: "bg-destructive/15 text-destructive",
+  good: "bg-success text-success-foreground",
+  working: "bg-primary text-primary-foreground",
+  needs_attention: "bg-warning text-warning-foreground",
+  faulty: "bg-destructive text-destructive-foreground",
 };
 
 // Subtle per-condition row tints for the table — deliberately light, not "heavy" colors.

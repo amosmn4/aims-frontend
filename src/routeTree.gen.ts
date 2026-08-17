@@ -126,6 +126,8 @@ import { Route as AuthenticatedAdminAuditRouteImport } from './routes/_authentic
 import { Route as AuthenticatedMarketingBlogIndexRouteImport } from './routes/_authenticated.marketing.blog.index'
 import { Route as AuthenticatedFinanceReportsIndexRouteImport } from './routes/_authenticated.finance.reports.index'
 import { Route as AuthenticatedClientsContractsIndexRouteImport } from './routes/_authenticated.clients.contracts.index'
+import { Route as AuthenticatedWaterMetersMeterIdRouteImport } from './routes/_authenticated.water.meters.$meterId'
+import { Route as AuthenticatedWaterCustomersCustomerIdRouteImport } from './routes/_authenticated.water.customers.$customerId'
 import { Route as AuthenticatedReportsDepartmentsTenderRouteImport } from './routes/_authenticated.reports.departments.tender'
 import { Route as AuthenticatedReportsDepartmentsOperationsRouteImport } from './routes/_authenticated.reports.departments.operations'
 import { Route as AuthenticatedReportsDepartmentsMarketingRouteImport } from './routes/_authenticated.reports.departments.marketing'
@@ -802,6 +804,18 @@ const AuthenticatedClientsContractsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedClientsContractsRoute,
   } as any)
+const AuthenticatedWaterMetersMeterIdRoute =
+  AuthenticatedWaterMetersMeterIdRouteImport.update({
+    id: '/$meterId',
+    path: '/$meterId',
+    getParentRoute: () => AuthenticatedWaterMetersRoute,
+  } as any)
+const AuthenticatedWaterCustomersCustomerIdRoute =
+  AuthenticatedWaterCustomersCustomerIdRouteImport.update({
+    id: '/$customerId',
+    path: '/$customerId',
+    getParentRoute: () => AuthenticatedWaterCustomersRoute,
+  } as any)
 const AuthenticatedReportsDepartmentsTenderRoute =
   AuthenticatedReportsDepartmentsTenderRouteImport.update({
     id: '/tender',
@@ -958,8 +972,8 @@ export interface FileRoutesByFullPath {
   '/tender/shared-projects': typeof AuthenticatedTenderSharedProjectsRoute
   '/tender/tasks': typeof AuthenticatedTenderTasksRoute
   '/tender/workspace': typeof AuthenticatedTenderWorkspaceRoute
-  '/water/customers': typeof AuthenticatedWaterCustomersRoute
-  '/water/meters': typeof AuthenticatedWaterMetersRoute
+  '/water/customers': typeof AuthenticatedWaterCustomersRouteWithChildren
+  '/water/meters': typeof AuthenticatedWaterMetersRouteWithChildren
   '/water/readings': typeof AuthenticatedWaterReadingsRoute
   '/water/reports': typeof AuthenticatedWaterReportsRoute
   '/water/upload': typeof AuthenticatedWaterUploadRoute
@@ -987,6 +1001,8 @@ export interface FileRoutesByFullPath {
   '/reports/departments/marketing': typeof AuthenticatedReportsDepartmentsMarketingRoute
   '/reports/departments/operations': typeof AuthenticatedReportsDepartmentsOperationsRoute
   '/reports/departments/tender': typeof AuthenticatedReportsDepartmentsTenderRoute
+  '/water/customers/$customerId': typeof AuthenticatedWaterCustomersCustomerIdRoute
+  '/water/meters/$meterId': typeof AuthenticatedWaterMetersMeterIdRoute
   '/clients/contracts/': typeof AuthenticatedClientsContractsIndexRoute
   '/finance/reports/': typeof AuthenticatedFinanceReportsIndexRoute
   '/marketing/blog/': typeof AuthenticatedMarketingBlogIndexRoute
@@ -1070,8 +1086,8 @@ export interface FileRoutesByTo {
   '/tender/shared-projects': typeof AuthenticatedTenderSharedProjectsRoute
   '/tender/tasks': typeof AuthenticatedTenderTasksRoute
   '/tender/workspace': typeof AuthenticatedTenderWorkspaceRoute
-  '/water/customers': typeof AuthenticatedWaterCustomersRoute
-  '/water/meters': typeof AuthenticatedWaterMetersRoute
+  '/water/customers': typeof AuthenticatedWaterCustomersRouteWithChildren
+  '/water/meters': typeof AuthenticatedWaterMetersRouteWithChildren
   '/water/readings': typeof AuthenticatedWaterReadingsRoute
   '/water/reports': typeof AuthenticatedWaterReportsRoute
   '/water/upload': typeof AuthenticatedWaterUploadRoute
@@ -1099,6 +1115,8 @@ export interface FileRoutesByTo {
   '/reports/departments/marketing': typeof AuthenticatedReportsDepartmentsMarketingRoute
   '/reports/departments/operations': typeof AuthenticatedReportsDepartmentsOperationsRoute
   '/reports/departments/tender': typeof AuthenticatedReportsDepartmentsTenderRoute
+  '/water/customers/$customerId': typeof AuthenticatedWaterCustomersCustomerIdRoute
+  '/water/meters/$meterId': typeof AuthenticatedWaterMetersMeterIdRoute
   '/clients/contracts': typeof AuthenticatedClientsContractsIndexRoute
   '/finance/reports': typeof AuthenticatedFinanceReportsIndexRoute
   '/marketing/blog': typeof AuthenticatedMarketingBlogIndexRoute
@@ -1200,8 +1218,8 @@ export interface FileRoutesById {
   '/_authenticated/tender/shared-projects': typeof AuthenticatedTenderSharedProjectsRoute
   '/_authenticated/tender/tasks': typeof AuthenticatedTenderTasksRoute
   '/_authenticated/tender/workspace': typeof AuthenticatedTenderWorkspaceRoute
-  '/_authenticated/water/customers': typeof AuthenticatedWaterCustomersRoute
-  '/_authenticated/water/meters': typeof AuthenticatedWaterMetersRoute
+  '/_authenticated/water/customers': typeof AuthenticatedWaterCustomersRouteWithChildren
+  '/_authenticated/water/meters': typeof AuthenticatedWaterMetersRouteWithChildren
   '/_authenticated/water/readings': typeof AuthenticatedWaterReadingsRoute
   '/_authenticated/water/reports': typeof AuthenticatedWaterReportsRoute
   '/_authenticated/water/upload': typeof AuthenticatedWaterUploadRoute
@@ -1229,6 +1247,8 @@ export interface FileRoutesById {
   '/_authenticated/reports/departments/marketing': typeof AuthenticatedReportsDepartmentsMarketingRoute
   '/_authenticated/reports/departments/operations': typeof AuthenticatedReportsDepartmentsOperationsRoute
   '/_authenticated/reports/departments/tender': typeof AuthenticatedReportsDepartmentsTenderRoute
+  '/_authenticated/water/customers/$customerId': typeof AuthenticatedWaterCustomersCustomerIdRoute
+  '/_authenticated/water/meters/$meterId': typeof AuthenticatedWaterMetersMeterIdRoute
   '/_authenticated/clients/contracts/': typeof AuthenticatedClientsContractsIndexRoute
   '/_authenticated/finance/reports/': typeof AuthenticatedFinanceReportsIndexRoute
   '/_authenticated/marketing/blog/': typeof AuthenticatedMarketingBlogIndexRoute
@@ -1359,6 +1379,8 @@ export interface FileRouteTypes {
     | '/reports/departments/marketing'
     | '/reports/departments/operations'
     | '/reports/departments/tender'
+    | '/water/customers/$customerId'
+    | '/water/meters/$meterId'
     | '/clients/contracts/'
     | '/finance/reports/'
     | '/marketing/blog/'
@@ -1471,6 +1493,8 @@ export interface FileRouteTypes {
     | '/reports/departments/marketing'
     | '/reports/departments/operations'
     | '/reports/departments/tender'
+    | '/water/customers/$customerId'
+    | '/water/meters/$meterId'
     | '/clients/contracts'
     | '/finance/reports'
     | '/marketing/blog'
@@ -1600,6 +1624,8 @@ export interface FileRouteTypes {
     | '/_authenticated/reports/departments/marketing'
     | '/_authenticated/reports/departments/operations'
     | '/_authenticated/reports/departments/tender'
+    | '/_authenticated/water/customers/$customerId'
+    | '/_authenticated/water/meters/$meterId'
     | '/_authenticated/clients/contracts/'
     | '/_authenticated/finance/reports/'
     | '/_authenticated/marketing/blog/'
@@ -2433,6 +2459,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsContractsIndexRouteImport
       parentRoute: typeof AuthenticatedClientsContractsRoute
     }
+    '/_authenticated/water/meters/$meterId': {
+      id: '/_authenticated/water/meters/$meterId'
+      path: '/$meterId'
+      fullPath: '/water/meters/$meterId'
+      preLoaderRoute: typeof AuthenticatedWaterMetersMeterIdRouteImport
+      parentRoute: typeof AuthenticatedWaterMetersRoute
+    }
+    '/_authenticated/water/customers/$customerId': {
+      id: '/_authenticated/water/customers/$customerId'
+      path: '/$customerId'
+      fullPath: '/water/customers/$customerId'
+      preLoaderRoute: typeof AuthenticatedWaterCustomersCustomerIdRouteImport
+      parentRoute: typeof AuthenticatedWaterCustomersRoute
+    }
     '/_authenticated/reports/departments/tender': {
       id: '/_authenticated/reports/departments/tender'
       path: '/tender'
@@ -2890,9 +2930,38 @@ const AuthenticatedTenderRouteChildren: AuthenticatedTenderRouteChildren = {
 const AuthenticatedTenderRouteWithChildren =
   AuthenticatedTenderRoute._addFileChildren(AuthenticatedTenderRouteChildren)
 
+interface AuthenticatedWaterCustomersRouteChildren {
+  AuthenticatedWaterCustomersCustomerIdRoute: typeof AuthenticatedWaterCustomersCustomerIdRoute
+}
+
+const AuthenticatedWaterCustomersRouteChildren: AuthenticatedWaterCustomersRouteChildren =
+  {
+    AuthenticatedWaterCustomersCustomerIdRoute:
+      AuthenticatedWaterCustomersCustomerIdRoute,
+  }
+
+const AuthenticatedWaterCustomersRouteWithChildren =
+  AuthenticatedWaterCustomersRoute._addFileChildren(
+    AuthenticatedWaterCustomersRouteChildren,
+  )
+
+interface AuthenticatedWaterMetersRouteChildren {
+  AuthenticatedWaterMetersMeterIdRoute: typeof AuthenticatedWaterMetersMeterIdRoute
+}
+
+const AuthenticatedWaterMetersRouteChildren: AuthenticatedWaterMetersRouteChildren =
+  {
+    AuthenticatedWaterMetersMeterIdRoute: AuthenticatedWaterMetersMeterIdRoute,
+  }
+
+const AuthenticatedWaterMetersRouteWithChildren =
+  AuthenticatedWaterMetersRoute._addFileChildren(
+    AuthenticatedWaterMetersRouteChildren,
+  )
+
 interface AuthenticatedWaterRouteChildren {
-  AuthenticatedWaterCustomersRoute: typeof AuthenticatedWaterCustomersRoute
-  AuthenticatedWaterMetersRoute: typeof AuthenticatedWaterMetersRoute
+  AuthenticatedWaterCustomersRoute: typeof AuthenticatedWaterCustomersRouteWithChildren
+  AuthenticatedWaterMetersRoute: typeof AuthenticatedWaterMetersRouteWithChildren
   AuthenticatedWaterReadingsRoute: typeof AuthenticatedWaterReadingsRoute
   AuthenticatedWaterReportsRoute: typeof AuthenticatedWaterReportsRoute
   AuthenticatedWaterUploadRoute: typeof AuthenticatedWaterUploadRoute
@@ -2901,8 +2970,9 @@ interface AuthenticatedWaterRouteChildren {
 }
 
 const AuthenticatedWaterRouteChildren: AuthenticatedWaterRouteChildren = {
-  AuthenticatedWaterCustomersRoute: AuthenticatedWaterCustomersRoute,
-  AuthenticatedWaterMetersRoute: AuthenticatedWaterMetersRoute,
+  AuthenticatedWaterCustomersRoute:
+    AuthenticatedWaterCustomersRouteWithChildren,
+  AuthenticatedWaterMetersRoute: AuthenticatedWaterMetersRouteWithChildren,
   AuthenticatedWaterReadingsRoute: AuthenticatedWaterReadingsRoute,
   AuthenticatedWaterReportsRoute: AuthenticatedWaterReportsRoute,
   AuthenticatedWaterUploadRoute: AuthenticatedWaterUploadRoute,

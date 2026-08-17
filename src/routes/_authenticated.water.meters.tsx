@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
@@ -10,6 +10,10 @@ import {
   useWaterAllZones,
   useWaterCustomers,
   WATER_METER_TYPE_LABELS,
+  vendingHealth,
+  VENDING_HEALTH_LABELS,
+  VENDING_HEALTH_ROW_STYLES,
+  VENDING_HEALTH_BADGE_STYLES,
   type WaterMeterRow,
   type WaterMeterType,
 } from "@/features/water/use-water";
@@ -76,7 +80,8 @@ function WaterMetersPage() {
           <h1 className="text-lg font-semibold">Meters Registry</h1>
           <p className="text-xs text-muted-foreground">
             Register a meter and capture who it&apos;s assigned to, their plot, install date and
-            zone — all in one step.
+            zone — all in one step. Row color shows vending activity; click a meter number to see
+            its full history.
           </p>
         </div>
         <Button size="sm" onClick={() => setEditing("new")}>
@@ -162,64 +167,80 @@ function WaterMetersPage() {
                   <TableHead>Installed</TableHead>
                   <TableHead>Zone</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Vending</TableHead>
                   <TableHead className="w-20" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {meters.map((m) => (
-                  <TableRow key={m.id}>
-                    <TableCell className="font-mono text-xs">{m.meter_number}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{WATER_METER_TYPE_LABELS[m.meter_type]}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">{m.customer_name ?? "—"}</TableCell>
-                    <TableCell className="font-mono text-xs">{m.plot_no ?? "—"}</TableCell>
-                    <TableCell className="text-xs">
-                      {m.installed_at ? m.installed_at.slice(0, 10) : "—"}
-                    </TableCell>
-                    <TableCell className="text-sm">{m.zone_name ?? "—"}</TableCell>
-                    <TableCell>
-                      <Badge
-                        className={
-                          m.is_active
-                            ? "bg-success/15 text-success"
-                            : "bg-muted text-muted-foreground"
-                        }
-                        variant="secondary"
-                      >
-                        {m.is_active ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => setEditing(m)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={async () => {
-                            const ok = await confirmDialog({
-                              title: `Remove meter "${m.meter_number}"?`,
-                              confirmLabel: "Remove",
-                              destructive: true,
-                              description: "This can't be undone.",
-                            });
-                            if (!ok) return;
-                            deleteMeter.mutate(m.id, {
-                              onError: (err) =>
-                                toast.error(
-                                  err instanceof Error ? err.message : "Failed to delete",
-                                ),
-                            });
-                          }}
+                {meters.map((m) => {
+                  const health = vendingHealth(m.last_vend_at);
+                  return (
+                    <TableRow key={m.id} className={VENDING_HEALTH_ROW_STYLES[health]}>
+                      <TableCell className="font-mono text-xs">
+                        <Link
+                          to="/water/meters/$meterId"
+                          params={{ meterId: m.id }}
+                          className="text-primary hover:underline"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          {m.meter_number}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{WATER_METER_TYPE_LABELS[m.meter_type]}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">{m.customer_name ?? "—"}</TableCell>
+                      <TableCell className="font-mono text-xs">{m.plot_no ?? "—"}</TableCell>
+                      <TableCell className="text-xs">
+                        {m.installed_at ? m.installed_at.slice(0, 10) : "—"}
+                      </TableCell>
+                      <TableCell className="text-sm">{m.zone_name ?? "—"}</TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            m.is_active
+                              ? "bg-success text-success-foreground"
+                              : "bg-muted text-muted-foreground"
+                          }
+                        >
+                          {m.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={VENDING_HEALTH_BADGE_STYLES[health]}>
+                          {VENDING_HEALTH_LABELS[health]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" onClick={() => setEditing(m)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={async () => {
+                              const ok = await confirmDialog({
+                                title: `Remove meter "${m.meter_number}"?`,
+                                confirmLabel: "Remove",
+                                destructive: true,
+                                description: "This can't be undone.",
+                              });
+                              if (!ok) return;
+                              deleteMeter.mutate(m.id, {
+                                onError: (err) =>
+                                  toast.error(
+                                    err instanceof Error ? err.message : "Failed to delete",
+                                  ),
+                              });
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

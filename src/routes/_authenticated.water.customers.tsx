@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Pencil, Search, Trash2 } from "lucide-react";
@@ -136,7 +136,15 @@ function WaterCustomersPage() {
               <TableBody>
                 {customers.map((c) => (
                   <TableRow key={c.id}>
-                    <TableCell className="font-medium">{c.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link
+                        to="/water/customers/$customerId"
+                        params={{ customerId: c.id }}
+                        className="text-primary hover:underline"
+                      >
+                        {c.name}
+                      </Link>
+                    </TableCell>
                     <TableCell className="text-sm">{c.zone_name ?? "—"}</TableCell>
                     <TableCell className="text-xs font-mono text-muted-foreground">
                       {c.meters.length > 0 ? c.meters.map((m) => m.meter_number).join(", ") : "—"}
