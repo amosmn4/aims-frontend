@@ -4,7 +4,7 @@ import type { PaginatedResponse } from "@/hooks/use-pagination";
 
 export type InventoryCategory =
   "laptop" | "desktop" | "monitor" | "printer" | "peripheral" | "other";
-export type InventoryStatus = "in_use" | "idle";
+export type InventoryStatus = "in_use" | "idle" | "in_storage" | "under_repair" | "retired";
 export type InventoryCondition = "good" | "working" | "needs_attention" | "faulty";
 
 export const INVENTORY_CATEGORY_LABELS: Record<InventoryCategory, string> = {
@@ -19,11 +19,17 @@ export const INVENTORY_CATEGORY_LABELS: Record<InventoryCategory, string> = {
 export const INVENTORY_STATUS_LABELS: Record<InventoryStatus, string> = {
   in_use: "In Use",
   idle: "Idle",
+  in_storage: "In Storage",
+  under_repair: "Under Repair",
+  retired: "Retired",
 };
 
 export const INVENTORY_STATUS_STYLES: Record<InventoryStatus, string> = {
   in_use: "bg-success/15 text-success",
   idle: "bg-secondary text-secondary-foreground",
+  in_storage: "bg-primary/15 text-primary",
+  under_repair: "bg-warning/15 text-warning",
+  retired: "bg-destructive/15 text-destructive",
 };
 
 export const INVENTORY_CONDITION_LABELS: Record<InventoryCondition, string> = {
