@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -11,6 +12,7 @@ import {
   type TaskStatus,
 } from "@/features/projects/use-projects";
 import { KanbanBoard } from "@/components/kanban-board";
+import { TaskDetailDialog } from "@/features/projects/task-detail-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -36,6 +38,11 @@ function MyTasks() {
   const navigate = Route.useNavigate();
   const tasksQ = useTasks({ assigneeId: user?.id });
   const updateTask = useUpdateTask();
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  // Re-derived from the live query on every render (not a stored snapshot) so a status change
+  // made inside the dialog itself is reflected immediately, same pattern as the project detail
+  // page's own task dialog.
+  const selectedTask = (tasksQ.data ?? []).find((t) => t.id === selectedTaskId) ?? null;
 
   const setView = (v: "board" | "list") => navigate({ search: { view: v }, replace: true });
 
@@ -72,7 +79,12 @@ function MyTasks() {
           No tasks assigned to you yet.
         </div>
       ) : view === "board" ? (
-        <KanbanBoard tasks={tasksQ.data ?? []} showProject onStatusChange={handleStatusChange} />
+        <KanbanBoard
+          tasks={tasksQ.data ?? []}
+          showProject
+          onStatusChange={handleStatusChange}
+          onTaskClick={(t) => setSelectedTaskId(t.id)}
+        />
       ) : (
         <div className="rounded-lg border bg-card overflow-hidden">
           <Table>
@@ -87,7 +99,11 @@ function MyTasks() {
             </TableHeader>
             <TableBody>
               {(tasksQ.data ?? []).map((t) => (
-                <TableRow key={t.id}>
+                <TableRow
+                  key={t.id}
+                  className="cursor-pointer hover:bg-secondary/50"
+                  onClick={() => setSelectedTaskId(t.id)}
+                >
                   <TableCell className="font-medium">{t.title}</TableCell>
                   <TableCell className="text-xs">
                     {t.project_name ? (
@@ -95,6 +111,7 @@ function MyTasks() {
                         to="/projects/$projectId"
                         params={{ projectId: t.project_id }}
                         className="text-primary hover:underline"
+                        onClick={(e) => e.stopPropagation()}
                       >
                         {t.project_name}
                       </Link>
@@ -113,6 +130,8 @@ function MyTasks() {
           </Table>
         </div>
       )}
+
+      <TaskDetailDialog task={selectedTask} onClose={() => setSelectedTaskId(null)} />
     </div>
   );
 }

@@ -48,7 +48,6 @@ export const TENDER_PIPELINE_STAGES: PipelineStageDef[] = [
   { key: "identified", label: "Identified", color: PIPELINE_SLATE_LIGHT },
   { key: "applying", label: "Preparing Application", color: PIPELINE_GOLD },
   { key: "submitted", label: "Submitted", color: PIPELINE_BLUE },
-  { key: "evaluation", label: "Under Evaluation", color: PIPELINE_PURPLE },
   { key: "won", label: "Awarded", color: PIPELINE_TEAL },
   { key: "lost", label: "Not Awarded", color: PIPELINE_CORAL },
   { key: "withdrawn", label: "Withdrawn", color: PIPELINE_SLATE },

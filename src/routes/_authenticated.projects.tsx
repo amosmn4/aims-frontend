@@ -7,7 +7,6 @@ const TABS = [
   {
     to: "/projects",
     label: "All Projects",
-    exact: true,
     title: "All Projects",
     description:
       "Every project across every department, from won tenders and new client engagements through delivery.",
@@ -26,6 +25,7 @@ const TABS = [
       "A single department's task board — pick a department to see everything assigned to it.",
   },
 ];
+const TAB_PATHS = TABS.map((t) => t.to);
 
 export const Route = createFileRoute("/_authenticated/projects")({
   head: () => ({
@@ -36,15 +36,15 @@ export const Route = createFileRoute("/_authenticated/projects")({
 
 function ProjectsLayout() {
   const location = useLocation();
-  const isDetail =
-    /^\/projects\/[^/]+$/.test(location.pathname) && location.pathname !== "/projects";
+  // Exact membership against the 3 known tab paths — not a regex guessing what "looks like a
+  // project id". The old regex (`/^\/projects\/[^/]+$/`) also matched "/projects/mine" and
+  // "/projects/department" themselves, which silently hid the tab bar/header on both of those
+  // pages instead of only on a real `/projects/$projectId`.
+  const isDetail = !TAB_PATHS.includes(location.pathname);
   // Each tab gets its own title/description instead of one static "Projects & Tasks" caption for
   // all three — so the page you're looking at is identifiable at a glance, not just via the
-  // underlined tab. Falls back to the "All Projects" copy if the path doesn't match a known tab
-  // (shouldn't happen, but keeps this from ever rendering blank).
-  const activeTab =
-    TABS.find((t) => (t.exact ? location.pathname === t.to : location.pathname.startsWith(t.to))) ??
-    TABS[0];
+  // underlined tab.
+  const activeTab = TABS.find((t) => location.pathname === t.to) ?? TABS[0];
 
   return (
     <div>
@@ -60,9 +60,7 @@ function ProjectsLayout() {
       {!isDetail && (
         <div className="border-b mb-4 flex gap-1 overflow-x-auto">
           {TABS.map((t) => {
-            const active = t.exact
-              ? location.pathname === t.to
-              : location.pathname.startsWith(t.to);
+            const active = location.pathname === t.to;
             return (
               <Link
                 key={t.to}

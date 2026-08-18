@@ -15,7 +15,7 @@ interface PipelineBoardProps<T> {
   defaultVisiblePerColumn?: number;
 }
 
-const COUNT_OPTIONS = [5, 10, 25];
+const COUNT_OPTIONS = [5, 10, 15, 25];
 
 // Native HTML5 drag-and-drop, matching the prototype's own approach exactly (dragstart on the
 // card, dragover/drop on the column) rather than pulling in a DnD library for this one module —

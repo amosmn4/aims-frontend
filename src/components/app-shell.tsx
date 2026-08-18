@@ -99,6 +99,14 @@ const NAV: NavItem[] = [
   { to: "/calendar", label: "Calendar", icon: CalendarClock },
   { to: "/it/inventory", label: "Inventory", icon: Laptop2, adminOnly: true },
   {
+    to: "/water",
+    label: "Water Project",
+    icon: Droplets,
+    adminOnly: true,
+    extraRoles: ["water"],
+    match: ["/water"],
+  },
+  {
     to: "/reports",
     label: "Reports",
     icon: BarChart3,
@@ -119,14 +127,6 @@ const NAV: NavItem[] = [
       { to: "/reports/departments/tender", label: "Tender", role: "tender" },
       { to: "/reports/projects", label: "Projects — All submissions" },
     ],
-  },
-  {
-    to: "/water",
-    label: "Water Project",
-    icon: Droplets,
-    adminOnly: true,
-    extraRoles: ["water"],
-    match: ["/water"],
   },
   {
     to: "/admin/users",

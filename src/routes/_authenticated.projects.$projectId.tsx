@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 import {
@@ -173,6 +173,13 @@ function ProjectDetail() {
 
   return (
     <div className="pipeline-scope space-y-3">
+      <Link
+        to="/projects"
+        className="inline-flex items-center gap-1 text-xs hover:underline"
+        style={{ color: "var(--pipeline-slate)" }}
+      >
+        <ArrowLeft className="h-3 w-3" /> Back to Projects & Tasks
+      </Link>
       <div className="flex items-start justify-between gap-2">
         <EntityBreadcrumb segments={buildProjectBreadcrumb(project)} />
         {canManageDocuments && (

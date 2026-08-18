@@ -21,7 +21,6 @@ const FUNNEL_STAGES: TenderStage[] = [
   "identified",
   "applying",
   "submitted",
-  "evaluation",
   "won",
   "lost",
   "withdrawn",
@@ -30,7 +29,6 @@ const FUNNEL_COLORS: Record<string, string> = {
   identified: "#8C8C8C",
   applying: "#085599",
   submitted: "#F5821F",
-  evaluation: "#6B5490",
   won: "#2E9E4F",
   lost: "#D64545",
   withdrawn: "#94a3b8",
@@ -71,13 +69,7 @@ function PipelineSummary() {
   const lostCount = summary.find((s) => s.stage === "lost")?.count ?? 0;
   const winRate = wonCount + lostCount > 0 ? wonCount / (wonCount + lostCount) : null;
   const pipelineValue = summary
-    .filter(
-      (s) =>
-        s.stage === "identified" ||
-        s.stage === "applying" ||
-        s.stage === "submitted" ||
-        s.stage === "evaluation",
-    )
+    .filter((s) => s.stage === "identified" || s.stage === "applying" || s.stage === "submitted")
     .reduce((sum, s) => sum + s.total_value, 0);
 
   // Pass-through funnel — see _authenticated.tender.index.tsx's identical comment.

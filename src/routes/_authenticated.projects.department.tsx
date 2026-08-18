@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { useDepartments } from "@/features/clients/use-clients-contracts";
 import { useTasks, useUpdateTask, type TaskStatus } from "@/features/projects/use-projects";
 import { KanbanBoard } from "@/components/kanban-board";
+import { TaskDetailDialog } from "@/features/projects/task-detail-dialog";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -63,6 +64,8 @@ function DepartmentBoard() {
 export function DepartmentTaskBoard({ departmentId }: { departmentId: string }) {
   const tasksQ = useTasks({ departmentId });
   const updateTask = useUpdateTask();
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const selectedTask = (tasksQ.data ?? []).find((t) => t.id === selectedTaskId) ?? null;
 
   const handleStatusChange = (taskId: string, status: TaskStatus) => {
     updateTask.mutate(
@@ -72,11 +75,15 @@ export function DepartmentTaskBoard({ departmentId }: { departmentId: string }) 
   };
 
   return (
-    <KanbanBoard
-      tasks={tasksQ.data ?? []}
-      loading={tasksQ.isLoading}
-      showProject
-      onStatusChange={handleStatusChange}
-    />
+    <>
+      <KanbanBoard
+        tasks={tasksQ.data ?? []}
+        loading={tasksQ.isLoading}
+        showProject
+        onStatusChange={handleStatusChange}
+        onTaskClick={(t) => setSelectedTaskId(t.id)}
+      />
+      <TaskDetailDialog task={selectedTask} onClose={() => setSelectedTaskId(null)} />
+    </>
   );
 }
