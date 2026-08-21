@@ -76,7 +76,7 @@ const ROLES: RoleGuide[] = [
       {
         label: "Submit",
         description:
-          "Move the card to Submitted once the bid is in, then wait on the client's decision. Drop out (Lost/Withdrawn, with a reason) at any point via the card's quick action.",
+          "Move the card to Submitted once the bid is in, then wait on the client's decision. Drop out (Lost/Withdrawn, with a reason) at any point via the card's quick action — or mark it Cancelled if the client voids the tender after you've submitted.",
         to: "/pipeline/tenders",
       },
       {

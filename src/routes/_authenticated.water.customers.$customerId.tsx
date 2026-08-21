@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { ArrowLeft, Loader2, UserRound } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -18,11 +19,21 @@ import {
   WATER_METER_TYPE_LABELS,
 } from "@/features/water/use-water";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/_authenticated/water/customers/$customerId")({
   head: () => ({ meta: [{ title: "Customer — Water Project — AIMS" }] }),
   component: CustomerDetailPage,
 });
+
+const MONTH_OPTIONS = [3, 6, 12, 24];
 
 function fmtDate(d: string | null) {
   return d ? new Date(d).toLocaleDateString() : "—";
@@ -30,7 +41,8 @@ function fmtDate(d: string | null) {
 
 function CustomerDetailPage() {
   const { customerId } = Route.useParams();
-  const detailQ = useWaterCustomerDetail(customerId);
+  const [months, setMonths] = useState(6);
+  const detailQ = useWaterCustomerDetail(customerId, months);
 
   if (detailQ.isLoading) {
     return (
@@ -81,6 +93,21 @@ function CustomerDetailPage() {
               {VENDING_HEALTH_LABELS[health]}
             </Badge>
           </div>
+        </div>
+        <div className="w-32">
+          <Label className="text-xs">Trend period</Label>
+          <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MONTH_OPTIONS.map((m) => (
+                <SelectItem key={m} value={String(m)}>
+                  {m} months
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -150,7 +177,7 @@ function CustomerDetailPage() {
       </div>
 
       <div className="rounded-lg border bg-card p-4">
-        <div className="text-sm font-semibold mb-2">6-month trend</div>
+        <div className="text-sm font-semibold mb-2">{months}-month trend</div>
         {d.monthly.every((m) => m.units_sold === 0 && m.revenue === 0) ? (
           <div className="text-xs text-muted-foreground py-8 text-center">
             No usage in this period.

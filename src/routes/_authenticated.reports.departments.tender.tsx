@@ -24,6 +24,7 @@ const FUNNEL_STAGES: TenderStage[] = [
   "won",
   "lost",
   "withdrawn",
+  "cancelled",
 ];
 const FUNNEL_COLORS: Record<string, string> = {
   identified: "#8C8C8C",
@@ -32,6 +33,7 @@ const FUNNEL_COLORS: Record<string, string> = {
   won: "#2E9E4F",
   lost: "#D64545",
   withdrawn: "#94a3b8",
+  cancelled: "#6B5490",
 };
 
 // Exported so the Tender department hub (_authenticated.tender.tsx) can embed this report as a

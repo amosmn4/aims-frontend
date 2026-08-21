@@ -2,6 +2,7 @@ import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-rout
 import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/app-shell";
 import { cn } from "@/lib/utils";
+import { useAuth, homeRouteFor } from "@/lib/auth";
 
 const TABS = [
   {
@@ -36,6 +37,7 @@ export const Route = createFileRoute("/_authenticated/projects")({
 
 function ProjectsLayout() {
   const location = useLocation();
+  const { roles } = useAuth();
   // Exact membership against the 3 known tab paths — not a regex guessing what "looks like a
   // project id". The old regex (`/^\/projects\/[^/]+$/`) also matched "/projects/mine" and
   // "/projects/department" themselves, which silently hid the tab bar/header on both of those
@@ -50,7 +52,7 @@ function ProjectsLayout() {
     <div>
       {!isDetail && (
         <Link
-          to="/dashboard"
+          to={homeRouteFor(roles)}
           className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-3 w-3" /> Back to Dashboard

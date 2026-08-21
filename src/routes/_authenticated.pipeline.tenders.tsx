@@ -47,7 +47,9 @@ import {
  * Discoverable "mark as not proceeding" shortcut — usable from any stage (the backend never
  * enforced sequential stage order). Exists alongside the generic "Move stage" select above
  * because that path never sends a lostReason, silently dropping the "why" once a tender is
- * marked lost/withdrawn from the board.
+ * marked lost/withdrawn/cancelled from the board. Cancelled covers a tender AMSOL already
+ * submitted where the procuring client voids the process — distinct from Withdrawn (AMSOL
+ * chose to drop out) and Lost (the client picked someone else).
  */
 function DropOutAction({
   currentStage,
@@ -56,13 +58,14 @@ function DropOutAction({
 }: {
   currentStage: TenderStage;
   isPending: boolean;
-  onSubmit: (stage: "lost" | "withdrawn", reason: string) => void;
+  onSubmit: (stage: "lost" | "withdrawn" | "cancelled", reason: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [stage, setStage] = useState<"lost" | "withdrawn">("lost");
+  const [stage, setStage] = useState<"lost" | "withdrawn" | "cancelled">("lost");
   const [reason, setReason] = useState("");
 
-  if (currentStage === "lost" || currentStage === "withdrawn") return null;
+  if (currentStage === "lost" || currentStage === "withdrawn" || currentStage === "cancelled")
+    return null;
 
   if (!open) {
     return (
@@ -82,13 +85,17 @@ function DropOutAction({
       className="mt-2 space-y-2 rounded-lg border p-2.5"
       style={{ borderColor: "var(--pipeline-line)" }}
     >
-      <Select value={stage} onValueChange={(v) => setStage(v as "lost" | "withdrawn")}>
+      <Select
+        value={stage}
+        onValueChange={(v) => setStage(v as "lost" | "withdrawn" | "cancelled")}
+      >
         <SelectTrigger className="h-8 w-full text-xs">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="lost">Not Awarded (Lost)</SelectItem>
           <SelectItem value="withdrawn">Withdrawn</SelectItem>
+          <SelectItem value="cancelled">Cancelled</SelectItem>
         </SelectContent>
       </Select>
       <Textarea
@@ -263,6 +270,14 @@ function TenderCard({
             style={{ background: "var(--pipeline-coral-soft)", color: "var(--pipeline-coral)" }}
           >
             Not Awarded
+          </span>
+        )}
+        {t.stage === "cancelled" && (
+          <span
+            className="rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold"
+            style={{ background: "var(--pipeline-purple-soft)", color: "var(--pipeline-purple)" }}
+          >
+            Cancelled
           </span>
         )}
       </div>

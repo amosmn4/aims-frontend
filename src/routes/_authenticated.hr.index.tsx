@@ -13,7 +13,7 @@ export const Route = createFileRoute("/_authenticated/hr/")({
   component: HrOverview,
 });
 
-const TENDER_TERMINAL = new Set(["won", "lost", "withdrawn"]);
+const TENDER_TERMINAL = new Set(["won", "lost", "withdrawn", "cancelled"]);
 const REQUEST_TERMINAL = new Set(["won", "lost", "withdrawn"]);
 const PROJECT_ACTIVE = new Set(["planning", "active"]);
 

@@ -51,6 +51,7 @@ export const TENDER_PIPELINE_STAGES: PipelineStageDef[] = [
   { key: "won", label: "Awarded", color: PIPELINE_TEAL },
   { key: "lost", label: "Not Awarded", color: PIPELINE_CORAL },
   { key: "withdrawn", label: "Withdrawn", color: PIPELINE_SLATE },
+  { key: "cancelled", label: "Cancelled", color: PIPELINE_PURPLE },
 ];
 
 export const ENGAGEMENT_PIPELINE_STAGES: PipelineStageDef[] = [

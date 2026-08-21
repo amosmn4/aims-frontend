@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, Search } from "lucide-react";
+import { FileArchive, Loader2, Plus, Search } from "lucide-react";
 import { RequireRole } from "@/components/require-role";
 import {
   useTenders,
@@ -68,6 +68,7 @@ const FUNNEL_STAGES: TenderStage[] = [
   "won",
   "lost",
   "withdrawn",
+  "cancelled",
 ];
 const FUNNEL_COLORS: Record<string, string> = {
   identified: "#8C8C8C",
@@ -76,6 +77,7 @@ const FUNNEL_COLORS: Record<string, string> = {
   won: "#2E9E4F",
   lost: "#D64545",
   withdrawn: "#94a3b8",
+  cancelled: "#6B5490",
 };
 
 // Exported so the Tender department hub (_authenticated.tender.tsx) can embed this same
@@ -152,7 +154,14 @@ export function TenderWorkspace() {
             Bid pipeline, resourcing and win/loss tracking.
           </p>
         </div>
-        <NewTenderDialog />
+        <div className="flex gap-2">
+          <Link to="/tender/documents">
+            <Button size="sm" variant="outline">
+              <FileArchive className="h-4 w-4 mr-1" /> Mandatory documents library
+            </Button>
+          </Link>
+          <NewTenderDialog />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

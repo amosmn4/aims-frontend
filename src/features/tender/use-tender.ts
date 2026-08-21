@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tan
 import { apiJson } from "@/lib/api-client";
 import type { PaginatedResponse } from "@/hooks/use-pagination";
 
-export type TenderStage = "identified" | "applying" | "submitted" | "won" | "lost" | "withdrawn";
+export type TenderStage =
+  "identified" | "applying" | "submitted" | "won" | "lost" | "withdrawn" | "cancelled";
 
 export const TENDER_STAGES: TenderStage[] = [
   "identified",
@@ -11,6 +12,7 @@ export const TENDER_STAGES: TenderStage[] = [
   "won",
   "lost",
   "withdrawn",
+  "cancelled",
 ];
 
 export const TENDER_STAGE_LABELS: Record<TenderStage, string> = {
@@ -20,6 +22,7 @@ export const TENDER_STAGE_LABELS: Record<TenderStage, string> = {
   won: "Awarded",
   lost: "Not Awarded",
   withdrawn: "Withdrawn",
+  cancelled: "Cancelled",
 };
 
 export const TENDER_STAGE_STYLES: Record<TenderStage, string> = {
@@ -29,6 +32,7 @@ export const TENDER_STAGE_STYLES: Record<TenderStage, string> = {
   won: "bg-success/15 text-success",
   lost: "bg-destructive/15 text-destructive",
   withdrawn: "bg-muted text-muted-foreground",
+  cancelled: "bg-muted text-muted-foreground",
 };
 
 export interface TenderRow {

@@ -58,6 +58,7 @@ import { Route as AuthenticatedTenderDocumentsRouteImport } from './routes/_auth
 import { Route as AuthenticatedTenderCalendarRouteImport } from './routes/_authenticated.tender.calendar'
 import { Route as AuthenticatedTenderBidPipelineRouteImport } from './routes/_authenticated.tender.bid-pipeline'
 import { Route as AuthenticatedTenderTenderIdRouteImport } from './routes/_authenticated.tender.$tenderId'
+import { Route as AuthenticatedSettingsNotificationsRouteImport } from './routes/_authenticated.settings.notifications'
 import { Route as AuthenticatedRequestsRequestIdRouteImport } from './routes/_authenticated.requests.$requestId'
 import { Route as AuthenticatedReportsProjectsRouteImport } from './routes/_authenticated.reports.projects'
 import { Route as AuthenticatedReportsDepartmentsRouteImport } from './routes/_authenticated.reports.departments'
@@ -407,6 +408,12 @@ const AuthenticatedTenderTenderIdRoute =
     id: '/$tenderId',
     path: '/$tenderId',
     getParentRoute: () => AuthenticatedTenderRoute,
+  } as any)
+const AuthenticatedSettingsNotificationsRoute =
+  AuthenticatedSettingsNotificationsRouteImport.update({
+    id: '/settings/notifications',
+    path: '/settings/notifications',
+    getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedRequestsRequestIdRoute =
   AuthenticatedRequestsRequestIdRouteImport.update({
@@ -963,6 +970,7 @@ export interface FileRoutesByFullPath {
   '/reports/departments': typeof AuthenticatedReportsDepartmentsRouteWithChildren
   '/reports/projects': typeof AuthenticatedReportsProjectsRoute
   '/requests/$requestId': typeof AuthenticatedRequestsRequestIdRoute
+  '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
   '/tender/$tenderId': typeof AuthenticatedTenderTenderIdRoute
   '/tender/bid-pipeline': typeof AuthenticatedTenderBidPipelineRoute
   '/tender/calendar': typeof AuthenticatedTenderCalendarRoute
@@ -1077,6 +1085,7 @@ export interface FileRoutesByTo {
   '/reports/departments': typeof AuthenticatedReportsDepartmentsRouteWithChildren
   '/reports/projects': typeof AuthenticatedReportsProjectsRoute
   '/requests/$requestId': typeof AuthenticatedRequestsRequestIdRoute
+  '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
   '/tender/$tenderId': typeof AuthenticatedTenderTenderIdRoute
   '/tender/bid-pipeline': typeof AuthenticatedTenderBidPipelineRoute
   '/tender/calendar': typeof AuthenticatedTenderCalendarRoute
@@ -1209,6 +1218,7 @@ export interface FileRoutesById {
   '/_authenticated/reports/departments': typeof AuthenticatedReportsDepartmentsRouteWithChildren
   '/_authenticated/reports/projects': typeof AuthenticatedReportsProjectsRoute
   '/_authenticated/requests/$requestId': typeof AuthenticatedRequestsRequestIdRoute
+  '/_authenticated/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
   '/_authenticated/tender/$tenderId': typeof AuthenticatedTenderTenderIdRoute
   '/_authenticated/tender/bid-pipeline': typeof AuthenticatedTenderBidPipelineRoute
   '/_authenticated/tender/calendar': typeof AuthenticatedTenderCalendarRoute
@@ -1341,6 +1351,7 @@ export interface FileRouteTypes {
     | '/reports/departments'
     | '/reports/projects'
     | '/requests/$requestId'
+    | '/settings/notifications'
     | '/tender/$tenderId'
     | '/tender/bid-pipeline'
     | '/tender/calendar'
@@ -1455,6 +1466,7 @@ export interface FileRouteTypes {
     | '/reports/departments'
     | '/reports/projects'
     | '/requests/$requestId'
+    | '/settings/notifications'
     | '/tender/$tenderId'
     | '/tender/bid-pipeline'
     | '/tender/calendar'
@@ -1586,6 +1598,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports/departments'
     | '/_authenticated/reports/projects'
     | '/_authenticated/requests/$requestId'
+    | '/_authenticated/settings/notifications'
     | '/_authenticated/tender/$tenderId'
     | '/_authenticated/tender/bid-pipeline'
     | '/_authenticated/tender/calendar'
@@ -1982,6 +1995,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/tender/$tenderId'
       preLoaderRoute: typeof AuthenticatedTenderTenderIdRouteImport
       parentRoute: typeof AuthenticatedTenderRoute
+    }
+    '/_authenticated/settings/notifications': {
+      id: '/_authenticated/settings/notifications'
+      path: '/settings/notifications'
+      fullPath: '/settings/notifications'
+      preLoaderRoute: typeof AuthenticatedSettingsNotificationsRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/requests/$requestId': {
       id: '/_authenticated/requests/$requestId'
@@ -3004,6 +3024,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAdminAuditRoute: typeof AuthenticatedAdminAuditRoute
   AuthenticatedAdminDepartmentsRoute: typeof AuthenticatedAdminDepartmentsRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
+  AuthenticatedSettingsNotificationsRoute: typeof AuthenticatedSettingsNotificationsRoute
   AuthenticatedEngagementsAnchorTypeAnchorIdRoute: typeof AuthenticatedEngagementsAnchorTypeAnchorIdRoute
 }
 
@@ -3028,6 +3049,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminAuditRoute: AuthenticatedAdminAuditRoute,
   AuthenticatedAdminDepartmentsRoute: AuthenticatedAdminDepartmentsRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
+  AuthenticatedSettingsNotificationsRoute:
+    AuthenticatedSettingsNotificationsRoute,
   AuthenticatedEngagementsAnchorTypeAnchorIdRoute:
     AuthenticatedEngagementsAnchorTypeAnchorIdRoute,
 }

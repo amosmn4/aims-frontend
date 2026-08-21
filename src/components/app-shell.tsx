@@ -21,6 +21,7 @@ import {
   CalendarClock,
   Laptop2,
   Droplets,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth, homeRouteFor, departmentScopeFor, ROLE_LABELS, type AppRole } from "@/lib/auth";
@@ -248,6 +249,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="shrink-0">
         <NotificationBell />
       </div>
+      <Link
+        to="/settings/notifications"
+        className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-md text-sidebar-foreground/80 hover:bg-white/10 hover:text-sidebar-foreground"
+        title="Notification settings"
+      >
+        <Settings className="h-4 w-4" />
+      </Link>
       {LayoutToggle}
       <div className="hidden lg:flex items-center gap-2 text-xs text-sidebar-foreground/80 shrink-0 max-w-40 xl:max-w-56">
         <div className="h-7 w-7 shrink-0 rounded-full bg-accent flex items-center justify-center text-accent-foreground font-semibold">

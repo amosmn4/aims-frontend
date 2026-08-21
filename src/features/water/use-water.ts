@@ -10,6 +10,13 @@ export const WATER_METER_TYPE_LABELS: Record<WaterMeterType, string> = {
   household: "Household",
 };
 
+export type WaterVendingSystem = "amsol" | "mpaya";
+
+export const WATER_VENDING_SYSTEM_LABELS: Record<WaterVendingSystem, string> = {
+  amsol: "Amsol",
+  mpaya: "MPaya",
+};
+
 export interface WaterZoneRow {
   id: string;
   name: string;
@@ -45,6 +52,9 @@ export interface WaterMeterRow {
   id: string;
   meter_number: string;
   meter_type: WaterMeterType;
+  // Main/bulk meters only — no customer, identified by name + physical location instead.
+  name: string | null;
+  location: string | null;
   customer_id: string | null;
   customer_name: string | null;
   plot_no: string | null;
@@ -55,6 +65,15 @@ export interface WaterMeterRow {
   created_at: string;
   last_vend_at: string | null;
   total_vend_count: number;
+  last_reading_at: string | null;
+  vending_system: WaterVendingSystem;
+  replaces_meter_id: string | null;
+  replaces_meter: { id: string; meter_number: string; vending_system: WaterVendingSystem } | null;
+  replaced_by_meter: {
+    id: string;
+    meter_number: string;
+    vending_system: WaterVendingSystem;
+  } | null;
 }
 
 export interface WaterUsageRecordRow {
@@ -118,7 +137,14 @@ export interface WaterZoneComparisonRow {
 export interface WaterReportSummary {
   month: string;
   dashboard: WaterDashboard;
-  zone_loss: { zone_id: string; zone_name: string; loss_pct: number | null }[];
+  prev_dashboard: WaterDashboard;
+  zone_loss: {
+    zone_id: string;
+    zone_name: string;
+    bulk_total: number;
+    household_total: number;
+    loss_pct: number | null;
+  }[];
   insights: string[];
 }
 
@@ -311,6 +337,8 @@ type BackendMeter = {
   id: string;
   meterNumber: string;
   meterType: WaterMeterType;
+  name: string | null;
+  location: string | null;
   customerId: string | null;
   customer: { id: string; name: string } | null;
   plotNo: string | null;
@@ -320,7 +348,12 @@ type BackendMeter = {
   isActive: boolean;
   createdAt: string;
   usageRecords?: { recordedAt: string }[];
+  readings?: { readingDate: string }[];
   _count?: { usageRecords: number };
+  vendingSystem: WaterVendingSystem;
+  replacesMeterId: string | null;
+  replacesMeter: { id: string; meterNumber: string; vendingSystem: WaterVendingSystem } | null;
+  replacedByMeter: { id: string; meterNumber: string; vendingSystem: WaterVendingSystem } | null;
 };
 
 function mapMeter(m: BackendMeter): WaterMeterRow {
@@ -328,6 +361,8 @@ function mapMeter(m: BackendMeter): WaterMeterRow {
     id: m.id,
     meter_number: m.meterNumber,
     meter_type: m.meterType,
+    name: m.name,
+    location: m.location,
     customer_id: m.customerId,
     customer_name: m.customer?.name ?? null,
     plot_no: m.plotNo,
@@ -338,10 +373,32 @@ function mapMeter(m: BackendMeter): WaterMeterRow {
     created_at: m.createdAt,
     last_vend_at: m.usageRecords?.[0]?.recordedAt ?? null,
     total_vend_count: m._count?.usageRecords ?? 0,
+    last_reading_at: m.readings?.[0]?.readingDate ?? null,
+    vending_system: m.vendingSystem,
+    replaces_meter_id: m.replacesMeterId,
+    replaces_meter: m.replacesMeter
+      ? {
+          id: m.replacesMeter.id,
+          meter_number: m.replacesMeter.meterNumber,
+          vending_system: m.replacesMeter.vendingSystem,
+        }
+      : null,
+    replaced_by_meter: m.replacedByMeter
+      ? {
+          id: m.replacedByMeter.id,
+          meter_number: m.replacedByMeter.meterNumber,
+          vending_system: m.replacedByMeter.vendingSystem,
+        }
+      : null,
   };
 }
 
-type WaterMeterFilters = { meterType?: WaterMeterType; zoneId?: string; q?: string };
+type WaterMeterFilters = {
+  meterType?: WaterMeterType;
+  zoneId?: string;
+  q?: string;
+  vendingSystem?: WaterVendingSystem;
+};
 
 // See useWaterCustomers' matching overload comment above — same reasoning.
 export function useWaterMeters(filters?: WaterMeterFilters): UseQueryResult<WaterMeterRow[]>;
@@ -369,12 +426,16 @@ export interface SaveMeterInput {
   id?: string;
   meterNumber: string;
   meterType?: WaterMeterType;
+  name?: string;
+  location?: string;
   customerId?: string;
   customerName?: string;
   plotNo?: string;
   installedAt?: string;
   zoneId?: string;
   isActive?: boolean;
+  vendingSystem?: WaterVendingSystem;
+  replacesMeterId?: string;
 }
 
 export function useSaveWaterMeter() {
@@ -384,8 +445,12 @@ export function useSaveWaterMeter() {
       const body = {
         meterNumber: input.meterNumber,
         meterType: input.meterType,
+        name: input.name || undefined,
+        location: input.location || undefined,
         customerId: input.customerId || undefined,
         customerName: input.customerName || undefined,
+        vendingSystem: input.vendingSystem || undefined,
+        replacesMeterId: input.replacesMeterId || undefined,
         plotNo: input.plotNo || undefined,
         installedAt: input.installedAt || undefined,
         zoneId: input.zoneId || undefined,
@@ -623,34 +688,40 @@ export function useWaterUsageRecords(
 
 /* ---------- Analytics ---------- */
 
+type BackendDashboard = {
+  month: string;
+  activeHouseholds: number;
+  unitsSold: number;
+  unitsSoldChangePct: number | null;
+  revenue: number;
+  mainReadingTotal: number;
+  bulkReadingTotal: number;
+  nrwMainToBulkPct: number | null;
+  nrwBulkToHouseholdPct: number | null;
+  nrwMainToHouseholdPct: number | null;
+};
+
+function mapDashboard(raw: BackendDashboard): WaterDashboard {
+  return {
+    month: raw.month,
+    active_households: raw.activeHouseholds,
+    units_sold: raw.unitsSold,
+    units_sold_change_pct: raw.unitsSoldChangePct,
+    revenue: raw.revenue,
+    main_reading_total: raw.mainReadingTotal,
+    bulk_reading_total: raw.bulkReadingTotal,
+    nrw_main_to_bulk_pct: raw.nrwMainToBulkPct,
+    nrw_bulk_to_household_pct: raw.nrwBulkToHouseholdPct,
+    nrw_main_to_household_pct: raw.nrwMainToHouseholdPct,
+  };
+}
+
 export function useWaterDashboard(filters: { zoneId?: string; month?: string } = {}) {
   return useQuery({
     queryKey: ["water", "dashboard", filters],
     queryFn: async () => {
-      const raw = await apiJson<{
-        month: string;
-        activeHouseholds: number;
-        unitsSold: number;
-        unitsSoldChangePct: number | null;
-        revenue: number;
-        mainReadingTotal: number;
-        bulkReadingTotal: number;
-        nrwMainToBulkPct: number | null;
-        nrwBulkToHouseholdPct: number | null;
-        nrwMainToHouseholdPct: number | null;
-      }>(`/water/dashboard${buildQuery(filters)}`);
-      return {
-        month: raw.month,
-        active_households: raw.activeHouseholds,
-        units_sold: raw.unitsSold,
-        units_sold_change_pct: raw.unitsSoldChangePct,
-        revenue: raw.revenue,
-        main_reading_total: raw.mainReadingTotal,
-        bulk_reading_total: raw.bulkReadingTotal,
-        nrw_main_to_bulk_pct: raw.nrwMainToBulkPct,
-        nrw_bulk_to_household_pct: raw.nrwBulkToHouseholdPct,
-        nrw_main_to_household_pct: raw.nrwMainToHouseholdPct,
-      } satisfies WaterDashboard;
+      const raw = await apiJson<BackendDashboard>(`/water/dashboard${buildQuery(filters)}`);
+      return mapDashboard(raw);
     },
   });
 }
@@ -695,42 +766,118 @@ export function useWaterReportSummary(filters: { month?: string } = {}) {
     queryFn: async () => {
       const raw = await apiJson<{
         month: string;
-        dashboard: {
-          month: string;
-          activeHouseholds: number;
-          unitsSold: number;
-          unitsSoldChangePct: number | null;
-          revenue: number;
-          mainReadingTotal: number;
-          bulkReadingTotal: number;
-          nrwMainToBulkPct: number | null;
-          nrwBulkToHouseholdPct: number | null;
-          nrwMainToHouseholdPct: number | null;
-        };
-        zoneLoss: { zoneId: string; zoneName: string; lossPct: number | null }[];
+        dashboard: BackendDashboard;
+        prevDashboard: BackendDashboard;
+        zoneLoss: {
+          zoneId: string;
+          zoneName: string;
+          bulkTotal: number;
+          householdTotal: number;
+          lossPct: number | null;
+        }[];
         insights: string[];
       }>(`/water/reports/summary${buildQuery(filters)}`);
       return {
         month: raw.month,
-        dashboard: {
-          month: raw.dashboard.month,
-          active_households: raw.dashboard.activeHouseholds,
-          units_sold: raw.dashboard.unitsSold,
-          units_sold_change_pct: raw.dashboard.unitsSoldChangePct,
-          revenue: raw.dashboard.revenue,
-          main_reading_total: raw.dashboard.mainReadingTotal,
-          bulk_reading_total: raw.dashboard.bulkReadingTotal,
-          nrw_main_to_bulk_pct: raw.dashboard.nrwMainToBulkPct,
-          nrw_bulk_to_household_pct: raw.dashboard.nrwBulkToHouseholdPct,
-          nrw_main_to_household_pct: raw.dashboard.nrwMainToHouseholdPct,
-        },
+        dashboard: mapDashboard(raw.dashboard),
+        prev_dashboard: mapDashboard(raw.prevDashboard),
         zone_loss: raw.zoneLoss.map((z) => ({
           zone_id: z.zoneId,
           zone_name: z.zoneName,
+          bulk_total: z.bulkTotal,
+          household_total: z.householdTotal,
           loss_pct: z.lossPct,
         })),
         insights: raw.insights,
       } satisfies WaterReportSummary;
+    },
+  });
+}
+
+/* ---------- Reading series & delta table (daily/weekly/monthly comparisons) ---------- */
+
+export interface WaterReadingSeriesPoint {
+  period: string;
+  usage: number;
+  reading_count: number;
+}
+
+export function useWaterReadingSeries(filters: {
+  meterType: WaterMeterType;
+  zoneId?: string;
+  bucket: "day" | "week" | "month";
+  dateFrom: string;
+  dateTo: string;
+}) {
+  return useQuery({
+    queryKey: ["water", "reading-series", filters],
+    queryFn: async () => {
+      const raw = await apiJson<{ period: string; usage: number; readingCount: number }[]>(
+        `/water/readings/series${buildQuery(filters)}`,
+      );
+      return raw.map((r): WaterReadingSeriesPoint => ({
+        period: r.period,
+        usage: r.usage,
+        reading_count: r.readingCount,
+      }));
+    },
+  });
+}
+
+export interface WaterReadingWithDeltaRow {
+  id: string;
+  meter_id: string;
+  meter_number: string;
+  meter_name: string | null;
+  meter_type: WaterMeterType;
+  zone_name: string | null;
+  reading_date: string;
+  value: number;
+  delta: number | null;
+  notes: string | null;
+}
+
+type BackendReadingWithDelta = {
+  id: string;
+  meterId: string;
+  readingDate: string;
+  value: number | string;
+  notes: string | null;
+  delta: number | null;
+  meter: {
+    id: string;
+    meterNumber: string;
+    name: string | null;
+    meterType: WaterMeterType;
+    zone: { id: string; name: string } | null;
+  };
+};
+
+export function useWaterReadingsWithDelta(filters: {
+  meterId?: string;
+  meterType?: WaterMeterType;
+  zoneId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  return useQuery({
+    queryKey: ["water", "readings-with-delta", filters],
+    queryFn: async () => {
+      const raw = await apiJson<BackendReadingWithDelta[]>(
+        `/water/readings/with-delta${buildQuery(filters)}`,
+      );
+      return raw.map((r): WaterReadingWithDeltaRow => ({
+        id: r.id,
+        meter_id: r.meterId,
+        meter_number: r.meter.meterNumber,
+        meter_name: r.meter.name,
+        meter_type: r.meter.meterType,
+        zone_name: r.meter.zone?.name ?? null,
+        reading_date: r.readingDate,
+        value: Number(r.value),
+        delta: r.delta,
+        notes: r.notes,
+      }));
     },
   });
 }
@@ -785,12 +932,18 @@ type BackendMeterDetail = {
     id: string;
     meterNumber: string;
     meterType: WaterMeterType;
+    name: string | null;
+    location: string | null;
     plotNo: string | null;
     installedAt: string | null;
     isActive: boolean;
     createdAt: string;
     customer: { id: string; name: string; phone: string | null; isActive: boolean } | null;
     zone: { id: string; name: string } | null;
+    vendingSystem: WaterVendingSystem;
+    replacesMeterId: string | null;
+    replacesMeter: { id: string; meterNumber: string; vendingSystem: WaterVendingSystem } | null;
+    replacedByMeter: { id: string; meterNumber: string; vendingSystem: WaterVendingSystem } | null;
   };
   totals: {
     unitsSold: number;
@@ -808,25 +961,28 @@ type BackendMeterDetail = {
     recordedAt: string;
     source: "seed" | "upload" | "manual";
   }[];
-  recentReadings: {
-    id: string;
-    readingDate: string;
-    value: number | string;
-    notes: string | null;
-    createdAt: string;
-  }[];
 };
 
 export interface WaterMeterDetail {
   id: string;
   meter_number: string;
   meter_type: WaterMeterType;
+  name: string | null;
+  location: string | null;
   plot_no: string | null;
   installed_at: string | null;
   is_active: boolean;
   created_at: string;
   customer: { id: string; name: string; phone: string | null; is_active: boolean } | null;
   zone: { id: string; name: string } | null;
+  vending_system: WaterVendingSystem;
+  replaces_meter_id: string | null;
+  replaces_meter: { id: string; meter_number: string; vending_system: WaterVendingSystem } | null;
+  replaced_by_meter: {
+    id: string;
+    meter_number: string;
+    vending_system: WaterVendingSystem;
+  } | null;
   totals: {
     units_sold: number;
     revenue: number;
@@ -843,13 +999,6 @@ export interface WaterMeterDetail {
     recorded_at: string;
     source: "seed" | "upload" | "manual";
   }[];
-  recent_readings: {
-    id: string;
-    reading_date: string;
-    value: number;
-    notes: string | null;
-    created_at: string;
-  }[];
 }
 
 function mapMeterDetail(d: BackendMeterDetail): WaterMeterDetail {
@@ -857,6 +1006,8 @@ function mapMeterDetail(d: BackendMeterDetail): WaterMeterDetail {
     id: d.meter.id,
     meter_number: d.meter.meterNumber,
     meter_type: d.meter.meterType,
+    name: d.meter.name,
+    location: d.meter.location,
     plot_no: d.meter.plotNo,
     installed_at: d.meter.installedAt,
     is_active: d.meter.isActive,
@@ -870,6 +1021,22 @@ function mapMeterDetail(d: BackendMeterDetail): WaterMeterDetail {
         }
       : null,
     zone: d.meter.zone,
+    vending_system: d.meter.vendingSystem,
+    replaces_meter_id: d.meter.replacesMeterId,
+    replaces_meter: d.meter.replacesMeter
+      ? {
+          id: d.meter.replacesMeter.id,
+          meter_number: d.meter.replacesMeter.meterNumber,
+          vending_system: d.meter.replacesMeter.vendingSystem,
+        }
+      : null,
+    replaced_by_meter: d.meter.replacedByMeter
+      ? {
+          id: d.meter.replacedByMeter.id,
+          meter_number: d.meter.replacedByMeter.meterNumber,
+          vending_system: d.meter.replacedByMeter.vendingSystem,
+        }
+      : null,
     totals: {
       units_sold: d.totals.unitsSold,
       revenue: d.totals.revenue,
@@ -890,20 +1057,16 @@ function mapMeterDetail(d: BackendMeterDetail): WaterMeterDetail {
       recorded_at: r.recordedAt,
       source: r.source,
     })),
-    recent_readings: d.recentReadings.map((r) => ({
-      id: r.id,
-      reading_date: r.readingDate,
-      value: Number(r.value),
-      notes: r.notes,
-      created_at: r.createdAt,
-    })),
   };
 }
 
-export function useWaterMeterDetail(id: string | undefined) {
+export function useWaterMeterDetail(id: string | undefined, months = 6) {
   return useQuery({
-    queryKey: ["water", "meters", id, "detail"],
-    queryFn: async () => mapMeterDetail(await apiJson<BackendMeterDetail>(`/water/meters/${id}`)),
+    queryKey: ["water", "meters", id, "detail", months],
+    queryFn: async () =>
+      mapMeterDetail(
+        await apiJson<BackendMeterDetail>(`/water/meters/${id}${buildQuery({ months })}`),
+      ),
     enabled: !!id,
   });
 }
@@ -1014,11 +1177,13 @@ function mapCustomerDetail(d: BackendCustomerDetail): WaterCustomerDetail {
   };
 }
 
-export function useWaterCustomerDetail(id: string | undefined) {
+export function useWaterCustomerDetail(id: string | undefined, months = 6) {
   return useQuery({
-    queryKey: ["water", "customers", id, "detail"],
+    queryKey: ["water", "customers", id, "detail", months],
     queryFn: async () =>
-      mapCustomerDetail(await apiJson<BackendCustomerDetail>(`/water/customers/${id}`)),
+      mapCustomerDetail(
+        await apiJson<BackendCustomerDetail>(`/water/customers/${id}${buildQuery({ months })}`),
+      ),
     enabled: !!id,
   });
 }

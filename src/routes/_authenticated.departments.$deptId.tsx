@@ -22,9 +22,15 @@ import {
 } from "@/features/clients/use-clients-contracts";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
-import { useProjects, PROJECT_STATUS_LABELS, type ProjectStatus } from "@/features/projects/use-projects";
+import {
+  useProjects,
+  PROJECT_STATUS_LABELS,
+  type ProjectStatus,
+} from "@/features/projects/use-projects";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useAuth, departmentScopeFor } from "@/lib/auth";
+import { PermissionDenied } from "@/components/require-role";
 
 const PROJECT_STATUS_STYLES: Record<ProjectStatus, string> = {
   planning: "bg-secondary text-secondary-foreground",
@@ -55,6 +61,8 @@ export function DepartmentWorkspaceContent({
   deptId: string;
   scoped?: boolean;
 }) {
+  const { roles } = useAuth();
+  const scope = departmentScopeFor(roles);
   const deptsQ = useDepartments();
   const clientsQ = useClients();
   const linesQ = useServiceLines();
@@ -148,6 +156,14 @@ export function DepartmentWorkspaceContent({
     );
   }
 
+  // A department-scoped viewer's whole app is their own department — block reaching another
+  // department's workspace by URL. `scoped` embeds (the <dept>.workspace.tsx wrappers) always
+  // pass their own resolved department id, so this only ever fires via the generic
+  // /departments/:deptId route with a foreign id.
+  if (!scoped && scope && scope !== dept.code) {
+    return <PermissionDenied message="You do not have access to this department's workspace." />;
+  }
+
   return (
     <div className="space-y-3">
       {!scoped && (
@@ -168,8 +184,8 @@ export function DepartmentWorkspaceContent({
             `Clients and contracts belonging to ${dept.name}.`
           ) : (
             <>
-              Scoped view of the central clients & contracts module for the {dept.name}{" "}
-              department. Full CRUD is available from the{" "}
+              Scoped view of the central clients & contracts module for the {dept.name} department.
+              Full CRUD is available from the{" "}
               <Link to="/clients" className="text-primary hover:underline">
                 central module
               </Link>

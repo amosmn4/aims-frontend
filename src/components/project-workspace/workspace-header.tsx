@@ -1,3 +1,4 @@
+import { Lock, Repeat } from "lucide-react";
 import type { Project, Task } from "@/features/projects/use-projects";
 import { HEALTH_STYLES, money, fmtDate } from "@/features/project-workspace/workspace-theme";
 import { computePercentComplete, daysLeft } from "@/features/project-workspace/workspace-calcs";
@@ -29,6 +30,22 @@ export function WorkspaceHeader({
             <span className="health-dot" style={{ background: health.color }} />
             {health.label}
           </span>
+          {project.visibility === "restricted" && (
+            <span
+              className="p-chip inline-flex items-center gap-1"
+              title="Only the creator and specific people added to the Team tab can see this project"
+            >
+              <Lock className="h-3 w-3" /> Restricted
+            </span>
+          )}
+          {project.engagement_type === "ongoing" && (
+            <span
+              className="p-chip inline-flex items-center gap-1"
+              title="Retainer/maintenance work with no natural end — excluded from overdue alerts"
+            >
+              <Repeat className="h-3 w-3" /> Ongoing
+            </span>
+          )}
           {project.client_name && <span>{project.client_name}</span>}
           <span>{project.department_name}</span>
           {project.methodology && <span>{project.methodology}</span>}
@@ -43,7 +60,14 @@ export function WorkspaceHeader({
         <div className="ws-stat">
           <div className="ring-wrap">
             <svg width="64" height="64">
-              <circle cx="32" cy="32" r={r} fill="none" stroke="var(--pipeline-line-soft)" strokeWidth="7" />
+              <circle
+                cx="32"
+                cy="32"
+                r={r}
+                fill="none"
+                stroke="var(--pipeline-line-soft)"
+                strokeWidth="7"
+              />
               <circle
                 cx="32"
                 cy="32"
@@ -73,7 +97,10 @@ export function WorkspaceHeader({
           <div className="l">Budget</div>
         </div>
         <div className="ws-stat">
-          <div className="n" style={{ color: budgetPct > 85 ? "var(--pipeline-coral)" : "var(--pipeline-ink)" }}>
+          <div
+            className="n"
+            style={{ color: budgetPct > 85 ? "var(--pipeline-coral)" : "var(--pipeline-ink)" }}
+          >
             {budgetPct}%
           </div>
           <div className="l">Budget Used</div>

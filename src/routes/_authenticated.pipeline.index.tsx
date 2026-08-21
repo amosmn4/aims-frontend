@@ -29,7 +29,9 @@ function PipelineOverview() {
   const requests = requestsQ.data ?? [];
   const projects = projectsQ.data ?? [];
 
-  const activeTenders = tenders.filter((t) => !["won", "lost", "withdrawn"].includes(t.stage));
+  const activeTenders = tenders.filter(
+    (t) => !["won", "lost", "withdrawn", "cancelled"].includes(t.stage),
+  );
   const activeRequests = requests.filter((r) => !["won", "lost", "withdrawn"].includes(r.stage));
   const activeProjects = projects.filter((p) => p.delivery_stage !== "closed");
   const pipelineValue =

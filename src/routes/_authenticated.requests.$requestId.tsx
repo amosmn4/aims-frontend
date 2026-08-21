@@ -1,12 +1,14 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useAuth, type AppRole } from "@/lib/auth";
 import {
   useClientRequest,
   useRouteClientRequest,
   useUpdateClientRequestStage,
+  useSaveClientRequest,
+  useDeleteClientRequest,
   useConvertToProject,
   useConvertClientRequestToContract,
   useClientRequestActivities,
@@ -18,14 +20,18 @@ import {
   SOURCE_LABELS,
   ACTIVITY_TYPE_LABELS,
   type ClientRequestStage,
+  type ClientRequestSource,
   type ClientRequestActivityType,
+  type ClientRequestRow,
 } from "@/features/client-requests/use-client-requests";
 import { useDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
+import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import { ClientPicker } from "@/features/clients/client-picker";
 import { formatCurrency } from "@/features/finance/finance";
 import { AttachmentsPanel } from "@/features/documents/attachments-panel";
 import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
 import { EntityBreadcrumb, type BreadcrumbSegment } from "@/components/entity-breadcrumb";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -98,10 +104,13 @@ function buildRequestBreadcrumb(
 
 function ClientRequestDetail() {
   const { requestId } = Route.useParams();
+  const navigate = useNavigate();
   const { hasRole, isAdminOrCeo } = useAuth();
   const requestQ = useClientRequest(requestId);
   const updateStage = useUpdateClientRequestStage();
+  const deleteRequest = useDeleteClientRequest();
   const departmentsQ = useDepartments();
+  const [editing, setEditing] = useState(false);
 
   if (requestQ.isLoading) {
     return (
@@ -135,9 +144,51 @@ function ClientRequestDetail() {
     );
   };
 
+  const handleDelete = async () => {
+    const ok = await confirmDialog({
+      title: `Delete "${request.title}"?`,
+      description: "This removes the request and its activity log. This can't be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteRequest.mutate(request.id, {
+      onSuccess: () => {
+        toast.success("Request deleted");
+        navigate({ to: "/requests" });
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
+    });
+  };
+
   return (
     <div className="space-y-4">
-      <EntityBreadcrumb segments={buildRequestBreadcrumb(request)} />
+      <div className="flex items-start justify-between gap-2">
+        <EntityBreadcrumb segments={buildRequestBreadcrumb(request)} />
+        <div className="flex gap-1 shrink-0">
+          {canManage && (
+            <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+            </Button>
+          )}
+          {isAdminOrCeo && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive"
+              disabled={deleteRequest.isPending}
+              onClick={handleDelete}
+            >
+              {deleteRequest.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+              )}
+              Delete
+            </Button>
+          )}
+        </div>
+      </div>
 
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -278,7 +329,191 @@ function ClientRequestDetail() {
           />
         </TabsContent>
       </Tabs>
+
+      {editing && <EditRequestDialog request={request} onClose={() => setEditing(false)} />}
     </div>
+  );
+}
+
+function EditRequestDialog({
+  request,
+  onClose,
+}: {
+  request: ClientRequestRow;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState(request.title);
+  const [source, setSource] = useState<ClientRequestSource>(request.source);
+  const [clientMode, setClientMode] = useState<"existing" | "prospect">(
+    request.client_id ? "existing" : "prospect",
+  );
+  const [clientId, setClientId] = useState(request.client_id ?? "");
+  const [prospectClientName, setProspectClientName] = useState(request.prospect_client_name ?? "");
+  const [contactName, setContactName] = useState(request.contact_name ?? "");
+  const [contactEmail, setContactEmail] = useState(request.contact_email ?? "");
+  const [contactPhone, setContactPhone] = useState(request.contact_phone ?? "");
+  const [serviceLineId, setServiceLineId] = useState(request.service_line_id ?? "");
+  const [estimatedValue, setEstimatedValue] = useState(
+    request.estimated_value != null ? String(request.estimated_value) : "",
+  );
+  const [description, setDescription] = useState(request.description ?? "");
+
+  const clientsQ = useClients();
+  const serviceLinesQ = useServiceLines();
+  const save = useSaveClientRequest();
+
+  const submit = () => {
+    if (!title.trim()) {
+      toast.error("Title is required");
+      return;
+    }
+    save.mutate(
+      {
+        id: request.id,
+        title: title.trim(),
+        source,
+        client_id: clientMode === "existing" ? clientId || undefined : undefined,
+        prospect_client_name:
+          clientMode === "prospect" ? prospectClientName.trim() || undefined : undefined,
+        contact_name: contactName || undefined,
+        contact_email: contactEmail || undefined,
+        contact_phone: contactPhone || undefined,
+        service_line_id: serviceLineId || undefined,
+        estimated_value: estimatedValue ? Number(estimatedValue) : undefined,
+        description: description || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Request updated");
+          onClose();
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save"),
+      },
+    );
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit request</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Title</Label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="What is being requested?"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Source</Label>
+              <Select value={source} onValueChange={(v) => setSource(v as ClientRequestSource)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(SOURCE_LABELS).map(([v, label]) => (
+                    <SelectItem key={v} value={v}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Service line</Label>
+              <Select value={serviceLineId} onValueChange={setServiceLineId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Optional" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(serviceLinesQ.data ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between">
+              <Label>Client (optional)</Label>
+              <button
+                type="button"
+                onClick={() => setClientMode(clientMode === "existing" ? "prospect" : "existing")}
+                className="text-[0.6875rem] text-primary hover:underline"
+              >
+                {clientMode === "existing" ? "+ New company" : "Pick existing client"}
+              </button>
+            </div>
+            {clientMode === "existing" ? (
+              <Select value={clientId} onValueChange={setClientId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Not yet known" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(clientsQ.data ?? []).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                value={prospectClientName}
+                onChange={(e) => setProspectClientName(e.target.value)}
+                placeholder="Company name (not in system yet)"
+              />
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label>Contact name</Label>
+              <Input value={contactName} onChange={(e) => setContactName(e.target.value)} />
+            </div>
+            <div>
+              <Label>Contact email</Label>
+              <Input
+                type="email"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Contact phone</Label>
+              <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label>Est. value (optional)</Label>
+            <Input
+              type="number"
+              value={estimatedValue}
+              onChange={(e) => setEstimatedValue(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label>Description</Label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={submit} disabled={save.isPending}>
+            {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Save changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

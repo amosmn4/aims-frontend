@@ -19,7 +19,7 @@ export const Route = createFileRoute("/_authenticated/reports/departments/hr")({
   component: HrReport,
 });
 
-const TENDER_TERMINAL = new Set(["won", "lost", "withdrawn"]);
+const TENDER_TERMINAL = new Set(["won", "lost", "withdrawn", "cancelled"]);
 const REQUEST_TERMINAL = new Set(["won", "lost", "withdrawn"]);
 const STAGE_ORDER: FunnelStageKey[] = [
   "applications_received",

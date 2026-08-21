@@ -26,8 +26,12 @@ function PipelineLayout() {
   const requestsQ = useClientRequests();
   const projectsQ = usePipelineProjects();
 
-  const activeTenders = (tendersQ.data ?? []).filter((t) => !["won", "lost", "withdrawn"].includes(t.stage)).length;
-  const activeEngagements = (requestsQ.data ?? []).filter((r) => !["won", "lost", "withdrawn"].includes(r.stage)).length;
+  const activeTenders = (tendersQ.data ?? []).filter(
+    (t) => !["won", "lost", "withdrawn", "cancelled"].includes(t.stage),
+  ).length;
+  const activeEngagements = (requestsQ.data ?? []).filter(
+    (r) => !["won", "lost", "withdrawn"].includes(r.stage),
+  ).length;
   const activeProjects = (projectsQ.data ?? []).filter((p) => p.delivery_stage !== "closed").length;
   const counts: Record<string, number> = {
     "/pipeline/tenders": activeTenders,

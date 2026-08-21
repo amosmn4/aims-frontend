@@ -53,13 +53,26 @@ const ALL_ROLES: AppRole[] = [
   "it",
   "marketing",
   "tender",
+  "operations",
   "water",
   "department_head",
   "account_manager",
   "general_staff",
 ];
 
-type Department = { id: string; name: string };
+type Department = { id: string; name: string; code: string };
+
+// Department codes that double as an AppRole of the same name — assigning someone to a
+// department should also grant them that department's working role by default, otherwise
+// they're "in" the department (nav, homeRouteFor) without the write access its pages check for.
+const DEPARTMENT_ROLE_CODES: AppRole[] = [
+  "finance",
+  "hr",
+  "it",
+  "marketing",
+  "tender",
+  "operations",
+];
 type Office = { id: string; name: string };
 
 type AdminUser = {
@@ -245,7 +258,13 @@ function UsersAdmin() {
   };
 
   const updateDepartment = (u: AdminUser, departmentId: string | null) => {
-    updateUserMutation.mutate({ id: u.id, dto: { departmentId } });
+    const code = (departmentsQ.data ?? []).find((d) => d.id === departmentId)?.code as
+      AppRole | undefined;
+    const userRoles = u.roles.map((r) => r.role);
+    const impliedRole = code && DEPARTMENT_ROLE_CODES.includes(code) ? code : null;
+    const roles =
+      impliedRole && !userRoles.includes(impliedRole) ? [...userRoles, impliedRole] : undefined;
+    updateUserMutation.mutate({ id: u.id, dto: { departmentId, ...(roles && { roles }) } });
   };
 
   const toggleCreateRole = (role: AppRole, checked: boolean) => {
@@ -309,9 +328,21 @@ function UsersAdmin() {
                     <Label>Department</Label>
                     <Select
                       value={createForm.departmentId || "none"}
-                      onValueChange={(v) =>
-                        setCreateForm({ ...createForm, departmentId: v === "none" ? "" : v })
-                      }
+                      onValueChange={(v) => {
+                        const departmentId = v === "none" ? "" : v;
+                        const code = (departmentsQ.data ?? []).find((d) => d.id === v)?.code as
+                          AppRole | undefined;
+                        const impliedRole =
+                          code && DEPARTMENT_ROLE_CODES.includes(code) ? code : null;
+                        setCreateForm({
+                          ...createForm,
+                          departmentId,
+                          roles:
+                            impliedRole && !createForm.roles.includes(impliedRole)
+                              ? [...createForm.roles, impliedRole]
+                              : createForm.roles,
+                        });
+                      }}
                     >
                       <SelectTrigger className="h-9">
                         <SelectValue placeholder="Unassigned" />

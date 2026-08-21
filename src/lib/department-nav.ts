@@ -54,18 +54,10 @@ const DOMAIN_ITEMS: Record<DepartmentCode, { to: string; label: string }[]> = {
   operations: [{ to: "/operations/requests", label: "Client Requests" }],
 };
 
-const DEPARTMENT_LABEL: Record<DepartmentCode, string> = {
-  finance: "Finance",
-  hr: "Human Resources",
-  it: "Information Technology",
-  marketing: "Marketing",
-  tender: "Tender",
-  operations: "Operations",
-};
-
-// `hasWaterAccess` covers the edge case of a user who holds both a department role and the
-// separate "water" module grant — without this they'd lose the Water Project link entirely,
-// since a department-scoped user sees this nav instead of the global one (see app-shell.tsx).
+// Deliberately NOT the department's own name here — a department-scoped user's whole nav is
+// already inside that department (URL, dashboard header), so a dropdown labeled e.g.
+// "Information Technology" while already logged in as IT reads as a redundant, confusing menu
+// item rather than useful identity. "Workspace" describes what's inside instead.
 export function buildDepartmentNav(code: DepartmentCode, hasWaterAccess = false): NavItem[] {
   const base = `/${code}`;
   return [
@@ -73,7 +65,7 @@ export function buildDepartmentNav(code: DepartmentCode, hasWaterAccess = false)
     { to: "/guide", label: "How It Works", icon: Compass, match: ["/guide"] },
     {
       to: DOMAIN_ITEMS[code][0]?.to ?? base,
-      label: DEPARTMENT_LABEL[code],
+      label: "Workspace",
       icon: Workflow,
       match: DOMAIN_ITEMS[code].map((i) => i.to),
       children: DOMAIN_ITEMS[code],

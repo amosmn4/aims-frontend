@@ -1,4 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { PageHeader } from "@/components/app-shell";
 import {
   Wallet,
@@ -13,7 +14,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 import { useDepartments } from "@/features/clients/use-clients-contracts";
-import { useAuth, type AppRole } from "@/lib/auth";
+import { useAuth, homeRouteFor, departmentScopeFor, type AppRole } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/departments/")({
   component: DepartmentsOverview,
@@ -69,7 +70,16 @@ const KNOWN: Record<
 
 function DepartmentsOverview() {
   const deptsQ = useDepartments();
-  const { isAdminOrCeo, hasRole } = useAuth();
+  const { isAdminOrCeo, hasRole, roles } = useAuth();
+  const navigate = useNavigate();
+  const scope = departmentScopeFor(roles);
+
+  useEffect(() => {
+    if (scope) navigate({ to: homeRouteFor(roles) });
+  }, [scope, roles, navigate]);
+
+  if (scope) return null;
+
   return (
     <div>
       <PageHeader

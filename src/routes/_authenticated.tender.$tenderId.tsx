@@ -1,13 +1,16 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { Loader2, Plus, Trash2, Upload, Eye, Download } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2, Upload, Eye, Download } from "lucide-react";
 import { RequireRole } from "@/components/require-role";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { useAuth } from "@/lib/auth";
 import {
   useTender,
   useUpdateTenderStage,
+  useSaveTender,
+  useDeleteTender,
   useConvertToContract,
   useConvertTenderToProject,
   useTenderResources,
@@ -44,8 +47,10 @@ import {
   type TenderBondStatus,
   type TenderRequirementStatus,
   type TenderRequirementRow,
+  type TenderRow,
 } from "@/features/tender/use-tender";
-import { useProfilesLite } from "@/features/clients/use-clients-contracts";
+import { useDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
+import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import { ClientPicker } from "@/features/clients/client-picker";
 import { formatCurrency } from "@/features/finance/finance";
 import { AttachmentsPanel } from "@/features/documents/attachments-panel";
@@ -130,9 +135,12 @@ function buildTenderBreadcrumb(tender: ReturnType<typeof useTender>["data"]): Br
 
 function TenderDetail() {
   const { tenderId } = Route.useParams();
+  const navigate = useNavigate();
   const { hasRole, isAdminOrCeo } = useAuth();
   const tenderQ = useTender(tenderId);
   const updateStage = useUpdateTenderStage();
+  const deleteTender = useDeleteTender();
+  const [editing, setEditing] = useState(false);
 
   if (tenderQ.isLoading) {
     return (
@@ -147,8 +155,13 @@ function TenderDetail() {
   const canManage = isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing", "tender"]);
 
   const changeStage = (stage: TenderStage) => {
-    if (stage === "lost") {
-      const reason = window.prompt("Reason the tender was lost (optional):") ?? undefined;
+    if (stage === "lost" || stage === "cancelled") {
+      const reason =
+        window.prompt(
+          stage === "lost"
+            ? "Reason the tender was lost (optional):"
+            : "Reason the tender was cancelled (optional):",
+        ) ?? undefined;
       updateStage.mutate(
         { id: tender.id, stage, lost_reason: reason },
         { onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed") },
@@ -171,9 +184,52 @@ function TenderDetail() {
     );
   };
 
+  const handleDelete = async () => {
+    const ok = await confirmDialog({
+      title: `Delete "${tender.title}"?`,
+      description:
+        "This removes the tender and everything tracked against it. This can't be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteTender.mutate(tender.id, {
+      onSuccess: () => {
+        toast.success("Tender deleted");
+        navigate({ to: "/tender" });
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
+    });
+  };
+
   return (
     <div className="space-y-4">
-      <EntityBreadcrumb segments={buildTenderBreadcrumb(tender)} />
+      <div className="flex items-start justify-between gap-2">
+        <EntityBreadcrumb segments={buildTenderBreadcrumb(tender)} />
+        <div className="flex gap-1 shrink-0">
+          {canManage && (
+            <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+            </Button>
+          )}
+          {isAdminOrCeo && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive"
+              disabled={deleteTender.isPending}
+              onClick={handleDelete}
+            >
+              {deleteTender.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+              )}
+              Delete
+            </Button>
+          )}
+        </div>
+      </div>
 
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -305,7 +361,170 @@ function TenderDetail() {
           <AttachmentsPanel resourceType="tender" resourceId={tender.id} canManage={canManage} />
         </TabsContent>
       </Tabs>
+
+      {editing && <EditTenderDialog tender={tender} onClose={() => setEditing(false)} />}
     </div>
+  );
+}
+
+function EditTenderDialog({ tender, onClose }: { tender: TenderRow; onClose: () => void }) {
+  const [title, setTitle] = useState(tender.title);
+  const [departmentId, setDepartmentId] = useState(tender.department_id);
+  const [clientMode, setClientMode] = useState<"existing" | "prospect">(
+    tender.client_id ? "existing" : "prospect",
+  );
+  const [clientId, setClientId] = useState(tender.client_id ?? "");
+  const [prospectClientName, setProspectClientName] = useState(tender.prospect_client_name ?? "");
+  const [serviceLineId, setServiceLineId] = useState(tender.service_line_id ?? "");
+  const [estimatedValue, setEstimatedValue] = useState(
+    tender.estimated_value != null ? String(tender.estimated_value) : "",
+  );
+  const [submissionDeadline, setSubmissionDeadline] = useState(tender.submission_deadline ?? "");
+  const [description, setDescription] = useState(tender.description ?? "");
+
+  const departmentsQ = useDepartments();
+  const clientsQ = useClients();
+  const serviceLinesQ = useServiceLines();
+  const save = useSaveTender();
+
+  const submit = () => {
+    if (!title.trim() || !departmentId) {
+      toast.error("Title and department are required");
+      return;
+    }
+    save.mutate(
+      {
+        id: tender.id,
+        title: title.trim(),
+        department_id: departmentId,
+        client_id: clientMode === "existing" ? clientId || undefined : undefined,
+        prospect_client_name:
+          clientMode === "prospect" ? prospectClientName.trim() || undefined : undefined,
+        service_line_id: serviceLineId || undefined,
+        estimated_value: estimatedValue ? Number(estimatedValue) : undefined,
+        submission_deadline: submissionDeadline || undefined,
+        description: description || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Tender updated");
+          onClose();
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save"),
+      },
+    );
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit tender</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Title</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Department</Label>
+              <Select value={departmentId} onValueChange={setDepartmentId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(departmentsQ.data ?? []).map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <div className="flex items-center justify-between">
+                <Label>Client (optional)</Label>
+                <button
+                  type="button"
+                  onClick={() => setClientMode(clientMode === "existing" ? "prospect" : "existing")}
+                  className="text-[0.6875rem] text-primary hover:underline"
+                >
+                  {clientMode === "existing" ? "+ New company" : "Pick existing client"}
+                </button>
+              </div>
+              {clientMode === "existing" ? (
+                <Select value={clientId} onValueChange={setClientId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Not yet known" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(clientsQ.data ?? []).map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={prospectClientName}
+                  onChange={(e) => setProspectClientName(e.target.value)}
+                  placeholder="Company name (not in system yet)"
+                />
+              )}
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label>Service line</Label>
+              <Select value={serviceLineId} onValueChange={setServiceLineId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Optional" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(serviceLinesQ.data ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Est. value</Label>
+              <Input
+                type="number"
+                value={estimatedValue}
+                onChange={(e) => setEstimatedValue(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Deadline</Label>
+              <Input
+                type="date"
+                value={submissionDeadline}
+                onChange={(e) => setSubmissionDeadline(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Description</Label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={submit} disabled={save.isPending}>
+            {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Save changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

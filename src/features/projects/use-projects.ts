@@ -3,6 +3,17 @@ import { apiJson } from "@/lib/api-client";
 
 export type ProjectStatus = "planning" | "active" | "on_hold" | "completed" | "cancelled";
 export type ProjectHealth = "green" | "amber" | "red";
+export type ProjectVisibility = "department" | "restricted";
+export type ProjectEngagementType = "one_off" | "ongoing";
+export type ExtensionAttribution = "client" | "internal" | "third_party" | "other";
+export type TimelineEntityType = "project" | "task" | "milestone" | "contract";
+
+export const EXTENSION_ATTRIBUTION_LABELS: Record<ExtensionAttribution, string> = {
+  client: "Client",
+  internal: "Internal",
+  third_party: "Third party",
+  other: "Other",
+};
 export type TaskStatus = "not_started" | "in_progress" | "review" | "blocked" | "completed";
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 export type SdlcStage =
@@ -90,6 +101,9 @@ export type Project = {
   methodology: string | null;
   sdlc_stage: SdlcStage | null;
   health: ProjectHealth;
+  visibility: ProjectVisibility;
+  engagement_type: ProjectEngagementType;
+  created_by: string | null;
   budget: number | null;
   start_date: string | null;
   end_date: string | null;
@@ -189,6 +203,9 @@ type BackendProject = {
   methodology: string | null;
   sdlcStage: SdlcStage | null;
   health: ProjectHealth;
+  visibility: ProjectVisibility;
+  engagementType: ProjectEngagementType;
+  createdBy: string | null;
   budget: string | number | null;
   startDate: string | null;
   endDate: string | null;
@@ -258,6 +275,9 @@ function mapProject(p: BackendProject): Project {
     methodology: p.methodology,
     sdlc_stage: p.sdlcStage,
     health: p.health,
+    visibility: p.visibility,
+    engagement_type: p.engagementType,
+    created_by: p.createdBy,
     budget: p.budget == null ? null : Number(p.budget),
     start_date: p.startDate ? p.startDate.slice(0, 10) : null,
     end_date: p.endDate ? p.endDate.slice(0, 10) : null,
@@ -325,6 +345,7 @@ export function useProjects(filters?: {
   status?: ProjectStatus;
   clientId?: string;
   sharedWithMe?: boolean;
+  enabled?: boolean;
 }) {
   const qs = toQuery({
     departmentId: filters?.departmentId,
@@ -333,6 +354,7 @@ export function useProjects(filters?: {
     sharedWithMe: filters?.sharedWithMe ? "true" : undefined,
   });
   return useQuery({
+    enabled: filters?.enabled ?? true,
     queryKey: [
       "projects",
       filters?.departmentId,
@@ -364,6 +386,9 @@ export function useCreateProject() {
       status?: ProjectStatus;
       methodology?: string;
       health?: ProjectHealth;
+      visibility?: ProjectVisibility;
+      engagementType?: ProjectEngagementType;
+      memberIds?: string[];
       budget?: number;
       startDate?: string;
       endDate?: string;
@@ -548,5 +573,51 @@ export function useProjectFinancials(projectId: string | undefined) {
     queryKey: ["project-financials", projectId],
     enabled: !!projectId,
     queryFn: () => apiJson<ProjectFinancials>(`/projects/${projectId}/financials`),
+  });
+}
+
+/* ---------- Timeline extensions ---------- */
+
+export type TimelineExtension = {
+  id: string;
+  previous_date: string;
+  new_date: string;
+  reason: string;
+  attributed_to: ExtensionAttribution;
+  created_by_name: string | null;
+  created_at: string;
+};
+
+type BackendTimelineExtension = {
+  id: string;
+  previousDate: string;
+  newDate: string;
+  reason: string;
+  attributedTo: ExtensionAttribution;
+  creator?: { fullName: string | null; email: string } | null;
+  createdAt: string;
+};
+
+export function useTimelineExtensions(
+  entityType: TimelineEntityType,
+  entityId: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["timeline-extensions", entityType, entityId],
+    enabled: !!entityId,
+    queryFn: async () => {
+      const rows = await apiJson<BackendTimelineExtension[]>(
+        `/timeline-extensions?entityType=${entityType}&entityId=${entityId}`,
+      );
+      return rows.map((e): TimelineExtension => ({
+        id: e.id,
+        previous_date: e.previousDate,
+        new_date: e.newDate,
+        reason: e.reason,
+        attributed_to: e.attributedTo,
+        created_by_name: e.creator?.fullName ?? e.creator?.email ?? null,
+        created_at: e.createdAt,
+      }));
+    },
   });
 }

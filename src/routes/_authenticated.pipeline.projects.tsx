@@ -9,6 +9,7 @@ import {
   type ProjectDeliveryStage,
 } from "@/features/pipeline/use-pipeline";
 import { useUpdateProject, useProjectFinancials } from "@/features/projects/use-projects";
+import { NewProjectDialog } from "./_authenticated.projects.index";
 import { useCreateInvoice, useRecordPayment } from "@/features/finance/use-finance-data";
 import { useDepartments } from "@/features/clients/use-clients-contracts";
 import { formatCurrency } from "@/features/finance/finance";
@@ -113,6 +114,9 @@ export function ProjectsDeliveryBoard({ fixedDepartmentId }: { fixedDepartmentId
               ))}
             </SelectContent>
           </Select>
+        )}
+        {fixedDepartmentId && canManage && (
+          <NewProjectDialog fixedDepartmentId={fixedDepartmentId} />
         )}
       </div>
 

@@ -10,12 +10,14 @@ import {
   useWaterAllZones,
   useWaterCustomers,
   WATER_METER_TYPE_LABELS,
+  WATER_VENDING_SYSTEM_LABELS,
   vendingHealth,
   VENDING_HEALTH_LABELS,
   VENDING_HEALTH_ROW_STYLES,
   VENDING_HEALTH_BADGE_STYLES,
   type WaterMeterRow,
   type WaterMeterType,
+  type WaterVendingSystem,
 } from "@/features/water/use-water";
 import { usePagination } from "@/hooks/use-pagination";
 import { PaginationBar } from "@/components/pagination-bar";
@@ -58,12 +60,18 @@ const NONE = "__none__";
 function WaterMetersPage() {
   const [meterType, setMeterType] = useState<WaterMeterType | "">("");
   const [zoneId, setZoneId] = useState("");
+  const [vendingSystem, setVendingSystem] = useState<WaterVendingSystem | "">("");
   const [q, setQ] = useState("");
   const { page, pageSize, setPage, setPageSize } = usePagination(25);
 
   const allZonesQ = useWaterAllZones();
   const metersQ = useWaterMeters(
-    { meterType: meterType || undefined, zoneId: zoneId || undefined, q: q.trim() || undefined },
+    {
+      meterType: meterType || undefined,
+      zoneId: zoneId || undefined,
+      vendingSystem: vendingSystem || undefined,
+      q: q.trim() || undefined,
+    },
     { page, pageSize },
   );
   const deleteMeter = useDeleteWaterMeter();
@@ -79,9 +87,9 @@ function WaterMetersPage() {
         <div>
           <h1 className="text-lg font-semibold">Meters Registry</h1>
           <p className="text-xs text-muted-foreground">
-            Register a meter and capture who it&apos;s assigned to, their plot, install date and
-            zone — all in one step. Row color shows vending activity; click a meter number to see
-            its full history.
+            Household meters capture who they&apos;re assigned to; main and bulk meters capture a
+            name, location and the zone they reconcile instead — no customer. Row color shows
+            vending activity; click a meter number to see its full history.
           </p>
         </div>
         <Button size="sm" onClick={() => setEditing("new")}>
@@ -144,6 +152,27 @@ function WaterMetersPage() {
             </SelectContent>
           </Select>
         </div>
+        <div className="w-40">
+          <Select
+            value={vendingSystem || ALL}
+            onValueChange={(v) => {
+              setVendingSystem(v === ALL ? "" : (v as WaterVendingSystem));
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="h-9">
+              <SelectValue placeholder="System" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All systems</SelectItem>
+              {Object.entries(WATER_VENDING_SYSTEM_LABELS).map(([v, label]) => (
+                <SelectItem key={v} value={v}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {metersQ.isLoading ? (
@@ -162,20 +191,23 @@ function WaterMetersPage() {
                 <TableRow>
                   <TableHead>Meter number</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Plot no.</TableHead>
+                  <TableHead>System</TableHead>
+                  <TableHead>Customer / Name</TableHead>
+                  <TableHead>Plot / Location</TableHead>
                   <TableHead>Installed</TableHead>
                   <TableHead>Zone</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Vending</TableHead>
+                  <TableHead>Vending / Readings</TableHead>
                   <TableHead className="w-20" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {meters.map((m) => {
                   const health = vendingHealth(m.last_vend_at);
+                  const rowClass =
+                    m.meter_type === "household" ? VENDING_HEALTH_ROW_STYLES[health] : "";
                   return (
-                    <TableRow key={m.id} className={VENDING_HEALTH_ROW_STYLES[health]}>
+                    <TableRow key={m.id} className={rowClass}>
                       <TableCell className="font-mono text-xs">
                         <Link
                           to="/water/meters/$meterId"
@@ -188,8 +220,29 @@ function WaterMetersPage() {
                       <TableCell>
                         <Badge variant="secondary">{WATER_METER_TYPE_LABELS[m.meter_type]}</Badge>
                       </TableCell>
-                      <TableCell className="text-sm">{m.customer_name ?? "—"}</TableCell>
-                      <TableCell className="font-mono text-xs">{m.plot_no ?? "—"}</TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            m.vending_system === "mpaya"
+                              ? "bg-accent/10 text-accent"
+                              : "bg-primary/10 text-primary"
+                          }
+                          variant="secondary"
+                        >
+                          {WATER_VENDING_SYSTEM_LABELS[m.vending_system]}
+                        </Badge>
+                        {(m.replaces_meter || m.replaced_by_meter) && (
+                          <div className="text-[0.625rem] text-muted-foreground mt-0.5">
+                            {m.replaces_meter && `Replaces ${m.replaces_meter.meter_number}`}
+                            {m.replaced_by_meter &&
+                              `Replaced by ${m.replaced_by_meter.meter_number}`}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm">{m.customer_name ?? m.name ?? "—"}</TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {m.plot_no ?? m.location ?? "—"}
+                      </TableCell>
                       <TableCell className="text-xs">
                         {m.installed_at ? m.installed_at.slice(0, 10) : "—"}
                       </TableCell>
@@ -206,9 +259,17 @@ function WaterMetersPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge className={VENDING_HEALTH_BADGE_STYLES[health]}>
-                          {VENDING_HEALTH_LABELS[health]}
-                        </Badge>
+                        {m.meter_type === "household" ? (
+                          <Badge className={VENDING_HEALTH_BADGE_STYLES[health]}>
+                            {VENDING_HEALTH_LABELS[health]}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {m.last_reading_at
+                              ? `Last reading ${m.last_reading_at.slice(0, 10)}`
+                              : "No readings yet"}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
@@ -279,8 +340,12 @@ function EditMeterForm({ value, onDone }: { value: WaterMeterRow | null; onDone:
   const save = useSaveWaterMeter();
   const allZonesQ = useWaterAllZones();
   const customersQ = useWaterCustomers();
+  const allMetersQ = useWaterMeters();
   const [meterNumber, setMeterNumber] = useState(value?.meter_number ?? "");
   const [meterType, setMeterType] = useState<WaterMeterType>(value?.meter_type ?? "household");
+  const isHousehold = meterType === "household";
+  const [name, setName] = useState(value?.name ?? "");
+  const [location, setLocation] = useState(value?.location ?? "");
   const [customerMode, setCustomerMode] = useState<"existing" | "new">(
     value?.customer_id ? "existing" : "new",
   );
@@ -288,6 +353,11 @@ function EditMeterForm({ value, onDone }: { value: WaterMeterRow | null; onDone:
   const [customerName, setCustomerName] = useState(value?.customer_name ?? "");
   const [plotNo, setPlotNo] = useState(value?.plot_no ?? "");
   const [installedAt, setInstalledAt] = useState(value?.installed_at?.slice(0, 10) ?? "");
+  const [vendingSystem, setVendingSystem] = useState<WaterVendingSystem>(
+    value?.vending_system ?? "amsol",
+  );
+  const [replacesMeterId, setReplacesMeterId] = useState(value?.replaces_meter_id ?? "");
+  const replaceableMeters = (allMetersQ.data ?? []).filter((m) => m.id !== value?.id);
 
   const allZones = allZonesQ.data ?? [];
   const currentZoneNode = allZones.find((z) => z.id === value?.zone_id);
@@ -307,12 +377,17 @@ function EditMeterForm({ value, onDone }: { value: WaterMeterRow | null; onDone:
       toast.error("Meter number is required");
       return;
     }
-    if (customerMode === "new" && !customerName.trim()) {
-      toast.error("Enter the customer's name, or switch to picking an existing customer");
-      return;
-    }
-    if (customerMode === "existing" && !customerId) {
-      toast.error("Choose a customer, or switch to entering a new one");
+    if (isHousehold) {
+      if (customerMode === "new" && !customerName.trim()) {
+        toast.error("Enter the customer's name, or switch to picking an existing customer");
+        return;
+      }
+      if (customerMode === "existing" && !customerId) {
+        toast.error("Choose a customer, or switch to entering a new one");
+        return;
+      }
+    } else if (!name.trim()) {
+      toast.error('Give this meter a name, e.g. "Borehole Main Meter"');
       return;
     }
     save.mutate(
@@ -320,12 +395,16 @@ function EditMeterForm({ value, onDone }: { value: WaterMeterRow | null; onDone:
         id: value?.id,
         meterNumber: meterNumber.trim(),
         meterType,
-        customerId: customerMode === "existing" ? customerId : undefined,
-        customerName: customerMode === "new" ? customerName.trim() : undefined,
-        plotNo: plotNo || undefined,
+        name: isHousehold ? undefined : name.trim(),
+        location: isHousehold ? undefined : location || undefined,
+        customerId: isHousehold && customerMode === "existing" ? customerId : undefined,
+        customerName: isHousehold && customerMode === "new" ? customerName.trim() : undefined,
+        plotNo: isHousehold ? plotNo || undefined : undefined,
         installedAt: installedAt || undefined,
         zoneId: subzoneId || zoneId || undefined,
         isActive,
+        vendingSystem,
+        replacesMeterId: replacesMeterId || undefined,
       },
       {
         onSuccess: () => {
@@ -365,57 +444,97 @@ function EditMeterForm({ value, onDone }: { value: WaterMeterRow | null; onDone:
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between">
-            <Label>Customer assigned</Label>
-            <button
-              type="button"
-              onClick={() => setCustomerMode(customerMode === "existing" ? "new" : "existing")}
-              className="text-[0.6875rem] text-primary hover:underline"
-            >
-              {customerMode === "existing" ? "+ New customer" : "Pick existing customer"}
-            </button>
-          </div>
-          {customerMode === "existing" ? (
-            <Select value={customerId} onValueChange={setCustomerId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select customer…" />
-              </SelectTrigger>
-              <SelectContent>
-                {(customersQ.data ?? []).map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Input
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Customer's full name"
-            />
-          )}
-        </div>
+        {isHousehold ? (
+          <>
+            <div>
+              <div className="flex items-center justify-between">
+                <Label>Customer assigned</Label>
+                <button
+                  type="button"
+                  onClick={() => setCustomerMode(customerMode === "existing" ? "new" : "existing")}
+                  className="text-[0.6875rem] text-primary hover:underline"
+                >
+                  {customerMode === "existing" ? "+ New customer" : "Pick existing customer"}
+                </button>
+              </div>
+              {customerMode === "existing" ? (
+                <Select value={customerId} onValueChange={setCustomerId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select customer…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(customersQ.data ?? []).map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Customer's full name"
+                />
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Plot number</Label>
+                <Input value={plotNo} onChange={(e) => setPlotNo(e.target.value)} />
+              </div>
+              <div>
+                <Label>Date of installation</Label>
+                <Input
+                  type="date"
+                  value={installedAt}
+                  onChange={(e) => setInstalledAt(e.target.value)}
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground -mt-1">
+              {meterType === "main"
+                ? "The borehole meter — covers the entire volume pumped, before it splits into any zone. No customer; readings are taken directly off this meter's dial."
+                : "A zone bulk meter — used only to take dial readings for reconciling that zone's usage. No customer; assigning it a zone below covers that zone and every sub-zone nested under it."}
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Name</Label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={
+                    meterType === "main" ? "Borehole Main Meter" : "e.g. Zone A Bulk Meter"
+                  }
+                />
+              </div>
+              <div>
+                <Label>Location</Label>
+                <Input
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="e.g. Borehole pump house"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Date of installation</Label>
+              <Input
+                type="date"
+                value={installedAt}
+                onChange={(e) => setInstalledAt(e.target.value)}
+              />
+            </div>
+          </>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label>Plot number</Label>
-            <Input value={plotNo} onChange={(e) => setPlotNo(e.target.value)} />
-          </div>
-          <div>
-            <Label>Date of installation</Label>
-            <Input
-              type="date"
-              value={installedAt}
-              onChange={(e) => setInstalledAt(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Zone (optional)</Label>
+            <Label>{isHousehold ? "Zone (optional)" : "Zone covered (optional)"}</Label>
             <Select
               value={zoneId || NONE}
               onValueChange={(v) => {
@@ -457,6 +576,61 @@ function EditMeterForm({ value, onDone }: { value: WaterMeterRow | null; onDone:
             </Select>
           </div>
         </div>
+        {!isHousehold && zoneId && (
+          <p className="text-[0.6875rem] text-muted-foreground -mt-2">
+            This meter's readings will be reconciled against{" "}
+            {subzoneId
+              ? (allZones.find((z) => z.id === subzoneId)?.name ?? "the selected sub-zone")
+              : (allZones.find((z) => z.id === zoneId)?.name ?? "the selected zone")}{" "}
+            and every sub-zone nested under it.
+          </p>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Vending system</Label>
+            <Select
+              value={vendingSystem}
+              onValueChange={(v) => setVendingSystem(v as WaterVendingSystem)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(WATER_VENDING_SYSTEM_LABELS).map(([v, label]) => (
+                  <SelectItem key={v} value={v}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Replaces meter (optional)</Label>
+            <Select
+              value={replacesMeterId || NONE}
+              onValueChange={(v) => setReplacesMeterId(v === NONE ? "" : v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>None</SelectItem>
+                {replaceableMeters.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.meter_number} ({WATER_VENDING_SYSTEM_LABELS[m.vending_system]})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {isHousehold && replacesMeterId && !customerId && customerMode === "existing" && (
+          <p className="text-[0.6875rem] text-muted-foreground -mt-2">
+            The replaced meter's customer will carry forward automatically unless you pick a
+            different one above.
+          </p>
+        )}
 
         <div className="flex items-center gap-2 pt-1">
           <Switch checked={isActive} onCheckedChange={setIsActive} />

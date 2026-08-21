@@ -10,7 +10,10 @@ import {
   useCreateProject,
   PROJECT_STATUS_LABELS,
   type ProjectStatus,
+  type ProjectVisibility,
+  type ProjectEngagementType,
 } from "@/features/projects/use-projects";
+import { ProjectVisibilityPicker } from "@/features/projects/project-visibility-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -141,7 +144,12 @@ function ProjectsIndex() {
   );
 }
 
-function NewProjectDialog() {
+// Exported so a department hub's own Projects & Tasks board (e.g. HR's "Work & Projects") can
+// embed this same dialog with `fixedDepartmentId` pre-selecting (and locking) that department —
+// standalone project creation otherwise only lived on this generic /projects page, meaning a
+// department user had to leave their own workspace to start a project not routed here from a
+// won tender or converted client request.
+export function NewProjectDialog({ fixedDepartmentId }: { fixedDepartmentId?: string } = {}) {
   const { profile, hasRole, isAdminOrCeo } = useAuth();
   const departmentsQ = useDepartments();
   const clientsQ = useClients();
@@ -149,13 +157,17 @@ function NewProjectDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [departmentId, setDepartmentId] = useState("");
+  const [departmentId, setDepartmentId] = useState(fixedDepartmentId ?? "");
   const [clientId, setClientId] = useState("");
+  const [visibility, setVisibility] = useState<ProjectVisibility>("department");
+  const [memberIds, setMemberIds] = useState<string[]>([]);
+  const [engagementType, setEngagementType] = useState<ProjectEngagementType>("one_off");
 
   // Default to the user's own department when they only have one obvious choice.
   const eligibleDepartments = (departmentsQ.data ?? []).filter(
     (d) => isAdminOrCeo || hasRole(d.code as AppRole),
   );
+  const departmentName = eligibleDepartments.find((d) => d.id === departmentId)?.name ?? "";
 
   const submit = () => {
     if (!name.trim() || !departmentId) {
@@ -168,6 +180,9 @@ function NewProjectDialog() {
         description: description || undefined,
         departmentId,
         clientId: clientId || undefined,
+        visibility,
+        engagementType,
+        memberIds: visibility === "restricted" ? memberIds : undefined,
       },
       {
         onSuccess: () => {
@@ -175,8 +190,11 @@ function NewProjectDialog() {
           setOpen(false);
           setName("");
           setDescription("");
-          setDepartmentId("");
+          setDepartmentId(fixedDepartmentId ?? "");
           setClientId("");
+          setVisibility("department");
+          setMemberIds([]);
+          setEngagementType("one_off");
         },
         onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to create"),
       },
@@ -208,21 +226,23 @@ function NewProjectDialog() {
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Department</Label>
-              <Select value={departmentId} onValueChange={setDepartmentId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {eligibleDepartments.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {!fixedDepartmentId && (
+              <div>
+                <Label>Department</Label>
+                <Select value={departmentId} onValueChange={setDepartmentId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {eligibleDepartments.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label>Client (optional)</Label>
               <Select value={clientId} onValueChange={setClientId}>
@@ -245,6 +265,28 @@ function NewProjectDialog() {
               projects.
             </p>
           )}
+          <div>
+            <Label>Engagement type</Label>
+            <Select
+              value={engagementType}
+              onValueChange={(v) => setEngagementType(v as ProjectEngagementType)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="one_off">One-off delivery</SelectItem>
+                <SelectItem value="ongoing">Ongoing / retainer</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <ProjectVisibilityPicker
+            departmentName={departmentName}
+            visibility={visibility}
+            onVisibilityChange={setVisibility}
+            memberIds={memberIds}
+            onMemberIdsChange={setMemberIds}
+          />
         </div>
         <DialogFooter>
           <Button onClick={submit} disabled={createProject.isPending}>

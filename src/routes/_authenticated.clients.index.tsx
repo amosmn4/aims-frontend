@@ -15,6 +15,7 @@ import {
 } from "@/features/clients/use-clients-contracts";
 import { usePagination } from "@/hooks/use-pagination";
 import { PaginationBar } from "@/components/pagination-bar";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,6 +63,8 @@ const emptyClient: ClientDraft = {
 };
 
 function ClientsList() {
+  const { isAdminOrCeo, hasRole } = useAuth();
+  const canManage = isAdminOrCeo || hasRole("finance") || hasRole("hr");
   const [search, setSearch] = useState("");
   const [industry, setIndustry] = useState("all");
   const [segment, setSegment] = useState("all");
@@ -253,28 +256,32 @@ function ClientsList() {
                         >
                           <Users className="h-3.5 w-3.5" />
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() =>
-                            setEditing({
-                              id: c.id,
-                              name: c.name,
-                              code: c.code ?? "",
-                              country: c.country ?? "",
-                              currency_code: c.currency_code,
-                              industry: ind,
-                              segment: seg,
-                              account_manager_id: am ?? "",
-                              is_active: c.is_active,
-                            })
-                          }
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => remove(c.id, c.name)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {canManage && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                setEditing({
+                                  id: c.id,
+                                  name: c.name,
+                                  code: c.code ?? "",
+                                  country: c.country ?? "",
+                                  currency_code: c.currency_code,
+                                  industry: ind,
+                                  segment: seg,
+                                  account_manager_id: am ?? "",
+                                  is_active: c.is_active,
+                                })
+                              }
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => remove(c.id, c.name)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   );

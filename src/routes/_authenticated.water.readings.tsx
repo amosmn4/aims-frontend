@@ -139,7 +139,7 @@ function WaterReadingsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
+                  <TableHead>Date & time</TableHead>
                   <TableHead>Meter</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">Value</TableHead>
@@ -150,7 +150,9 @@ function WaterReadingsPage() {
               <TableBody>
                 {readings.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="text-xs">{r.reading_date.slice(0, 10)}</TableCell>
+                    <TableCell className="text-xs">
+                      {new Date(r.reading_date).toLocaleString()}
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{r.meter_number}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">{WATER_METER_TYPE_LABELS[r.meter_type]}</Badge>
@@ -204,7 +206,7 @@ function LogReadingForm() {
   const metersQ = useWaterMeters();
   const logReading = useLogWaterReading();
   const [meterId, setMeterId] = useState("");
-  const [readingDate, setReadingDate] = useState(new Date().toISOString().slice(0, 10));
+  const [readingDate, setReadingDate] = useState(new Date().toISOString().slice(0, 16));
   const [value, setValue] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -247,9 +249,13 @@ function LogReadingForm() {
           </SelectContent>
         </Select>
       </div>
-      <div className="w-40">
-        <Label>Reading date</Label>
-        <Input type="date" value={readingDate} onChange={(e) => setReadingDate(e.target.value)} />
+      <div className="w-48">
+        <Label>Reading date & time</Label>
+        <Input
+          type="datetime-local"
+          value={readingDate}
+          onChange={(e) => setReadingDate(e.target.value)}
+        />
       </div>
       <div className="w-36">
         <Label>Reading value</Label>

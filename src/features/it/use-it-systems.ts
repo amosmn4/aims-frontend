@@ -1,13 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
 
-export type ItSystemType = "website" | "internal_system" | "integration";
+export type ItSystemType =
+  | "website"
+  | "internal_system"
+  | "integration"
+  | "client_system"
+  | "infrastructure"
+  | "mobile_app";
 export type ItSystemStatus = "active" | "inactive" | "deprecated";
 
 export const IT_SYSTEM_TYPE_LABELS: Record<ItSystemType, string> = {
   website: "Website",
   internal_system: "Internal System",
   integration: "Integration",
+  client_system: "Client System (e.g. HRMS deployment)",
+  infrastructure: "Infrastructure / Hosting",
+  mobile_app: "Mobile App",
 };
 
 export const IT_SYSTEM_STATUS_LABELS: Record<ItSystemStatus, string> = {
