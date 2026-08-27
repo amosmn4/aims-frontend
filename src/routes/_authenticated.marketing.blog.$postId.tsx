@@ -127,62 +127,69 @@ function BlogEditor() {
             {BLOG_POST_STATUS_LABELS[post.status]}
           </Badge>
         </div>
-        {canManage && (
-          <div className="flex gap-2">
-            {post.status === "draft" ? (
-              <Button
-                size="sm"
-                disabled={publish.isPending}
-                onClick={() =>
-                  publish.mutate(post.id, {
-                    onSuccess: () => toast.success("Published"),
-                    onError: (err) =>
-                      toast.error(err instanceof Error ? err.message : "Failed to publish"),
-                  })
-                }
-              >
-                {publish.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-                Publish
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={unpublish.isPending}
-                onClick={() =>
-                  unpublish.mutate(post.id, {
-                    onSuccess: () => toast.success("Unpublished"),
-                    onError: (err) =>
-                      toast.error(err instanceof Error ? err.message : "Failed to unpublish"),
-                  })
-                }
-              >
-                {unpublish.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
-                Unpublish
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-destructive"
-              onClick={async () => {
-                const ok = await confirmDialog({
-                  description: "Delete this post permanently?",
-                  confirmLabel: "Delete",
-                  destructive: true,
-                });
-                if (!ok) return;
-                deletePost.mutate(post.id, {
-                  onSuccess: () => toast.success("Post deleted"),
-                  onError: (err) =>
-                    toast.error(err instanceof Error ? err.message : "Failed to delete"),
-                });
-              }}
-            >
-              Delete
+        <div className="flex gap-2">
+          <Link to="/marketing/blog/$postId/preview" params={{ postId: post.id }} target="_blank">
+            <Button size="sm" variant="outline">
+              Preview
             </Button>
-          </div>
-        )}
+          </Link>
+          {canManage && (
+            <>
+              {post.status === "draft" ? (
+                <Button
+                  size="sm"
+                  disabled={publish.isPending}
+                  onClick={() =>
+                    publish.mutate(post.id, {
+                      onSuccess: () => toast.success("Published"),
+                      onError: (err) =>
+                        toast.error(err instanceof Error ? err.message : "Failed to publish"),
+                    })
+                  }
+                >
+                  {publish.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                  Publish
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={unpublish.isPending}
+                  onClick={() =>
+                    unpublish.mutate(post.id, {
+                      onSuccess: () => toast.success("Unpublished"),
+                      onError: (err) =>
+                        toast.error(err instanceof Error ? err.message : "Failed to unpublish"),
+                    })
+                  }
+                >
+                  {unpublish.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+                  Unpublish
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive"
+                onClick={async () => {
+                  const ok = await confirmDialog({
+                    description: "Delete this post permanently?",
+                    confirmLabel: "Delete",
+                    destructive: true,
+                  });
+                  if (!ok) return;
+                  deletePost.mutate(post.id, {
+                    onSuccess: () => toast.success("Post deleted"),
+                    onError: (err) =>
+                      toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                  });
+                }}
+              >
+                Delete
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -235,25 +242,6 @@ function BlogEditor() {
                 {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Save changes
               </Button>
-            )}
-          </div>
-
-          <div className="rounded-lg border bg-card p-4">
-            <h2 className="text-sm font-semibold mb-1">Preview</h2>
-            <p className="text-xs text-muted-foreground mb-3">
-              How the saved content renders — updates after you Save changes, not as you type.
-            </p>
-            {post.content ? (
-              <div
-                className="prose-sm max-w-none [&_a]:text-primary [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
-                // Safe: post.content is what blog.service.ts's sanitizeContent() persisted —
-                // never raw client input taking a new, unsanitized path.
-                dangerouslySetInnerHTML={{ __html: post.content }}
-              />
-            ) : (
-              <div className="text-xs text-muted-foreground">
-                Nothing saved yet — write some content and Save changes to preview it.
-              </div>
             )}
           </div>
         </div>

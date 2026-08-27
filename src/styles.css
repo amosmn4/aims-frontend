@@ -1026,3 +1026,14 @@
     flex-wrap: wrap;
   }
 }
+
+/* Blog post body formatting — applied via the paragraph-level `drop-cap` class the rich-text
+   editor's toolbar toggles (see RichTextEditor's custom Paragraph node). One shared rule so the
+   live editor and the standalone post preview page render it identically. */
+.drop-cap::first-letter {
+  float: left;
+  font-size: 3em;
+  line-height: 0.8;
+  padding-right: 0.1em;
+  font-weight: 600;
+}

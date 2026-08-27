@@ -139,6 +139,7 @@ import { Route as AuthenticatedMarketingBlogPostIdRouteImport } from './routes/_
 import { Route as AuthenticatedFinanceReportsIdRouteImport } from './routes/_authenticated.finance.reports.$id'
 import { Route as AuthenticatedEngagementsAnchorTypeAnchorIdRouteImport } from './routes/_authenticated.engagements.$anchorType.$anchorId'
 import { Route as AuthenticatedClientsContractsIdRouteImport } from './routes/_authenticated.clients.contracts.$id'
+import { Route as AuthenticatedMarketingBlogPostIdPreviewRouteImport } from './routes/_authenticated.marketing.blog.$postId.preview'
 
 const SetPasswordRoute = SetPasswordRouteImport.update({
   id: '/set-password',
@@ -883,6 +884,12 @@ const AuthenticatedClientsContractsIdRoute =
     path: '/$id',
     getParentRoute: () => AuthenticatedClientsContractsRoute,
   } as any)
+const AuthenticatedMarketingBlogPostIdPreviewRoute =
+  AuthenticatedMarketingBlogPostIdPreviewRouteImport.update({
+    id: '/preview',
+    path: '/preview',
+    getParentRoute: () => AuthenticatedMarketingBlogPostIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -1002,7 +1009,7 @@ export interface FileRoutesByFullPath {
   '/clients/contracts/$id': typeof AuthenticatedClientsContractsIdRoute
   '/engagements/$anchorType/$anchorId': typeof AuthenticatedEngagementsAnchorTypeAnchorIdRoute
   '/finance/reports/$id': typeof AuthenticatedFinanceReportsIdRoute
-  '/marketing/blog/$postId': typeof AuthenticatedMarketingBlogPostIdRoute
+  '/marketing/blog/$postId': typeof AuthenticatedMarketingBlogPostIdRouteWithChildren
   '/reports/departments/finance': typeof AuthenticatedReportsDepartmentsFinanceRoute
   '/reports/departments/hr': typeof AuthenticatedReportsDepartmentsHrRoute
   '/reports/departments/it': typeof AuthenticatedReportsDepartmentsItRoute
@@ -1014,6 +1021,7 @@ export interface FileRoutesByFullPath {
   '/clients/contracts/': typeof AuthenticatedClientsContractsIndexRoute
   '/finance/reports/': typeof AuthenticatedFinanceReportsIndexRoute
   '/marketing/blog/': typeof AuthenticatedMarketingBlogIndexRoute
+  '/marketing/blog/$postId/preview': typeof AuthenticatedMarketingBlogPostIdPreviewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -1117,7 +1125,7 @@ export interface FileRoutesByTo {
   '/clients/contracts/$id': typeof AuthenticatedClientsContractsIdRoute
   '/engagements/$anchorType/$anchorId': typeof AuthenticatedEngagementsAnchorTypeAnchorIdRoute
   '/finance/reports/$id': typeof AuthenticatedFinanceReportsIdRoute
-  '/marketing/blog/$postId': typeof AuthenticatedMarketingBlogPostIdRoute
+  '/marketing/blog/$postId': typeof AuthenticatedMarketingBlogPostIdRouteWithChildren
   '/reports/departments/finance': typeof AuthenticatedReportsDepartmentsFinanceRoute
   '/reports/departments/hr': typeof AuthenticatedReportsDepartmentsHrRoute
   '/reports/departments/it': typeof AuthenticatedReportsDepartmentsItRoute
@@ -1129,6 +1137,7 @@ export interface FileRoutesByTo {
   '/clients/contracts': typeof AuthenticatedClientsContractsIndexRoute
   '/finance/reports': typeof AuthenticatedFinanceReportsIndexRoute
   '/marketing/blog': typeof AuthenticatedMarketingBlogIndexRoute
+  '/marketing/blog/$postId/preview': typeof AuthenticatedMarketingBlogPostIdPreviewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -1250,7 +1259,7 @@ export interface FileRoutesById {
   '/_authenticated/clients/contracts/$id': typeof AuthenticatedClientsContractsIdRoute
   '/_authenticated/engagements/$anchorType/$anchorId': typeof AuthenticatedEngagementsAnchorTypeAnchorIdRoute
   '/_authenticated/finance/reports/$id': typeof AuthenticatedFinanceReportsIdRoute
-  '/_authenticated/marketing/blog/$postId': typeof AuthenticatedMarketingBlogPostIdRoute
+  '/_authenticated/marketing/blog/$postId': typeof AuthenticatedMarketingBlogPostIdRouteWithChildren
   '/_authenticated/reports/departments/finance': typeof AuthenticatedReportsDepartmentsFinanceRoute
   '/_authenticated/reports/departments/hr': typeof AuthenticatedReportsDepartmentsHrRoute
   '/_authenticated/reports/departments/it': typeof AuthenticatedReportsDepartmentsItRoute
@@ -1262,6 +1271,7 @@ export interface FileRoutesById {
   '/_authenticated/clients/contracts/': typeof AuthenticatedClientsContractsIndexRoute
   '/_authenticated/finance/reports/': typeof AuthenticatedFinanceReportsIndexRoute
   '/_authenticated/marketing/blog/': typeof AuthenticatedMarketingBlogIndexRoute
+  '/_authenticated/marketing/blog/$postId/preview': typeof AuthenticatedMarketingBlogPostIdPreviewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1395,6 +1405,7 @@ export interface FileRouteTypes {
     | '/clients/contracts/'
     | '/finance/reports/'
     | '/marketing/blog/'
+    | '/marketing/blog/$postId/preview'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1510,6 +1521,7 @@ export interface FileRouteTypes {
     | '/clients/contracts'
     | '/finance/reports'
     | '/marketing/blog'
+    | '/marketing/blog/$postId/preview'
   id:
     | '__root__'
     | '/'
@@ -1642,6 +1654,7 @@ export interface FileRouteTypes {
     | '/_authenticated/clients/contracts/'
     | '/_authenticated/finance/reports/'
     | '/_authenticated/marketing/blog/'
+    | '/_authenticated/marketing/blog/$postId/preview'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -2563,6 +2576,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsContractsIdRouteImport
       parentRoute: typeof AuthenticatedClientsContractsRoute
     }
+    '/_authenticated/marketing/blog/$postId/preview': {
+      id: '/_authenticated/marketing/blog/$postId/preview'
+      path: '/preview'
+      fullPath: '/marketing/blog/$postId/preview'
+      preLoaderRoute: typeof AuthenticatedMarketingBlogPostIdPreviewRouteImport
+      parentRoute: typeof AuthenticatedMarketingBlogPostIdRoute
+    }
   }
 }
 
@@ -2734,15 +2754,30 @@ const AuthenticatedItRouteWithChildren = AuthenticatedItRoute._addFileChildren(
   AuthenticatedItRouteChildren,
 )
 
+interface AuthenticatedMarketingBlogPostIdRouteChildren {
+  AuthenticatedMarketingBlogPostIdPreviewRoute: typeof AuthenticatedMarketingBlogPostIdPreviewRoute
+}
+
+const AuthenticatedMarketingBlogPostIdRouteChildren: AuthenticatedMarketingBlogPostIdRouteChildren =
+  {
+    AuthenticatedMarketingBlogPostIdPreviewRoute:
+      AuthenticatedMarketingBlogPostIdPreviewRoute,
+  }
+
+const AuthenticatedMarketingBlogPostIdRouteWithChildren =
+  AuthenticatedMarketingBlogPostIdRoute._addFileChildren(
+    AuthenticatedMarketingBlogPostIdRouteChildren,
+  )
+
 interface AuthenticatedMarketingBlogRouteChildren {
-  AuthenticatedMarketingBlogPostIdRoute: typeof AuthenticatedMarketingBlogPostIdRoute
+  AuthenticatedMarketingBlogPostIdRoute: typeof AuthenticatedMarketingBlogPostIdRouteWithChildren
   AuthenticatedMarketingBlogIndexRoute: typeof AuthenticatedMarketingBlogIndexRoute
 }
 
 const AuthenticatedMarketingBlogRouteChildren: AuthenticatedMarketingBlogRouteChildren =
   {
     AuthenticatedMarketingBlogPostIdRoute:
-      AuthenticatedMarketingBlogPostIdRoute,
+      AuthenticatedMarketingBlogPostIdRouteWithChildren,
     AuthenticatedMarketingBlogIndexRoute: AuthenticatedMarketingBlogIndexRoute,
   }
 
