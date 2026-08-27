@@ -1,36 +1,38 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
+import type { PaginatedResponse } from "@/hooks/use-pagination";
 
-export type TenderStage = "identified" | "applying" | "submitted" | "evaluation" | "won" | "lost" | "withdrawn";
+export type TenderStage =
+  "identified" | "applying" | "submitted" | "won" | "lost" | "withdrawn" | "cancelled";
 
 export const TENDER_STAGES: TenderStage[] = [
   "identified",
   "applying",
   "submitted",
-  "evaluation",
   "won",
   "lost",
   "withdrawn",
+  "cancelled",
 ];
 
 export const TENDER_STAGE_LABELS: Record<TenderStage, string> = {
   identified: "Identified",
   applying: "Preparing Application",
   submitted: "Submitted",
-  evaluation: "Under Evaluation",
   won: "Awarded",
   lost: "Not Awarded",
   withdrawn: "Withdrawn",
+  cancelled: "Cancelled",
 };
 
 export const TENDER_STAGE_STYLES: Record<TenderStage, string> = {
   identified: "bg-secondary text-secondary-foreground",
   applying: "bg-primary/10 text-primary",
   submitted: "bg-warning/15 text-warning",
-  evaluation: "bg-accent/15 text-accent",
   won: "bg-success/15 text-success",
   lost: "bg-destructive/15 text-destructive",
   withdrawn: "bg-muted text-muted-foreground",
+  cancelled: "bg-muted text-muted-foreground",
 };
 
 export interface TenderRow {
@@ -62,12 +64,27 @@ export interface TenderRow {
   updated_at: string;
   contract_id: string | null;
   contract_number: string | null;
+  /** Present only on rows from `GET /tenders/:id` (findOne includes the `project` relation;
+   * the list endpoint doesn't). */
+  project_id: string | null;
+  project_name: string | null;
+  /** Present only on rows from the list endpoint (`GET /tenders`), which embeds a lightweight
+   * requirements-status array for this. Null on rows from `GET /tenders/:id`, which doesn't. */
+  requirements_total: number | null;
+  requirements_done: number | null;
 }
 
 export interface TenderPipelineStage {
   stage: TenderStage;
+  /** How many tenders currently sit in exactly this stage right now — for "needs attention". */
   count: number;
   total_value: number;
+  /** How many tenders have EVER reached at least this stage (pass-through funnel: never shrinks
+   * as tenders advance, only when one is deleted) — this is what the funnel chart should render,
+   * not `count`. */
+  cumulative_count: number;
+  /** cumulative_count / previous stage's cumulative_count * 100 — null for the first stage. */
+  conversion_pct: number | null;
 }
 
 export interface TenderResourceRow {
@@ -99,7 +116,13 @@ export interface TenderCostSummary {
   actual_cost: number;
   actual_hours: number;
   unrated_hours: number;
-  by_user: { user_id: string; user_name: string | null; hours: number; rate: number | null; cost: number | null }[];
+  by_user: {
+    user_id: string;
+    user_name: string | null;
+    hours: number;
+    rate: number | null;
+    cost: number | null;
+  }[];
 }
 
 type BackendTender = {
@@ -129,7 +152,15 @@ type BackendTender = {
   createdAt: string;
   updatedAt: string;
   contract?: { id: string; contractNumber: string } | null;
+  project?: { id: string; name: string } | null;
+  requirements?: { status: TenderRequirementStatus }[];
 };
+
+// A requirement is "resolved" once it's no longer outstanding — obtained (done) or explicitly
+// marked not applicable. pending/in_progress still count as work remaining.
+function isRequirementResolved(status: TenderRequirementStatus): boolean {
+  return status === "obtained" || status === "not_applicable";
+}
 
 function mapTender(t: BackendTender): TenderRow {
   return {
@@ -150,7 +181,7 @@ function mapTender(t: BackendTender): TenderRow {
     stage: t.stage,
     estimated_value: t.estimatedValue != null ? Number(t.estimatedValue) : null,
     currency: t.currency,
-    submission_deadline: t.submissionDeadline,
+    submission_deadline: t.submissionDeadline ? t.submissionDeadline.slice(0, 10) : null,
     submitted_at: t.submittedAt,
     won_at: t.wonAt,
     lost_at: t.lostAt,
@@ -161,6 +192,12 @@ function mapTender(t: BackendTender): TenderRow {
     updated_at: t.updatedAt,
     contract_id: t.contract?.id ?? null,
     contract_number: t.contract?.contractNumber ?? null,
+    project_id: t.project?.id ?? null,
+    project_name: t.project?.name ?? null,
+    requirements_total: t.requirements ? t.requirements.length : null,
+    requirements_done: t.requirements
+      ? t.requirements.filter((r) => isRequirementResolved(r.status)).length
+      : null,
   };
 }
 
@@ -222,6 +259,10 @@ export interface TenderFilters {
   q?: string;
   deadlineFrom?: string;
   deadlineTo?: string;
+  /** Period filter — when the tender entered the pipeline (`createdAt`), distinct from
+   * `deadlineFrom`/`deadlineTo` which filter on submission deadline. */
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 function buildQuery(filters: object): string {
@@ -235,10 +276,28 @@ function buildQuery(filters: object): string {
 
 /* ---------- Queries ---------- */
 
-export function useTenders(filters: TenderFilters = {}) {
+// Overloaded so a caller that never passes pagination (the vast majority — dropdowns, funnels,
+// "give me everything") gets a plain `TenderRow[]` back at the type level, matching what
+// `maybePaginate` actually returns at runtime when no page/pageSize is sent — only a caller that
+// passes concrete `{page, pageSize}` (a real list page) sees the `TenderRow[] | Paginated<...>`
+// union it then has to narrow.
+export function useTenders(filters?: TenderFilters): UseQueryResult<TenderRow[]>;
+export function useTenders(
+  filters: TenderFilters,
+  pagination: { page: number; pageSize: number },
+): UseQueryResult<TenderRow[] | PaginatedResponse<TenderRow>>;
+export function useTenders(
+  filters: TenderFilters = {},
+  pagination: { page?: number; pageSize?: number } = {},
+) {
   return useQuery({
-    queryKey: ["tenders", filters],
-    queryFn: async () => (await apiJson<BackendTender[]>(`/tenders${buildQuery(filters)}`)).map(mapTender),
+    queryKey: ["tenders", filters, pagination],
+    queryFn: async () => {
+      const raw = await apiJson<BackendTender[] | PaginatedResponse<BackendTender>>(
+        `/tenders${buildQuery({ ...filters, ...pagination })}`,
+      );
+      return Array.isArray(raw) ? raw.map(mapTender) : { ...raw, data: raw.data.map(mapTender) };
+    },
   });
 }
 
@@ -251,12 +310,31 @@ export function useTender(id: string | undefined) {
 }
 
 export function useTenderPipelineSummary(
-  filters: Pick<TenderFilters, "departmentId" | "serviceLineId" | "deadlineFrom" | "deadlineTo"> = {},
+  filters: Pick<
+    TenderFilters,
+    "departmentId" | "serviceLineId" | "deadlineFrom" | "deadlineTo" | "dateFrom" | "dateTo"
+  > = {},
 ) {
   return useQuery({
     queryKey: ["tenders", "pipeline-summary", filters],
-    queryFn: async () =>
-      apiJson<TenderPipelineStage[]>(`/tenders/pipeline-summary${buildQuery(filters)}`),
+    queryFn: async () => {
+      const raw = await apiJson<
+        {
+          stage: TenderStage;
+          count: number;
+          totalValue: number;
+          cumulativeCount: number;
+          conversionPct: number | null;
+        }[]
+      >(`/tenders/pipeline-summary${buildQuery(filters)}`);
+      return raw.map((r): TenderPipelineStage => ({
+        stage: r.stage,
+        count: r.count,
+        total_value: r.totalValue,
+        cumulative_count: r.cumulativeCount,
+        conversion_pct: r.conversionPct,
+      }));
+    },
   });
 }
 
@@ -267,7 +345,10 @@ export interface TenderTimeMetrics {
 }
 
 export function useTenderTimeMetrics(
-  filters: Pick<TenderFilters, "departmentId" | "serviceLineId" | "deadlineFrom" | "deadlineTo"> = {},
+  filters: Pick<
+    TenderFilters,
+    "departmentId" | "serviceLineId" | "deadlineFrom" | "deadlineTo" | "dateFrom" | "dateTo"
+  > = {},
 ) {
   return useQuery({
     queryKey: ["tenders", "time-metrics", filters],
@@ -316,7 +397,13 @@ export function useTenderCostSummary(tenderId: string | undefined) {
         actualCost: number;
         actualHours: number;
         unratedHours: number;
-        byUser: { userId: string; userName: string | null; hours: number; rate: number | null; cost: number | null }[];
+        byUser: {
+          userId: string;
+          userName: string | null;
+          hours: number;
+          rate: number | null;
+          cost: number | null;
+        }[];
       }>(`/tenders/${tenderId}/cost-summary`);
       return {
         budgeted_cost: raw.budgetedCost,
@@ -341,9 +428,7 @@ export function useTenderCostSummary(tenderId: string | undefined) {
 export function useSaveTender() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (
-      input: Partial<TenderRow> & { title: string; department_id: string },
-    ) => {
+    mutationFn: async (input: Partial<TenderRow> & { title: string; department_id: string }) => {
       const body = {
         referenceNumber: input.reference_number || undefined,
         title: input.title,
@@ -375,11 +460,20 @@ export function useSaveTender() {
 export function useUpdateTenderStage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id: string; stage: TenderStage; lost_reason?: string }) => {
+    mutationFn: async (input: {
+      id: string;
+      stage: TenderStage;
+      lost_reason?: string;
+      won_at?: string;
+    }) => {
       return mapTender(
         await apiJson<BackendTender>(`/tenders/${input.id}/stage`, {
           method: "PATCH",
-          body: JSON.stringify({ stage: input.stage, lostReason: input.lost_reason }),
+          body: JSON.stringify({
+            stage: input.stage,
+            lostReason: input.lost_reason,
+            wonAt: input.won_at,
+          }),
         }),
       );
     },
@@ -447,9 +541,7 @@ export function useConvertTenderToProject() {
 export function useSaveTenderResource(tenderId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (
-      input: Partial<TenderResourceRow> & { user_id?: string },
-    ) => {
+    mutationFn: async (input: Partial<TenderResourceRow> & { user_id?: string }) => {
       const body = {
         userId: input.user_id,
         roleNote: input.role_note || undefined,
@@ -466,7 +558,10 @@ export function useSaveTenderResource(tenderId: string) {
           }),
         });
       } else {
-        await apiJson(`/tenders/${tenderId}/resources`, { method: "POST", body: JSON.stringify(body) });
+        await apiJson(`/tenders/${tenderId}/resources`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
       }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders", tenderId, "resources"] }),
@@ -489,7 +584,11 @@ export function useLogTime(tenderId: string) {
     mutationFn: async (input: { entry_date: string; hours: number; notes?: string }) => {
       await apiJson(`/tenders/${tenderId}/time-entries`, {
         method: "POST",
-        body: JSON.stringify({ entryDate: input.entry_date, hours: input.hours, notes: input.notes }),
+        body: JSON.stringify({
+          entryDate: input.entry_date,
+          hours: input.hours,
+          notes: input.notes,
+        }),
       });
     },
     onSuccess: () => {
@@ -513,76 +612,6 @@ export function useDeleteTimeEntry(tenderId: string) {
 }
 
 /* ================= Financial resourcing ================= */
-
-export const TENDER_COST_CATEGORY_SUGGESTIONS = ["travel", "printing", "consultant", "materials", "other"];
-
-export interface TenderCostItemRow {
-  id: string;
-  tender_id: string;
-  category: string;
-  description: string;
-  amount: number;
-  created_at: string;
-}
-
-type BackendCostItem = {
-  id: string;
-  tenderId: string;
-  category: string;
-  description: string;
-  amount: number | string;
-  createdAt: string;
-};
-
-function mapCostItem(c: BackendCostItem): TenderCostItemRow {
-  return {
-    id: c.id,
-    tender_id: c.tenderId,
-    category: c.category,
-    description: c.description,
-    amount: Number(c.amount),
-    created_at: c.createdAt,
-  };
-}
-
-export function useTenderCostItems(tenderId: string | undefined) {
-  return useQuery({
-    queryKey: ["tenders", tenderId, "cost-items"],
-    enabled: !!tenderId,
-    queryFn: async () => (await apiJson<BackendCostItem[]>(`/tenders/${tenderId}/cost-items`)).map(mapCostItem),
-  });
-}
-
-export function useSaveTenderCostItem(tenderId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { id?: string; category?: string; description: string; amount: number }) => {
-      const body = { category: input.category || undefined, description: input.description, amount: input.amount };
-      if (input.id) {
-        await apiJson(`/tenders/cost-items/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });
-      } else {
-        await apiJson(`/tenders/${tenderId}/cost-items`, { method: "POST", body: JSON.stringify(body) });
-      }
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "cost-items"] });
-      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "financials-summary"] });
-    },
-  });
-}
-
-export function useDeleteTenderCostItem(tenderId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (itemId: string) => {
-      await apiJson(`/tenders/cost-items/${itemId}`, { method: "DELETE" });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "cost-items"] });
-      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "financials-summary"] });
-    },
-  });
-}
 
 export type TenderBondType = "bid_bond" | "performance_bond" | "other";
 export type TenderBondStatus = "pending" | "lodged" | "released" | "forfeited";
@@ -676,7 +705,10 @@ export function useSaveTenderBond(tenderId: string) {
         notes: input.notes || undefined,
       };
       if (input.id) {
-        await apiJson(`/tenders/bonds/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        await apiJson(`/tenders/bonds/${input.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
       } else {
         await apiJson(`/tenders/${tenderId}/bonds`, { method: "POST", body: JSON.stringify(body) });
       }
@@ -735,14 +767,22 @@ export function useTenderPricingItems(tenderId: string | undefined) {
     queryKey: ["tenders", tenderId, "pricing-items"],
     enabled: !!tenderId,
     queryFn: async () =>
-      (await apiJson<BackendPricingItem[]>(`/tenders/${tenderId}/pricing-items`)).map(mapPricingItem),
+      (await apiJson<BackendPricingItem[]>(`/tenders/${tenderId}/pricing-items`)).map(
+        mapPricingItem,
+      ),
   });
 }
 
 export function useSaveTenderPricingItem(tenderId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id?: string; description: string; quantity?: number; unit_price: number; notes?: string }) => {
+    mutationFn: async (input: {
+      id?: string;
+      description: string;
+      quantity?: number;
+      unit_price: number;
+      notes?: string;
+    }) => {
       const body = {
         description: input.description,
         quantity: input.quantity ?? undefined,
@@ -750,9 +790,15 @@ export function useSaveTenderPricingItem(tenderId: string) {
         notes: input.notes || undefined,
       };
       if (input.id) {
-        await apiJson(`/tenders/pricing-items/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        await apiJson(`/tenders/pricing-items/${input.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
       } else {
-        await apiJson(`/tenders/${tenderId}/pricing-items`, { method: "POST", body: JSON.stringify(body) });
+        await apiJson(`/tenders/${tenderId}/pricing-items`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
       }
     },
     onSuccess: () => {
@@ -777,7 +823,6 @@ export function useDeleteTenderPricingItem(tenderId: string) {
 
 export interface TenderFinancialsSummary {
   human_cost: number;
-  other_cost_total: number;
   total_cost_to_pursue: number;
   bid_price: number;
   bonds_total: number;
@@ -791,7 +836,6 @@ export function useTenderFinancialsSummary(tenderId: string | undefined) {
     queryFn: async () => {
       const raw = await apiJson<{
         humanCost: number;
-        otherCostTotal: number;
         totalCostToPursue: number;
         bidPrice: number;
         bondsTotal: number;
@@ -799,7 +843,6 @@ export function useTenderFinancialsSummary(tenderId: string | undefined) {
       }>(`/tenders/${tenderId}/financials-summary`);
       return {
         human_cost: raw.humanCost,
-        other_cost_total: raw.otherCostTotal,
         total_cost_to_pursue: raw.totalCostToPursue,
         bid_price: raw.bidPrice,
         bonds_total: raw.bondsTotal,
@@ -864,7 +907,9 @@ export function useTenderRequirements(tenderId: string | undefined) {
     queryKey: ["tenders", tenderId, "requirements"],
     enabled: !!tenderId,
     queryFn: async () =>
-      (await apiJson<BackendRequirement[]>(`/tenders/${tenderId}/requirements`)).map(mapRequirement),
+      (await apiJson<BackendRequirement[]>(`/tenders/${tenderId}/requirements`)).map(
+        mapRequirement,
+      ),
   });
 }
 
@@ -915,9 +960,29 @@ export function useApplyRequirementTemplate(tenderId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (templateId: string) => {
-      await apiJson(`/tenders/${tenderId}/requirements/apply-template/${templateId}`, { method: "POST" });
+      await apiJson(`/tenders/${tenderId}/requirements/apply-template/${templateId}`, {
+        method: "POST",
+      });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders", tenderId, "requirements"] }),
+  });
+}
+
+export function useApplyLibraryDocument(tenderId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (libraryDocumentId: string) => {
+      await apiJson(
+        `/tenders/${tenderId}/requirements/apply-library-document/${libraryDocumentId}`,
+        {
+          method: "POST",
+        },
+      );
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "requirements"] });
+      qc.invalidateQueries({ queryKey: ["documents", "list"] });
+    },
   });
 }
 
@@ -970,7 +1035,8 @@ function mapTemplate(t: BackendTemplate): RequirementTemplateRow {
 export function useRequirementTemplates() {
   return useQuery({
     queryKey: ["requirement-templates"],
-    queryFn: async () => (await apiJson<BackendTemplate[]>("/tender-requirement-templates")).map(mapTemplate),
+    queryFn: async () =>
+      (await apiJson<BackendTemplate[]>("/tender-requirement-templates")).map(mapTemplate),
   });
 }
 
@@ -983,7 +1049,13 @@ export function useRequirementTemplate(id: string | undefined) {
       return {
         ...mapTemplate(t),
         items: (t.items ?? []).map(
-          (i) => ({ id: i.id, template_id: i.templateId, title: i.title, category: i.category }) satisfies RequirementTemplateItemRow,
+          (i) =>
+            ({
+              id: i.id,
+              template_id: i.templateId,
+              title: i.title,
+              category: i.category,
+            }) satisfies RequirementTemplateItemRow,
         ),
       };
     },

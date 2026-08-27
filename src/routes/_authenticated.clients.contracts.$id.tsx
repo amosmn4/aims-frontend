@@ -1,7 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
-  ArrowLeft,
   Loader2,
   Upload,
   FileText,
@@ -9,11 +8,14 @@ import {
   Download,
   AlertTriangle,
   Calendar,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import {
   useContract,
   useContractDocuments,
+  useDeleteContract,
   useDepartments,
   useProfilesLite,
   uploadContractDocument,
@@ -30,7 +32,11 @@ import {
   type ContractDocumentRow,
 } from "@/features/clients/use-clients-contracts";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
+import { ContractFormDialog } from "@/features/clients/contract-form-dialog";
 import { formatCurrency } from "@/features/finance/finance";
+import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
+import { EntityBreadcrumb, type BreadcrumbSegment } from "@/components/entity-breadcrumb";
+import { useAuth, type AppRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -45,18 +51,70 @@ export const Route = createFileRoute("/_authenticated/clients/contracts/$id")({
   component: ContractDetail,
 });
 
+function buildContractRelated(
+  c: NonNullable<ReturnType<typeof useContract>["data"]>,
+  clientName: string | null,
+): RelatedRecordItem[] {
+  const items: RelatedRecordItem[] = [];
+  if (c.tender_id) {
+    items.push({
+      label: "Originating Tender",
+      title: c.tender_title ?? "Tender",
+      to: `/tender/${c.tender_id}`,
+    });
+  }
+  if (c.client_request_id) {
+    items.push({
+      label: "Originating Request",
+      title: c.client_request_title ?? "Client Request",
+      to: `/requests/${c.client_request_id}`,
+    });
+  }
+  for (const p of c.project_ids) {
+    items.push({ label: "Project", title: p.name, to: `/projects/${p.id}` });
+  }
+  if (clientName) {
+    items.push({ label: "Client", title: clientName, to: "/clients" });
+  }
+  return items;
+}
+
+function buildContractBreadcrumb(
+  c: NonNullable<ReturnType<typeof useContract>["data"]>,
+): BreadcrumbSegment[] {
+  const segments: BreadcrumbSegment[] = [];
+  if (c.tender_id) {
+    segments.push({ label: "Tender Records", to: "/tender" });
+    segments.push({ label: c.tender_title ?? "Tender", to: `/tender/${c.tender_id}` });
+  } else if (c.client_request_id) {
+    segments.push({ label: "Client Requests", to: "/requests" });
+    segments.push({
+      label: c.client_request_title ?? "Request",
+      to: `/requests/${c.client_request_id}`,
+    });
+  } else {
+    segments.push({ label: "Contracts", to: "/clients/contracts" });
+  }
+  segments.push({ label: c.title });
+  return segments;
+}
+
 function ContractDetail() {
   const { id } = Route.useParams();
+  const navigate = useNavigate();
   const qc = useQueryClient();
+  const { isAdminOrCeo, hasRole } = useAuth();
   const contractQ = useContract(id);
   const docsQ = useContractDocuments(id);
   const clientsQ = useClients();
   const deptsQ = useDepartments();
   const profilesQ = useProfilesLite();
   const linesQ = useServiceLines();
+  const deleteContract = useDeleteContract();
   const [uploading, setUploading] = useState(false);
   const [uploadCategory, setUploadCategory] = useState<DocumentCategory>("signed");
   const [filterCat, setFilterCat] = useState<DocumentCategory | "all">("all");
+  const [editing, setEditing] = useState(false);
 
   const docs = useMemo(() => (docsQ.data ?? []) as ContractDocumentRow[], [docsQ.data]);
   const catCounts = useMemo(() => {
@@ -91,6 +149,27 @@ function ContractDetail() {
     ? profilesQ.data?.find((p) => p.id === c.account_manager_id)
     : null;
   const renewal = getRenewalInfo(c.end_date);
+  // Mirrors the backend's assertContractDeptAccess exactly — same rule as the Contracts list.
+  const canManage = c.department_id
+    ? isAdminOrCeo || (!!dept?.code && hasRole(dept.code as AppRole))
+    : isAdminOrCeo;
+
+  const handleDelete = async () => {
+    const ok = await confirmDialog({
+      title: `Delete contract "${c.title}"?`,
+      description: "Attached documents will also be removed.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteContract.mutate(c.id, {
+      onSuccess: () => {
+        toast.success("Contract deleted");
+        navigate({ to: "/clients/contracts" });
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
+    });
+  };
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -117,7 +196,8 @@ function ContractDetail() {
   };
 
   const removeDoc = async (docId: string) => {
-    if (!confirm("Delete this document?")) return;
+    const ok = await confirmDialog({ description: "Delete this document?", destructive: true });
+    if (!ok) return;
     const doc = (docsQ.data ?? []).find((d) => d.id === docId);
     if (!doc) return;
     try {
@@ -134,12 +214,30 @@ function ContractDetail() {
 
   return (
     <div className="space-y-4">
-      <Link
-        to="/clients/contracts"
-        className="text-xs text-muted-foreground inline-flex items-center gap-1 hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" /> Back to contracts
-      </Link>
+      <div className="flex items-start justify-between gap-2">
+        <EntityBreadcrumb segments={buildContractBreadcrumb(c)} />
+        {canManage && (
+          <div className="flex gap-1 shrink-0">
+            <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive"
+              disabled={deleteContract.isPending}
+              onClick={handleDelete}
+            >
+              {deleteContract.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+              )}
+              Delete
+            </Button>
+          </div>
+        )}
+      </div>
 
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -171,7 +269,9 @@ function ContractDetail() {
             </div>
           </div>
           <div className="text-right">
-            <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">Value</div>
+            <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">
+              Value
+            </div>
             <div className="text-xl font-semibold tabular-nums">
               {formatCurrency(Number(c.value))}{" "}
               <span className="text-xs text-muted-foreground">{c.currency}</span>
@@ -199,6 +299,11 @@ function ContractDetail() {
           </div>
         )}
       </div>
+
+      <RelatedRecords
+        items={buildContractRelated(c, client?.name ?? null)}
+        engagementTo={`/engagements/contract/${c.id}`}
+      />
 
       {/* Renewal / expiry timeline */}
       <RenewalTimeline startDate={c.start_date} endDate={c.end_date} autoRenew={c.auto_renew} />
@@ -313,6 +418,31 @@ function ContractDetail() {
           )}
         </div>
       </div>
+
+      {editing && (
+        <ContractFormDialog
+          draft={{
+            id: c.id,
+            title: c.title,
+            contract_number: c.contract_number ?? "",
+            client_id: c.client_id,
+            department_id: c.department_id ?? "",
+            service_line_id: c.service_line_id ?? "",
+            account_manager_id: c.account_manager_id ?? "",
+            status: c.status,
+            billing_frequency: c.billing_frequency,
+            start_date: c.start_date,
+            end_date: c.end_date ?? "",
+            value: String(c.value),
+            currency: c.currency,
+            next_invoice_date: c.next_invoice_date ?? "",
+            auto_renew: c.auto_renew,
+            description: c.description ?? "",
+            notes: c.notes ?? "",
+          }}
+          onClose={() => setEditing(false)}
+        />
+      )}
     </div>
   );
 }
@@ -365,7 +495,9 @@ function RenewalTimeline({
         <div className="text-sm font-semibold inline-flex items-center gap-1.5">
           <Calendar className="h-4 w-4 text-primary" /> Renewal / expiry timeline
         </div>
-        <span className={`text-[0.625rem] px-1.5 py-0.5 rounded ${info.className}`}>{info.label}</span>
+        <span className={`text-[0.625rem] px-1.5 py-0.5 rounded ${info.className}`}>
+          {info.label}
+        </span>
       </div>
 
       <div className="relative mt-3">

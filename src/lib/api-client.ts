@@ -3,8 +3,8 @@ const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api/v1";
 let accessToken: string | null = null;
 let refreshPromise: Promise<boolean> | null = null;
 // Caches the outcome of the last session check (see ensureSession below). Kept in sync by
-// setAccessToken so a route guard checked right after login/demoLogin, or right after a
-// refresh failure, never sees a stale result from before that state change.
+// setAccessToken so a route guard checked right after login, or right after a refresh failure,
+// never sees a stale result from before that state change.
 let sessionPromise: Promise<boolean> | null = null;
 
 export function getAccessToken() {
@@ -41,6 +41,10 @@ async function parseError(res: Response) {
 /** Exchanges the httpOnly refresh cookie for a new access token. Deduped across concurrent callers. */
 export function refreshAccessToken(): Promise<boolean> {
   if (!refreshPromise) {
+    // Distinguishes "was logged in, session just expired" from "never had a session" (e.g. the
+    // very first ensureSession() call on a fresh visit to /auth) — only the former should
+    // interrupt whatever the user is doing to send them to the login page.
+    const hadSession = accessToken !== null;
     refreshPromise = fetch(`${API_URL}/auth/refresh`, { method: "POST", credentials: "include" })
       .then(async (res) => {
         if (!res.ok) {
@@ -57,6 +61,9 @@ export function refreshAccessToken(): Promise<boolean> {
       })
       .then((ok) => {
         sessionPromise = Promise.resolve(ok);
+        if (!ok && hadSession && typeof window !== "undefined") {
+          window.dispatchEvent(new Event("aims:session-expired"));
+        }
         return ok;
       })
       .finally(() => {
@@ -92,7 +99,13 @@ export async function apiFetch(
 
   const res = await fetch(`${API_URL}${path}`, { ...init, headers, credentials: "include" });
 
-  if (res.status === 401 && !_retried && path !== "/auth/refresh" && path !== "/auth/login") {
+  if (
+    res.status === 401 &&
+    !_retried &&
+    path !== "/auth/refresh" &&
+    path !== "/auth/login" &&
+    path !== "/auth/set-password"
+  ) {
     const refreshed = await refreshAccessToken();
     if (refreshed) return apiFetch(path, init, true);
   }

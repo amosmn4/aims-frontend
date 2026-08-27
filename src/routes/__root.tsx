@@ -7,12 +7,13 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { AuthProvider } from "@/lib/auth";
 import { LayoutPreferenceProvider } from "@/lib/layout-preference";
 import { Toaster } from "@/components/ui/sonner";
+import { ConfirmDialogHost } from "@/components/confirm-dialog";
 
 function NotFoundComponent() {
   return (
@@ -76,25 +77,32 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "AIMS — Amsol Integrated Management System" },
+      { title: "AIMS — AMSOL Management System" },
       {
         name: "description",
         content:
           "AIMS is Amsol's internal platform for documentation, project management, reporting and executive analytics.",
       },
       { name: "author", content: "Amsol – Africa Management Solutions Ltd" },
-      { property: "og:title", content: "AIMS — Amsol Integrated Management System" },
+      { property: "og:title", content: "AIMS — AMSOL Management System" },
       {
         property: "og:description",
         content: "Unified platform for Amsol departments with a real-time CEO executive dashboard.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "AIMS — Amsol Integrated Management System" },
+      { name: "twitter:title", content: "AIMS — AMSOL Management System" },
       {
         name: "twitter:description",
         content: "Unified platform for Amsol departments with a real-time CEO executive dashboard.",
       },
+      { name: "theme-color", content: "#003872" },
+      // iOS ignores the web manifest for a lot of this — it needs its own meta tags to install
+      // as a standalone app with a proper title/status bar instead of just a Safari bookmark.
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-title", content: "AIMS" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
     ],
     links: [
       {
@@ -102,6 +110,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: appCss,
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/icons/apple-touch-icon.png" },
     ],
   }),
   shellComponent: RootShell,
@@ -127,12 +137,23 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
+  // Registers only after the page has finished loading, so it can never compete with real
+  // navigation/data requests for bandwidth on first load — installability doesn't need it any
+  // sooner than that.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const register = () => navigator.serviceWorker.register("/sw.js").catch(() => {});
+    window.addEventListener("load", register);
+    return () => window.removeEventListener("load", register);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <LayoutPreferenceProvider>
           <Outlet />
           <Toaster richColors position="top-right" />
+          <ConfirmDialogHost />
         </LayoutPreferenceProvider>
       </AuthProvider>
     </QueryClientProvider>

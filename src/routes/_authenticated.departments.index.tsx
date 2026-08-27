@@ -1,4 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { PageHeader } from "@/components/app-shell";
 import {
   Wallet,
@@ -10,9 +11,10 @@ import {
   Loader2,
   Briefcase,
   Lock,
+  ClipboardList,
 } from "lucide-react";
 import { useDepartments } from "@/features/clients/use-clients-contracts";
-import { useAuth, type AppRole } from "@/lib/auth";
+import { useAuth, homeRouteFor, departmentScopeFor, type AppRole } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/departments/")({
   component: DepartmentsOverview,
@@ -22,6 +24,13 @@ const KNOWN: Record<
   string,
   { icon: typeof Users; to: string; role: AppRole; accent: string; description: string }
 > = {
+  operations: {
+    icon: ClipboardList,
+    to: "/operations",
+    role: "operations",
+    accent: "bg-secondary text-secondary-foreground",
+    description: "Client-request intake, routing & tracking.",
+  },
   finance: {
     icon: Wallet,
     to: "/finance",
@@ -43,25 +52,34 @@ const KNOWN: Record<
     accent: "bg-warning/10 text-warning",
     description: "Systems, HRMS product, infrastructure.",
   },
-  "marketing-ops": {
+  marketing: {
     icon: Megaphone,
-    to: "/marketing-ops",
-    role: "marketing_ops",
+    to: "/marketing",
+    role: "marketing",
     accent: "bg-accent/10 text-accent",
-    description: "Growth, brand, delivery ops.",
+    description: "Leads, campaigns, website & brand.",
   },
   tender: {
     icon: FileText,
     to: "/tender",
     role: "tender",
     accent: "bg-destructive/10 text-destructive",
-    description: "Bid pipeline, proposals, win rate.",
+    description: "Bid pipeline plus client-request intake.",
   },
 };
 
 function DepartmentsOverview() {
   const deptsQ = useDepartments();
-  const { isAdminOrCeo, hasRole } = useAuth();
+  const { isAdminOrCeo, hasRole, roles } = useAuth();
+  const navigate = useNavigate();
+  const scope = departmentScopeFor(roles);
+
+  useEffect(() => {
+    if (scope) navigate({ to: homeRouteFor(roles) });
+  }, [scope, roles, navigate]);
+
+  if (scope) return null;
+
   return (
     <div>
       <PageHeader

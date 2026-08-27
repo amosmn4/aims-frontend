@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
@@ -17,45 +18,96 @@ import {
   PanelLeft,
   PanelTop,
   Workflow,
+  Compass,
+  CalendarClock,
+  Laptop2,
+  Droplets,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuth, homeRouteFor, ROLE_LABELS, type AppRole } from "@/lib/auth";
+import { useAuth, homeRouteFor, departmentScopeFor, ROLE_LABELS, type AppRole } from "@/lib/auth";
+import { buildDepartmentNav } from "@/lib/department-nav";
 import { useLayoutPreference } from "@/lib/layout-preference";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notification-bell";
+import { HeaderSearch } from "@/components/header-search";
 
-interface NavChild {
+export interface NavChild {
   to: string;
   label: string;
   role?: AppRole;
 }
 
-interface NavItem {
+export interface NavItem {
   to: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   match?: string[];
+  // Paths that should NOT count toward this item being "active" even though they'd otherwise
+  // match a `match` prefix — e.g. Inventory lives at /it/inventory for historical reasons, but
+  // it's its own top-level nav item, not part of the Departments/IT hub, so Departments shouldn't
+  // light up while you're on it.
+  matchExclude?: string[];
   adminOnly?: boolean;
+  extraRoles?: AppRole[];
   children?: NavChild[];
 }
 
 const NAV: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
+  { to: "/guide", label: "How It Works", icon: Compass, match: ["/guide"] },
   {
     to: "/departments",
     label: "Departments",
     icon: Building2,
-    match: ["/departments", "/finance", "/hr", "/it", "/marketing-ops"],
+    match: ["/departments", "/operations", "/finance", "/hr", "/it", "/marketing", "/tender"],
+    matchExclude: ["/it/inventory"],
+    children: [
+      { to: "/departments", label: "All Departments" },
+      { to: "/operations", label: "Operations", role: "operations" },
+      { to: "/finance", label: "Finance", role: "finance" },
+      { to: "/hr", label: "Human Resources", role: "hr" },
+      { to: "/it", label: "Information Technology", role: "it" },
+      { to: "/marketing", label: "Marketing", role: "marketing" },
+      { to: "/tender", label: "Tender", role: "tender" },
+    ],
   },
   {
     to: "/pipeline",
     label: "Pipeline",
     icon: Workflow,
-    match: ["/pipeline", "/requests", "/tender"],
+    match: ["/pipeline"],
   },
-  { to: "/clients", label: "Clients & Contracts", icon: Briefcase },
-  { to: "/projects", label: "Projects & Tasks", icon: FolderKanban },
+  {
+    to: "/clients",
+    label: "Clients & Contracts",
+    icon: Briefcase,
+    children: [
+      { to: "/clients", label: "Clients" },
+      { to: "/clients/contracts", label: "Contracts" },
+    ],
+  },
+  {
+    to: "/projects",
+    label: "Projects & Tasks",
+    icon: FolderKanban,
+    children: [
+      { to: "/projects", label: "All Projects" },
+      { to: "/projects/mine", label: "My Tasks" },
+      { to: "/projects/department", label: "Department Board" },
+    ],
+  },
   { to: "/documents", label: "Documents", icon: FolderArchive },
+  { to: "/calendar", label: "Calendar", icon: CalendarClock },
+  { to: "/it/inventory", label: "Inventory", icon: Laptop2, adminOnly: true },
+  {
+    to: "/water",
+    label: "Water Project",
+    icon: Droplets,
+    adminOnly: true,
+    extraRoles: ["water"],
+    match: ["/water"],
+  },
   {
     to: "/reports",
     label: "Reports",
@@ -70,15 +122,26 @@ const NAV: NavItem[] = [
       { to: "/reports/departments/hr", label: "Human Resources", role: "hr" },
       { to: "/reports/departments/it", label: "Information Technology", role: "it" },
       {
-        to: "/reports/departments/marketing-ops",
-        label: "Marketing & Operations",
-        role: "marketing_ops",
+        to: "/reports/departments/marketing",
+        label: "Marketing",
+        role: "marketing",
       },
       { to: "/reports/departments/tender", label: "Tender", role: "tender" },
       { to: "/reports/projects", label: "Projects — All submissions" },
     ],
   },
-  { to: "/admin/users", label: "Admin", icon: Shield, adminOnly: true, match: ["/admin"] },
+  {
+    to: "/admin/users",
+    label: "Admin",
+    icon: Shield,
+    adminOnly: true,
+    match: ["/admin"],
+    children: [
+      { to: "/admin/users", label: "Users" },
+      { to: "/admin/departments", label: "Departments" },
+      { to: "/admin/audit", label: "Audit Log" },
+    ],
+  },
 ];
 
 function LiveClock() {
@@ -91,7 +154,7 @@ function LiveClock() {
 
   return (
     <div
-      className="hidden md:flex items-center gap-1.5 text-xs text-sidebar-foreground/80 tabular-nums"
+      className="hidden xl:flex items-center gap-1.5 text-xs text-sidebar-foreground/80 tabular-nums shrink-0"
       title={now.toLocaleDateString(undefined, {
         weekday: "long",
         year: "numeric",
@@ -100,7 +163,114 @@ function LiveClock() {
       })}
     >
       <Clock className="h-3.5 w-3.5" />
-      <span>{now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+      <span>
+        {now.toLocaleTimeString(undefined, {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })}
+      </span>
+    </div>
+  );
+}
+
+// Renders its dropdown panel through a portal to document.body instead of a nested `absolute`
+// div. The top-nav's own `overflow-x-auto` (a horizontal-scroll safety net for in-between
+// window widths) forces `overflow-y` to `auto` too per the CSS overflow spec — coupling that
+// can't be undone by also setting `overflow-y-visible` — which was silently clipping every
+// dropdown panel below it even though the open/close state was working correctly. Portaling
+// escapes that clipping ancestor entirely. Close is debounced (not instant on mouseleave)
+// because the panel is no longer a DOM descendant of the trigger once portaled — moving the
+// mouse from the button down into the panel now crosses a real element boundary, so an instant
+// close would unmount the panel before the cursor ever reaches it.
+const NAV_DROPDOWN_CLOSE_DELAY_MS = 150;
+
+function TopNavDropdown({
+  item,
+  active,
+  open,
+  onOpenChange,
+  visibleChildren,
+  isChildActive,
+}: {
+  item: NavItem;
+  active: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  visibleChildren: NavChild[];
+  isChildActive: (child: NavChild) => boolean;
+}) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<{ top: number; left: number } | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const Icon = item.icon;
+
+  const cancelClose = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => onOpenChange(false), NAV_DROPDOWN_CLOSE_DELAY_MS);
+  };
+  const openNow = () => {
+    cancelClose();
+    if (wrapperRef.current) {
+      const r = wrapperRef.current.getBoundingClientRect();
+      setRect({ top: r.bottom + 4, left: r.left });
+    }
+    onOpenChange(true);
+  };
+
+  useEffect(() => cancelClose, []);
+
+  return (
+    <div
+      ref={wrapperRef}
+      className="relative shrink-0"
+      onMouseEnter={openNow}
+      onMouseLeave={scheduleClose}
+    >
+      <button
+        className={cn(
+          "flex items-center gap-1.5 px-3 h-9 rounded-md text-sm transition-colors whitespace-nowrap",
+          active
+            ? "bg-accent text-accent-foreground font-medium"
+            : "text-sidebar-foreground/90 hover:bg-white/10",
+        )}
+        onClick={() => (open ? onOpenChange(false) : openNow())}
+      >
+        <Icon className="h-4 w-4" />
+        {item.label}
+        <ChevronDown className="h-3 w-3 opacity-60" />
+      </button>
+      {open &&
+        rect &&
+        createPortal(
+          <div
+            className="fixed min-w-65 rounded-md border bg-popover text-popover-foreground shadow-lg py-1 z-50"
+            style={{ top: rect.top, left: rect.left }}
+            onMouseEnter={cancelClose}
+            onMouseLeave={scheduleClose}
+          >
+            {visibleChildren.map((c) => (
+              <Link
+                key={c.to}
+                to={c.to}
+                onClick={() => onOpenChange(false)}
+                className={cn(
+                  "block px-3 py-2 text-sm hover:bg-secondary",
+                  isChildActive(c) && "bg-secondary font-medium text-primary",
+                )}
+              >
+                {c.label}
+              </Link>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -108,10 +278,22 @@ function LiveClock() {
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const { profile, roles, signOut, isAdminOrCeo, hasRole } = useAuth();
   const { mode, setMode } = useLayoutPreference();
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
 
   const visibleChildren = (item: NavItem) =>
     (item.children ?? []).filter((c) => !c.role || isAdminOrCeo || hasRole(c.role));
@@ -123,16 +305,30 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const primaryRoleLabel = roles[0] ? ROLE_LABELS[roles[0]] : "Staff";
   const isActive = (item: NavItem) => {
+    const matchesPath = (p: string) =>
+      location.pathname === p || location.pathname.startsWith(p + "/");
+    if (item.matchExclude?.some(matchesPath)) return false;
     const paths = item.match ?? [item.to];
-    return paths.some((p) => location.pathname === p || location.pathname.startsWith(p + "/"));
+    return paths.some(matchesPath);
   };
+  const isChildActive = (child: NavChild) =>
+    location.pathname === child.to || location.pathname.startsWith(child.to + "/");
 
-  const visibleNav = NAV.filter((i) => !i.adminOnly || isAdminOrCeo);
+  // A user scoped to exactly one department (not admin/CEO) gets that department's own nav —
+  // Dashboard/domain-dropdown/Reports/Projects & Tasks/Calendar/Clients & Contracts/Documents,
+  // every item already scoped to just that department — instead of the global/central nav.
+  // Admin/CEO and anyone spanning multiple departments (or none) keep the nav below unchanged.
+  const departmentScope = departmentScopeFor(roles);
+  const visibleNav = departmentScope
+    ? buildDepartmentNav(departmentScope, hasRole("water"))
+    : NAV.filter(
+        (i) => !i.adminOnly || isAdminOrCeo || (i.extraRoles ? hasRole(i.extraRoles) : false),
+      );
 
   const LayoutToggle = (
     <button
       onClick={() => setMode(mode === "top" ? "sidebar" : "top")}
-      className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded text-[0.6875rem] bg-white/10 hover:bg-white/20 text-sidebar-foreground"
+      className="hidden lg:flex shrink-0 items-center gap-1.5 px-2 py-1 rounded text-[0.6875rem] bg-white/10 hover:bg-white/20 text-sidebar-foreground"
       title={`Switch to ${mode === "top" ? "sidebar" : "top"} layout`}
     >
       {mode === "top" ? (
@@ -144,29 +340,43 @@ export function AppShell({ children }: { children: ReactNode }) {
     </button>
   );
 
+  // Search/clock/layout-toggle/full-name only show once there's room for them — same breakpoint
+  // the sidebar/top-nav switch and inline nav use, so this block never has to compete with the
+  // nav links for space. Notifications and sign-out stay compact but always visible at every
+  // width (shrink-0 so they're never the thing that gets squeezed off-screen).
   const UserBlock = (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+      <HeaderSearch inputRef={searchInputRef} />
       <LiveClock />
-      <NotificationBell />
+      <div className="shrink-0">
+        <NotificationBell />
+      </div>
+      <Link
+        to="/settings/notifications"
+        className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-md text-sidebar-foreground/80 hover:bg-white/10 hover:text-sidebar-foreground"
+        title="Notification settings"
+      >
+        <Settings className="h-4 w-4" />
+      </Link>
       {LayoutToggle}
-      <div className="hidden md:flex items-center gap-2 text-xs text-sidebar-foreground/80">
-        <div className="h-7 w-7 rounded-full bg-accent flex items-center justify-center text-accent-foreground font-semibold">
+      <div className="hidden lg:flex items-center gap-2 text-xs text-sidebar-foreground/80 shrink-0 max-w-40 xl:max-w-56">
+        <div className="h-7 w-7 shrink-0 rounded-full bg-accent flex items-center justify-center text-accent-foreground font-semibold">
           {(profile?.fullName || profile?.email || "?").charAt(0).toUpperCase()}
         </div>
-        <div className="leading-tight">
-          <div className="font-medium text-sidebar-foreground">
+        <div className="leading-tight min-w-0">
+          <div className="font-medium text-sidebar-foreground truncate">
             {profile?.fullName || profile?.email}
           </div>
-          <div className="flex items-center gap-1">
-            {roles.includes("ceo") && <Crown className="h-3 w-3 text-accent" />}
-            {primaryRoleLabel}
+          <div className="flex items-center gap-1 truncate">
+            {roles.includes("ceo") && <Crown className="h-3 w-3 shrink-0 text-accent" />}
+            <span className="truncate">{primaryRoleLabel}</span>
           </div>
         </div>
       </div>
       <Button
         variant="ghost"
         size="sm"
-        className="text-sidebar-foreground hover:bg-white/10"
+        className="shrink-0 text-sidebar-foreground hover:bg-white/10"
         onClick={handleSignOut}
       >
         <LogOut className="h-4 w-4 md:mr-2" />
@@ -216,7 +426,10 @@ export function AppShell({ children }: { children: ReactNode }) {
                         <Link
                           key={c.to}
                           to={c.to}
-                          className="block px-3 py-1.5 rounded text-xs text-sidebar-foreground/80 hover:bg-white/10"
+                          className={cn(
+                            "block px-3 py-1.5 rounded text-xs text-sidebar-foreground/80 hover:bg-white/10",
+                            isChildActive(c) && "bg-white/10 font-medium text-sidebar-foreground",
+                          )}
                         >
                           {c.label}
                         </Link>
@@ -267,13 +480,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-30 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
         <div className="flex items-center gap-2 h-14 px-4 md:px-6">
           <button
-            className="lg:hidden p-2 -ml-2 rounded hover:bg-white/10"
+            className="2xl:hidden p-2 -ml-2 rounded hover:bg-white/10 shrink-0"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <Link to={homeRouteFor(roles)} className="flex items-center gap-2 mr-4">
+          <Link to={homeRouteFor(roles)} className="flex items-center gap-2 mr-4 shrink-0">
             <div className="h-8 w-8 rounded-md bg-white p-1 flex items-center justify-center">
               <img src="/amsol-logo.png" alt="Amsol" className="h-full w-full object-contain" />
             </div>
@@ -283,47 +496,26 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </Link>
 
-          <nav className="hidden lg:flex items-center gap-0.5 ml-2">
+          {/* Only shown once there's genuinely room for every top-level item (2xl+) — below that,
+              the hamburger + MobileDrawer below covers the exact same links. The overflow-x-auto
+              here is just a safety net for in-between widths (e.g. a maximized-but-not-huge
+              browser window at exactly 2xl): nav scrolls within its own strip instead of ever
+              pushing notifications/sign-out off the right edge of the screen. */}
+          <nav className="hidden 2xl:flex items-center gap-0.5 ml-2 flex-1 min-w-0 overflow-x-auto">
             {visibleNav.map((item) => {
               const active = isActive(item);
               const Icon = item.icon;
               if (item.children) {
-                const open = openMenu === item.to;
                 return (
-                  <div
+                  <TopNavDropdown
                     key={item.to}
-                    className="relative"
-                    onMouseEnter={() => setOpenMenu(item.to)}
-                    onMouseLeave={() => setOpenMenu(null)}
-                  >
-                    <button
-                      className={cn(
-                        "flex items-center gap-1.5 px-3 h-9 rounded-md text-sm transition-colors",
-                        active
-                          ? "bg-accent text-accent-foreground font-medium"
-                          : "text-sidebar-foreground/90 hover:bg-white/10",
-                      )}
-                      onClick={() => setOpenMenu(open ? null : item.to)}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {item.label}
-                      <ChevronDown className="h-3 w-3 opacity-60" />
-                    </button>
-                    {open && (
-                      <div className="absolute left-0 top-full mt-1 min-w-[260px] rounded-md border bg-popover text-popover-foreground shadow-lg py-1 z-40">
-                        {visibleChildren(item).map((c) => (
-                          <Link
-                            key={c.to}
-                            to={c.to}
-                            onClick={() => setOpenMenu(null)}
-                            className="block px-3 py-2 text-sm hover:bg-secondary"
-                          >
-                            {c.label}
-                          </Link>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                    item={item}
+                    active={active}
+                    open={openMenu === item.to}
+                    onOpenChange={(v) => setOpenMenu(v ? item.to : null)}
+                    visibleChildren={visibleChildren(item)}
+                    isChildActive={isChildActive}
+                  />
                 );
               }
               return (
@@ -331,7 +523,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   key={item.to}
                   to={item.to}
                   className={cn(
-                    "flex items-center gap-1.5 px-3 h-9 rounded-md text-sm transition-colors",
+                    "flex shrink-0 items-center gap-1.5 px-3 h-9 rounded-md text-sm whitespace-nowrap transition-colors",
                     active
                       ? "bg-accent text-accent-foreground font-medium"
                       : "text-sidebar-foreground/90 hover:bg-white/10",
@@ -369,13 +561,16 @@ function MobileDrawer({
   isActive: (i: NavItem) => boolean;
 }) {
   const { isAdminOrCeo, hasRole } = useAuth();
+  const location = useLocation();
   const visibleChildren = (item: NavItem) =>
     (item.children ?? []).filter((c) => !c.role || isAdminOrCeo || hasRole(c.role));
+  const isChildActive = (child: NavChild) =>
+    location.pathname === child.to || location.pathname.startsWith(child.to + "/");
 
   return (
-    <div className="fixed inset-0 z-40 lg:hidden">
+    <div className="fixed inset-0 z-40 2xl:hidden">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="absolute left-0 top-0 bottom-0 w-72 bg-sidebar text-sidebar-foreground p-4 overflow-y-auto">
+      <div className="absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] bg-sidebar text-sidebar-foreground p-4 overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <div className="font-semibold">Menu</div>
           <button onClick={onClose}>
@@ -407,7 +602,10 @@ function MobileDrawer({
                         key={c.to}
                         to={c.to}
                         onClick={onClose}
-                        className="block px-3 py-1.5 rounded text-xs text-sidebar-foreground/80 hover:bg-white/10"
+                        className={cn(
+                          "block px-3 py-1.5 rounded text-xs text-sidebar-foreground/80 hover:bg-white/10",
+                          isChildActive(c) && "bg-white/10 font-medium text-sidebar-foreground",
+                        )}
                       >
                         {c.label}
                       </Link>

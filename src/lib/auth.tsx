@@ -7,8 +7,10 @@ export type AppRole =
   | "finance"
   | "hr"
   | "it"
-  | "marketing_ops"
+  | "marketing"
   | "tender"
+  | "operations"
+  | "water"
   | "department_head"
   | "account_manager"
   | "general_staff";
@@ -35,7 +37,7 @@ interface AuthContextValue {
   roles: AppRole[];
   loading: boolean;
   login: (email: string, password: string) => Promise<AppRole[]>;
-  demoLogin: (role: "system_admin" | "ceo" | "finance") => Promise<AppRole[]>;
+  setPassword: (token: string, password: string) => Promise<AppRole[]>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   hasRole: (role: AppRole | AppRole[]) => boolean;
@@ -91,10 +93,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(body.accessToken);
       return loadProfile();
     },
-    demoLogin: async (role) => {
-      const body = await apiJson<{ accessToken: string }>("/auth/demo-login", {
+    setPassword: async (token, password) => {
+      const body = await apiJson<{ accessToken: string }>("/auth/set-password", {
         method: "POST",
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ token, password }),
       });
       setAccessToken(body.accessToken);
       return loadProfile();
@@ -117,9 +119,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-/** The CEO Executive Dashboard is admin/CEO-only; everyone else lands on the Departments overview. */
-export function homeRouteFor(roles: AppRole[]): "/dashboard" | "/departments" {
-  return roles.includes("ceo") || roles.includes("system_admin") ? "/dashboard" : "/departments";
+const DEPARTMENT_HOME: Partial<
+  Record<AppRole, "/finance" | "/hr" | "/it" | "/marketing" | "/tender" | "/operations">
+> = {
+  finance: "/finance",
+  hr: "/hr",
+  it: "/it",
+  marketing: "/marketing",
+  tender: "/tender",
+  operations: "/operations",
+};
+
+/**
+ * The CEO Executive Dashboard is admin/CEO-only. A user who belongs to exactly one department
+ * lands straight on that department's own hub (its Overview tab is their dashboard) instead of
+ * the generic Departments picker grid — the picker is for people who span multiple departments,
+ * or hold no department role at all.
+ */
+export function homeRouteFor(
+  roles: AppRole[],
+):
+  | "/dashboard"
+  | "/departments"
+  | "/finance"
+  | "/hr"
+  | "/it"
+  | "/marketing"
+  | "/tender"
+  | "/operations" {
+  if (roles.includes("ceo") || roles.includes("system_admin")) return "/dashboard";
+  const departmentHomes = new Set(
+    roles.map((r) => DEPARTMENT_HOME[r]).filter((x): x is NonNullable<typeof x> => !!x),
+  );
+  if (departmentHomes.size === 1) return [...departmentHomes][0];
+  return "/departments";
+}
+
+export type DepartmentCode = "finance" | "hr" | "it" | "marketing" | "tender" | "operations";
+
+const DEPARTMENT_CODES: DepartmentCode[] = [
+  "finance",
+  "hr",
+  "it",
+  "marketing",
+  "tender",
+  "operations",
+];
+
+/**
+ * Which single department's nav a user should see, or null for the global/central nav — same
+ * "exactly one department role, and not admin/CEO" rule `homeRouteFor` already uses to decide
+ * where to land after login, just exposed as the department code instead of a route. Admin/CEO
+ * and anyone spanning multiple departments (or none) keep the global nav in AppShell.
+ */
+export function departmentScopeFor(roles: AppRole[]): DepartmentCode | null {
+  if (roles.includes("ceo") || roles.includes("system_admin")) return null;
+  const owned = DEPARTMENT_CODES.filter((code) => roles.includes(code));
+  return owned.length === 1 ? owned[0] : null;
 }
 
 export function useAuth() {
@@ -134,8 +190,10 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   finance: "Finance",
   hr: "Human Resources",
   it: "Information Technology",
-  marketing_ops: "Marketing & Operations",
+  marketing: "Marketing",
   tender: "Tender",
+  operations: "Operations",
+  water: "Water Project",
   department_head: "Department Head",
   account_manager: "Account Manager",
   general_staff: "General Staff",

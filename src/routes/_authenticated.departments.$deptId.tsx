@@ -8,6 +8,8 @@ import {
   Briefcase,
   Users,
   FileText,
+  FolderKanban,
+  ArrowRight,
 } from "lucide-react";
 import {
   useContracts,
@@ -20,7 +22,23 @@ import {
 } from "@/features/clients/use-clients-contracts";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
+import {
+  useProjects,
+  PROJECT_STATUS_LABELS,
+  type ProjectStatus,
+} from "@/features/projects/use-projects";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { useAuth, departmentScopeFor } from "@/lib/auth";
+import { PermissionDenied } from "@/components/require-role";
+
+const PROJECT_STATUS_STYLES: Record<ProjectStatus, string> = {
+  planning: "bg-secondary text-secondary-foreground",
+  active: "bg-primary/10 text-primary",
+  on_hold: "bg-warning/15 text-warning",
+  completed: "bg-success/15 text-success",
+  cancelled: "bg-destructive/15 text-destructive",
+};
 
 export const Route = createFileRoute("/_authenticated/departments/$deptId")({
   component: DepartmentWorkspace,
@@ -28,12 +46,30 @@ export const Route = createFileRoute("/_authenticated/departments/$deptId")({
 
 function DepartmentWorkspace() {
   const { deptId } = Route.useParams();
+  return <DepartmentWorkspaceContent deptId={deptId} />;
+}
+
+// Split out from the route component so each department hub can embed this same
+// Clients/Contracts/Projects workspace directly, passing a resolved department id instead of
+// requiring a `/departments/$deptId` route match. `scoped` marks that embedded case: a
+// department-scoped viewer shouldn't see a way back to the cross-department picker or a pointer
+// to the central (all-departments) module — their whole app *is* this one department.
+export function DepartmentWorkspaceContent({
+  deptId,
+  scoped = false,
+}: {
+  deptId: string;
+  scoped?: boolean;
+}) {
+  const { roles } = useAuth();
+  const scope = departmentScopeFor(roles);
   const deptsQ = useDepartments();
   const clientsQ = useClients();
   const linesQ = useServiceLines();
   const profilesQ = useProfilesLite();
   const contractsQ = useContracts({ departmentId: deptId });
-  const [tab, setTab] = useState<"clients" | "contracts">("contracts");
+  const projectsQ = useProjects({ departmentId: deptId });
+  const [tab, setTab] = useState<"clients" | "contracts" | "projects">("contracts");
   const [search, setSearch] = useState("");
 
   const dept = deptsQ.data?.find((d) => d.id === deptId);
@@ -120,26 +156,42 @@ function DepartmentWorkspace() {
     );
   }
 
+  // A department-scoped viewer's whole app is their own department — block reaching another
+  // department's workspace by URL. `scoped` embeds (the <dept>.workspace.tsx wrappers) always
+  // pass their own resolved department id, so this only ever fires via the generic
+  // /departments/:deptId route with a foreign id.
+  if (!scoped && scope && scope !== dept.code) {
+    return <PermissionDenied message="You do not have access to this department's workspace." />;
+  }
+
   return (
     <div className="space-y-3">
-      <Link
-        to="/departments"
-        className="text-xs text-muted-foreground inline-flex items-center gap-1 hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" /> Back to departments
-      </Link>
+      {!scoped && (
+        <Link
+          to="/departments"
+          className="text-xs text-muted-foreground inline-flex items-center gap-1 hover:text-foreground"
+        >
+          <ArrowLeft className="h-3 w-3" /> Back to departments
+        </Link>
+      )}
 
       <div>
         <h1 className="text-lg font-semibold flex items-center gap-2">
           <Briefcase className="h-4 w-4 text-primary" /> {dept.name} — Clients & Contracts
         </h1>
         <p className="text-xs text-muted-foreground">
-          Scoped view of the central clients & contracts module for the {dept.name} department. Full
-          CRUD is available from the{" "}
-          <Link to="/clients" className="text-primary hover:underline">
-            central module
-          </Link>
-          .
+          {scoped ? (
+            `Clients and contracts belonging to ${dept.name}.`
+          ) : (
+            <>
+              Scoped view of the central clients & contracts module for the {dept.name} department.
+              Full CRUD is available from the{" "}
+              <Link to="/clients" className="text-primary hover:underline">
+                central module
+              </Link>
+              .
+            </>
+          )}
         </p>
       </div>
 
@@ -169,17 +221,62 @@ function DepartmentWorkspace() {
           >
             <Users className="h-3 w-3" /> Clients ({deptClients.length})
           </button>
+          <button
+            onClick={() => setTab("projects")}
+            className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded border ${tab === "projects" ? "bg-primary text-primary-foreground border-primary" : "bg-card"}`}
+          >
+            <FolderKanban className="h-3 w-3" /> Projects ({(projectsQ.data ?? []).length})
+          </button>
         </div>
         <div className="flex-1" />
-        <Input
-          placeholder={tab === "clients" ? "Search clients…" : "Search contracts…"}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs h-9"
-        />
+        {tab !== "projects" && (
+          <Input
+            placeholder={tab === "clients" ? "Search clients…" : "Search contracts…"}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-xs h-9"
+          />
+        )}
       </div>
 
-      {contractsQ.isLoading ? (
+      {tab === "projects" ? (
+        projectsQ.isLoading ? (
+          <div className="py-8 flex justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
+        ) : (projectsQ.data ?? []).length === 0 ? (
+          <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">
+            No projects for this department yet.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {(projectsQ.data ?? []).map((p) => (
+              <Link
+                key={p.id}
+                to="/projects/$projectId"
+                params={{ projectId: p.id }}
+                className="rounded-lg border bg-card p-4 flex flex-col gap-2 hover:border-primary/50 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="font-semibold text-sm">{p.name}</div>
+                  <Badge className={PROJECT_STATUS_STYLES[p.status]} variant="secondary">
+                    {PROJECT_STATUS_LABELS[p.status]}
+                  </Badge>
+                </div>
+                {p.client_name && (
+                  <div className="text-xs text-muted-foreground">Client: {p.client_name}</div>
+                )}
+                <div className="mt-auto pt-2 border-t flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">{p.task_count ?? 0} tasks</span>
+                  <span className="text-primary inline-flex items-center gap-1">
+                    Open <ArrowRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )
+      ) : contractsQ.isLoading ? (
         <div className="py-8 flex justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>

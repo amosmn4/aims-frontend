@@ -1,7 +1,37 @@
-import type { Project, Task, Milestone, TaskStatus } from "@/features/projects/use-projects";
-import { TASK_STATUS_LABELS } from "@/features/projects/use-projects";
-import { TASK_STATUS_COLORS, MILESTONE_STATUS_STYLES, money, fmtDate } from "@/features/project-workspace/workspace-theme";
+import { toast } from "sonner";
+import type {
+  Project,
+  Task,
+  Milestone,
+  TaskStatus,
+  SdlcStage,
+} from "@/features/projects/use-projects";
+import {
+  TASK_STATUS_LABELS,
+  useUpdateProject,
+  useTimelineExtensions,
+  SYSTEM_DEVELOPMENT_METHODOLOGY,
+  SDLC_STAGES,
+  SDLC_STAGE_LABELS,
+  EXTENSION_ATTRIBUTION_LABELS,
+} from "@/features/projects/use-projects";
+import {
+  TASK_STATUS_COLORS,
+  MILESTONE_STATUS_STYLES,
+  money,
+  fmtDate,
+} from "@/features/project-workspace/workspace-theme";
 import { computePercentComplete, computeEvm } from "@/features/project-workspace/workspace-calcs";
+import { StageTracker, SectionLabel } from "@/components/pipeline/detail-sheet";
+import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function milestoneStatus(m: Milestone): "done" | "atrisk" | "upcoming" {
   if (m.is_complete) return "done";
@@ -71,14 +101,44 @@ export function OverviewTab({
   );
   for (const k of Object.keys(TASK_STATUS_LABELS) as TaskStatus[]) statusCounts[k] ??= 0;
 
+  const related: RelatedRecordItem[] = [];
+  if (project.tender_id) {
+    related.push({
+      label: "Originating Tender",
+      title: project.tender_title ?? "Tender",
+      to: `/tender/${project.tender_id}`,
+    });
+  }
+  if (project.client_request_id) {
+    related.push({
+      label: "Originating Request",
+      title: project.client_request_title ?? "Client Request",
+      to: `/requests/${project.client_request_id}`,
+    });
+  }
+  if (project.contract_id) {
+    related.push({
+      label: "Contract",
+      title: project.contract_number ?? "Contract",
+      to: `/clients/contracts/${project.contract_id}`,
+    });
+  }
+  if (project.client_id) {
+    related.push({ label: "Client", title: project.client_name ?? "Client", to: "/clients" });
+  }
+
   return (
     <>
+      <RelatedRecords items={related} engagementTo={`/engagements/project/${project.id}`} />
       <div className="ws-ov-grid">
         <div className="ws-metric-card">
           <div className="label">Overall Progress</div>
           <div className="num">{pct}%</div>
           <div className="ws-bar-track">
-            <div className="ws-bar-fill" style={{ width: `${pct}%`, background: "var(--pipeline-teal)" }} />
+            <div
+              className="ws-bar-fill"
+              style={{ width: `${pct}%`, background: "var(--pipeline-teal)" }}
+            />
           </div>
           <div className="sub">
             {tasks.length} tasks across {phases.length || 1} phases
@@ -90,7 +150,10 @@ export function OverviewTab({
           <div className="ws-bar-track">
             <div
               className="ws-bar-fill"
-              style={{ width: `${budgetPct}%`, background: budgetPct > 85 ? "var(--pipeline-coral)" : "var(--pipeline-gold)" }}
+              style={{
+                width: `${budgetPct}%`,
+                background: budgetPct > 85 ? "var(--pipeline-coral)" : "var(--pipeline-gold)",
+              }}
             />
           </div>
           <div className="sub">
@@ -99,17 +162,25 @@ export function OverviewTab({
         </div>
         <div className="ws-metric-card">
           <div className="label">Schedule Performance (SPI)</div>
-          <div className="num" style={{ color: evm.spi >= 1 ? "var(--pipeline-teal)" : "var(--pipeline-coral)" }}>
+          <div
+            className="num"
+            style={{ color: evm.spi >= 1 ? "var(--pipeline-teal)" : "var(--pipeline-coral)" }}
+          >
             {evm.spi.toFixed(2)}
           </div>
           <div className="sub">{evm.spi >= 1 ? "Ahead of / on schedule" : "Behind schedule"}</div>
         </div>
         <div className="ws-metric-card">
           <div className="label">Cost Performance (CPI)</div>
-          <div className="num" style={{ color: evm.cpi >= 1 ? "var(--pipeline-teal)" : "var(--pipeline-coral)" }}>
+          <div
+            className="num"
+            style={{ color: evm.cpi >= 1 ? "var(--pipeline-teal)" : "var(--pipeline-coral)" }}
+          >
             {evm.cpi.toFixed(2)}
           </div>
-          <div className="sub">{evm.cpi >= 1 ? "Under / on budget" : "Over budget for work done"}</div>
+          <div className="sub">
+            {evm.cpi >= 1 ? "Under / on budget" : "Over budget for work done"}
+          </div>
         </div>
       </div>
 
@@ -144,7 +215,10 @@ export function OverviewTab({
               <div className="evm-track">
                 <div
                   className="evm-fill"
-                  style={{ width: `${budget > 0 ? Math.min(100, (evm.pv / budget) * 100) : 0}%`, background: "var(--pipeline-slate-light)" }}
+                  style={{
+                    width: `${budget > 0 ? Math.min(100, (evm.pv / budget) * 100) : 0}%`,
+                    background: "var(--pipeline-slate-light)",
+                  }}
                 />
               </div>
               <div className="evm-val">{money(evm.pv)}</div>
@@ -154,7 +228,10 @@ export function OverviewTab({
               <div className="evm-track">
                 <div
                   className="evm-fill"
-                  style={{ width: `${budget > 0 ? Math.min(100, (evm.ev / budget) * 100) : 0}%`, background: "var(--pipeline-teal)" }}
+                  style={{
+                    width: `${budget > 0 ? Math.min(100, (evm.ev / budget) * 100) : 0}%`,
+                    background: "var(--pipeline-teal)",
+                  }}
                 />
               </div>
               <div className="evm-val">{money(evm.ev)}</div>
@@ -164,7 +241,10 @@ export function OverviewTab({
               <div className="evm-track">
                 <div
                   className="evm-fill"
-                  style={{ width: `${budget > 0 ? Math.min(100, (evm.ac / budget) * 100) : 0}%`, background: "var(--pipeline-gold)" }}
+                  style={{
+                    width: `${budget > 0 ? Math.min(100, (evm.ac / budget) * 100) : 0}%`,
+                    background: "var(--pipeline-gold)",
+                  }}
                 />
               </div>
               <div className="evm-val">{money(evm.ac)}</div>
@@ -186,6 +266,123 @@ export function OverviewTab({
           </div>
         </div>
       </div>
+
+      <SdlcPanel project={project} />
+      <TimelinePanel projectId={project.id} />
     </>
+  );
+}
+
+// Every recorded date push-out for this project, most recent first — the point isn't just
+// history, it's the "was this our fault" record: who/when/why, and whether the client caused it.
+function TimelinePanel({ projectId }: { projectId: string }) {
+  const extensionsQ = useTimelineExtensions("project", projectId);
+  const extensions = extensionsQ.data ?? [];
+
+  if (!extensionsQ.isLoading && extensions.length === 0) return null;
+
+  return (
+    <div className="ws-panel">
+      <h3>Timeline Extensions</h3>
+      {extensionsQ.isLoading ? (
+        <div className="ws-section-label">Loading…</div>
+      ) : (
+        <div className="divide-y">
+          {extensions.map((e) => (
+            <div key={e.id} className="py-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">
+                  {fmtDate(e.previous_date)} → {fmtDate(e.new_date)}
+                </span>
+                <span className="ws-section-label" style={{ margin: 0 }}>
+                  {EXTENSION_ATTRIBUTION_LABELS[e.attributed_to]}
+                </span>
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">{e.reason}</div>
+              <div className="text-[0.6875rem] text-muted-foreground mt-0.5">
+                {e.created_by_name ?? "Unknown"} · {fmtDate(e.created_at)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Only relevant once a project is flagged as system-development work — the toggle below sets
+// methodology to SYSTEM_DEVELOPMENT_METHODOLOGY and initializes the stage; tasks/milestones
+// above still work normally underneath this, it's just an extra layer showing SDLC progress.
+function SdlcPanel({ project }: { project: Project }) {
+  const updateProject = useUpdateProject();
+  const isSystemDevelopment = project.methodology === SYSTEM_DEVELOPMENT_METHODOLOGY;
+
+  if (!isSystemDevelopment) {
+    return (
+      <div className="ws-panel">
+        <h3>System Development</h3>
+        <p className="ws-section-label" style={{ margin: "8px 0 12px" }}>
+          Not tracked as a system-development project.
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={updateProject.isPending}
+          onClick={() =>
+            updateProject.mutate(
+              {
+                id: project.id,
+                methodology: SYSTEM_DEVELOPMENT_METHODOLOGY,
+                sdlcStage: "requirements",
+              },
+              {
+                onSuccess: () => toast.success("Now tracking as a system-development project"),
+                onError: (err) =>
+                  toast.error(err instanceof Error ? err.message : "Failed to update"),
+              },
+            )
+          }
+        >
+          Track as System Development project
+        </Button>
+      </div>
+    );
+  }
+
+  const stage = project.sdlc_stage ?? "requirements";
+  const idx = SDLC_STAGES.indexOf(stage);
+
+  return (
+    <div className="ws-panel">
+      <h3>System Development — SDLC Stage</h3>
+      <SectionLabel>Stage progress</SectionLabel>
+      <StageTracker total={SDLC_STAGES.length} doneCount={idx} currentIndex={idx} />
+      <div className="ws-section-label" style={{ marginTop: 4 }}>
+        Move stage
+      </div>
+      <Select
+        value={stage}
+        onValueChange={(v) =>
+          updateProject.mutate(
+            { id: project.id, sdlcStage: v as SdlcStage },
+            {
+              onError: (err) =>
+                toast.error(err instanceof Error ? err.message : "Failed to update"),
+            },
+          )
+        }
+      >
+        <SelectTrigger className="w-full max-w-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SDLC_STAGES.map((s) => (
+            <SelectItem key={s} value={s}>
+              {SDLC_STAGE_LABELS[s]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

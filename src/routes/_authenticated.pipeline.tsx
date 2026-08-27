@@ -6,22 +6,18 @@ import { usePipelineProjects } from "@/features/pipeline/use-pipeline";
 export const Route = createFileRoute("/_authenticated/pipeline")({
   head: () => ({
     meta: [{ title: "Pipeline — AIMS" }],
-    links: [
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap",
-      },
-    ],
   }),
   component: PipelineLayout,
 });
 
+// Pipeline is the cross-department aggregate view — kanbans only, each one the exact same
+// component embedded in its owning department's hub (Bid Pipeline also lives in the Tender hub,
+// Client Requests also lives in the Operations hub). More department kanbans (IT, Marketing) are
+// a deliberate future addition, not part of this pass.
 const TABS = [
-  { to: "/pipeline", label: "Overview", match: "/pipeline" },
-  { to: "/pipeline/tenders", label: "Tender Pipeline", match: "/pipeline/tenders" },
-  { to: "/pipeline/engagements", label: "Client Engagement", match: "/pipeline/engagements" },
-  { to: "/pipeline/projects", label: "Projects & Delivery", match: "/pipeline/projects" },
+  { to: "/pipeline/engagements", label: "Client Requests", match: "/pipeline/engagements" },
+  { to: "/pipeline/tenders", label: "Bid Pipeline", match: "/pipeline/tenders" },
+  { to: "/pipeline/projects", label: "Delivery Board", match: "/pipeline/projects" },
 ];
 
 function PipelineLayout() {
@@ -30,8 +26,12 @@ function PipelineLayout() {
   const requestsQ = useClientRequests();
   const projectsQ = usePipelineProjects();
 
-  const activeTenders = (tendersQ.data ?? []).filter((t) => !["won", "lost", "withdrawn"].includes(t.stage)).length;
-  const activeEngagements = (requestsQ.data ?? []).filter((r) => !["won", "lost", "withdrawn"].includes(r.stage)).length;
+  const activeTenders = (tendersQ.data ?? []).filter(
+    (t) => !["won", "lost", "withdrawn", "cancelled"].includes(t.stage),
+  ).length;
+  const activeEngagements = (requestsQ.data ?? []).filter(
+    (r) => !["won", "lost", "withdrawn"].includes(r.stage),
+  ).length;
   const activeProjects = (projectsQ.data ?? []).filter((p) => p.delivery_stage !== "closed").length;
   const counts: Record<string, number> = {
     "/pipeline/tenders": activeTenders,

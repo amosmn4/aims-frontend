@@ -5,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * AIMS — Amsol Integrated Management System
+ * AIMS — AMSOL Management System
  * Brand palette (from documentation §12):
  *   Navy       #085599  (primary)
  *   Dark Navy  #063D70
@@ -257,14 +257,18 @@
   --pipeline-purple-soft: #e6e0ef;
   --pipeline-amber: #c08a2e;
   --pipeline-amber-soft: #f3e9ce;
-  --pipeline-font-display: "Fraunces", serif;
-  --pipeline-font-body: "IBM Plex Sans", sans-serif;
-  --pipeline-font-mono: "IBM Plex Mono", monospace;
+  /* Fonts intentionally match the app's own --font-sans (not a Fraunces/IBM Plex display
+     system) so Pipeline and the Project Workspace read as the same app as the rest of AIMS —
+     the color palette above stays as the one deliberate, requested exception. */
+  --pipeline-font-display: var(--font-sans);
+  --pipeline-font-body: var(--font-sans);
+  --pipeline-font-mono: var(--font-sans);
   --pipeline-shadow-card: 0 1px 2px rgba(22, 35, 63, 0.06), 0 1px 1px rgba(22, 35, 63, 0.04);
   --pipeline-shadow-float: 0 12px 32px rgba(22, 35, 63, 0.18);
 
   font-family: var(--pipeline-font-body);
   color: var(--pipeline-ink);
+  font-variant-numeric: tabular-nums;
 }
 .pipeline-scope .p-title {
   font-family: var(--pipeline-font-display);
@@ -337,7 +341,7 @@
   margin-top: 8px;
 }
 .pipeline-scope .p-chip {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 20px;
@@ -415,7 +419,8 @@
 }
 .pipeline-scope .ws-projhead h1 {
   font-family: var(--pipeline-font-display);
-  font-size: 24px;
+  font-size: 18px;
+  font-weight: 600;
   margin: 0 0 6px;
 }
 .pipeline-scope .ws-meta {
@@ -522,7 +527,7 @@
 }
 .pipeline-scope .ws-section-label {
   font-family: var(--pipeline-font-mono);
-  font-size: 10.5px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.8px;
   color: var(--pipeline-slate-light);
@@ -660,7 +665,7 @@
   gap: 10px;
   padding: 9px 4px;
   border-bottom: 1px solid var(--pipeline-line-soft);
-  font-size: 12.8px;
+  font-size: 14px;
 }
 .pipeline-scope .wbs-phase {
   font-weight: 700;
@@ -681,14 +686,14 @@
   margin-top: 1px;
 }
 .pipeline-scope .status-pill {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   padding: 3px 9px;
   border-radius: 20px;
   white-space: nowrap;
 }
 .pipeline-scope .priority-pill {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 6px;
@@ -847,7 +852,7 @@
 .pipeline-scope table.raci {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 14px;
 }
 .pipeline-scope table.raci th,
 .pipeline-scope table.raci td {
@@ -857,7 +862,7 @@
 }
 .pipeline-scope table.raci th {
   background: var(--pipeline-paper);
-  font-size: 11px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: var(--pipeline-slate);
@@ -912,7 +917,7 @@
 .pipeline-scope table.ws-costs {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 14px;
   margin-top: 6px;
 }
 .pipeline-scope table.ws-costs th,
@@ -922,7 +927,7 @@
   text-align: left;
 }
 .pipeline-scope table.ws-costs th {
-  font-size: 10.5px;
+  font-size: 12px;
   text-transform: uppercase;
   color: var(--pipeline-slate-light);
   font-family: var(--pipeline-font-mono);
@@ -978,7 +983,7 @@
 .pipeline-scope table.raid {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.3px;
+  font-size: 14px;
 }
 .pipeline-scope table.raid th,
 .pipeline-scope table.raid td {
@@ -988,21 +993,21 @@
   vertical-align: top;
 }
 .pipeline-scope table.raid th {
-  font-size: 10.5px;
+  font-size: 12px;
   text-transform: uppercase;
   color: var(--pipeline-slate-light);
   font-family: var(--pipeline-font-mono);
   font-weight: 500;
 }
 .pipeline-scope .raid-type {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 6px;
   white-space: nowrap;
 }
 .pipeline-scope .sev-pill {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 20px;

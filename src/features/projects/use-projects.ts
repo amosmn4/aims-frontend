@@ -3,8 +3,41 @@ import { apiJson } from "@/lib/api-client";
 
 export type ProjectStatus = "planning" | "active" | "on_hold" | "completed" | "cancelled";
 export type ProjectHealth = "green" | "amber" | "red";
+export type ProjectVisibility = "department" | "restricted";
+export type ProjectEngagementType = "one_off" | "ongoing";
+export type ExtensionAttribution = "client" | "internal" | "third_party" | "other";
+export type TimelineEntityType = "project" | "task" | "milestone" | "contract";
+
+export const EXTENSION_ATTRIBUTION_LABELS: Record<ExtensionAttribution, string> = {
+  client: "Client",
+  internal: "Internal",
+  third_party: "Third party",
+  other: "Other",
+};
 export type TaskStatus = "not_started" | "in_progress" | "review" | "blocked" | "completed";
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
+export type SdlcStage =
+  "requirements" | "design" | "development" | "testing" | "deployment" | "maintenance";
+
+export const SYSTEM_DEVELOPMENT_METHODOLOGY = "system_development";
+
+export const SDLC_STAGES: SdlcStage[] = [
+  "requirements",
+  "design",
+  "development",
+  "testing",
+  "deployment",
+  "maintenance",
+];
+
+export const SDLC_STAGE_LABELS: Record<SdlcStage, string> = {
+  requirements: "Requirements",
+  design: "Design",
+  development: "Development",
+  testing: "Testing",
+  deployment: "Deployment",
+  maintenance: "Maintenance",
+};
 
 export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: "Planning",
@@ -57,11 +90,20 @@ export type Project = {
   client_id: string | null;
   client_name: string | null;
   contract_id: string | null;
+  contract_number: string | null;
+  tender_id: string | null;
+  tender_title: string | null;
+  client_request_id: string | null;
+  client_request_title: string | null;
   department_id: string;
   department_name: string;
   status: ProjectStatus;
   methodology: string | null;
+  sdlc_stage: SdlcStage | null;
   health: ProjectHealth;
+  visibility: ProjectVisibility;
+  engagement_type: ProjectEngagementType;
+  created_by: string | null;
   budget: number | null;
   start_date: string | null;
   end_date: string | null;
@@ -150,11 +192,20 @@ type BackendProject = {
   clientId: string | null;
   client?: { name: string } | null;
   contractId: string | null;
+  contract?: { id: string; contractNumber: string } | null;
+  tenderId?: string | null;
+  tender?: { id: string; referenceNumber: string | null; title: string } | null;
+  clientRequestId?: string | null;
+  clientRequest?: { id: string; referenceNumber: string | null; title: string } | null;
   departmentId: string;
   department?: { name: string } | null;
   status: ProjectStatus;
   methodology: string | null;
+  sdlcStage: SdlcStage | null;
   health: ProjectHealth;
+  visibility: ProjectVisibility;
+  engagementType: ProjectEngagementType;
+  createdBy: string | null;
   budget: string | number | null;
   startDate: string | null;
   endDate: string | null;
@@ -211,11 +262,22 @@ function mapProject(p: BackendProject): Project {
     client_id: p.clientId,
     client_name: p.client?.name ?? null,
     contract_id: p.contractId,
+    contract_number: p.contract?.contractNumber ?? null,
+    tender_id: p.tender?.id ?? null,
+    tender_title: p.tender ? (p.tender.referenceNumber ?? p.tender.title) : null,
+    client_request_id: p.clientRequest?.id ?? null,
+    client_request_title: p.clientRequest
+      ? (p.clientRequest.referenceNumber ?? p.clientRequest.title)
+      : null,
     department_id: p.departmentId,
     department_name: p.department?.name ?? "—",
     status: p.status,
     methodology: p.methodology,
+    sdlc_stage: p.sdlcStage,
     health: p.health,
+    visibility: p.visibility,
+    engagement_type: p.engagementType,
+    created_by: p.createdBy,
     budget: p.budget == null ? null : Number(p.budget),
     start_date: p.startDate ? p.startDate.slice(0, 10) : null,
     end_date: p.endDate ? p.endDate.slice(0, 10) : null,
@@ -282,14 +344,24 @@ export function useProjects(filters?: {
   departmentId?: string;
   status?: ProjectStatus;
   clientId?: string;
+  sharedWithMe?: boolean;
+  enabled?: boolean;
 }) {
   const qs = toQuery({
     departmentId: filters?.departmentId,
     status: filters?.status,
     clientId: filters?.clientId,
+    sharedWithMe: filters?.sharedWithMe ? "true" : undefined,
   });
   return useQuery({
-    queryKey: ["projects", filters?.departmentId, filters?.status, filters?.clientId],
+    enabled: filters?.enabled ?? true,
+    queryKey: [
+      "projects",
+      filters?.departmentId,
+      filters?.status,
+      filters?.clientId,
+      filters?.sharedWithMe,
+    ],
     queryFn: async () => (await apiJson<BackendProject[]>(`/projects${qs}`)).map(mapProject),
   });
 }
@@ -314,6 +386,9 @@ export function useCreateProject() {
       status?: ProjectStatus;
       methodology?: string;
       health?: ProjectHealth;
+      visibility?: ProjectVisibility;
+      engagementType?: ProjectEngagementType;
+      memberIds?: string[];
       budget?: number;
       startDate?: string;
       endDate?: string;
@@ -498,5 +573,51 @@ export function useProjectFinancials(projectId: string | undefined) {
     queryKey: ["project-financials", projectId],
     enabled: !!projectId,
     queryFn: () => apiJson<ProjectFinancials>(`/projects/${projectId}/financials`),
+  });
+}
+
+/* ---------- Timeline extensions ---------- */
+
+export type TimelineExtension = {
+  id: string;
+  previous_date: string;
+  new_date: string;
+  reason: string;
+  attributed_to: ExtensionAttribution;
+  created_by_name: string | null;
+  created_at: string;
+};
+
+type BackendTimelineExtension = {
+  id: string;
+  previousDate: string;
+  newDate: string;
+  reason: string;
+  attributedTo: ExtensionAttribution;
+  creator?: { fullName: string | null; email: string } | null;
+  createdAt: string;
+};
+
+export function useTimelineExtensions(
+  entityType: TimelineEntityType,
+  entityId: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["timeline-extensions", entityType, entityId],
+    enabled: !!entityId,
+    queryFn: async () => {
+      const rows = await apiJson<BackendTimelineExtension[]>(
+        `/timeline-extensions?entityType=${entityType}&entityId=${entityId}`,
+      );
+      return rows.map((e): TimelineExtension => ({
+        id: e.id,
+        previous_date: e.previousDate,
+        new_date: e.newDate,
+        reason: e.reason,
+        attributed_to: e.attributedTo,
+        created_by_name: e.creator?.fullName ?? e.creator?.email ?? null,
+        created_at: e.createdAt,
+      }));
+    },
   });
 }

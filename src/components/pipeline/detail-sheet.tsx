@@ -44,7 +44,7 @@ export function PipelineDetailSheet({
           >
             {refId}
           </div>
-          <div className="p-title mb-2.5 mt-1 text-[19px]">{title}</div>
+          <div className="p-title mb-2.5 mt-1 text-base">{title}</div>
           <div className="flex flex-wrap gap-1.5">{tags}</div>
         </div>
         <div className="flex gap-0.5 border-b px-[22px]" style={{ borderColor: "var(--pipeline-line)" }}>

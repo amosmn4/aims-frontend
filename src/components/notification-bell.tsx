@@ -67,7 +67,7 @@ export function NotificationBell() {
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-96 p-0">
+      <PopoverContent align="end" className="w-96 max-w-[calc(100vw-1.5rem)] p-0">
         <div className="flex items-center justify-between px-3 py-2.5 border-b">
           <div className="text-sm font-semibold">Notifications</div>
           {unread > 0 && (
@@ -98,7 +98,9 @@ export function NotificationBell() {
                   }`}
                   onClick={() => handleClick(row)}
                 >
-                  <span className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${SEVERITY_DOT[row.severity]}`} />
+                  <span
+                    className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${SEVERITY_DOT[row.severity]}`}
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div className="text-xs font-medium leading-snug">{row.title}</div>
@@ -113,7 +115,9 @@ export function NotificationBell() {
                       </button>
                     </div>
                     {row.body && (
-                      <div className="text-[0.6875rem] text-muted-foreground mt-0.5 line-clamp-2">{row.body}</div>
+                      <div className="text-[0.6875rem] text-muted-foreground mt-0.5 line-clamp-2">
+                        {row.body}
+                      </div>
                     )}
                     <div className="flex items-center gap-1.5 mt-1 text-[0.625rem] text-muted-foreground">
                       <span>{NOTIFICATION_TYPE_LABELS[row.type]}</span>

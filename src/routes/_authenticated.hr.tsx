@@ -1,27 +1,20 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { ModulePlaceholder } from "@/components/app-shell";
-import { RequireRole } from "@/components/require-role";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { DepartmentHubTabs, useShowDepartmentHub } from "@/components/department-hub-tabs";
 
+// Thin layout — lets CEO/admin AND HR-role staff (the pilot for regular department staff, see
+// useShowDepartmentHub) get an in-page tab bar across HR's existing routes. Everyone else's
+// experience is untouched: bare Outlet, no RequireRole here (there wasn't one before this file
+// existed either), navigation stays in the global top nav via lib/department-nav.ts.
 export const Route = createFileRoute("/_authenticated/hr")({
-  head: () => ({
-    meta: [{ title: "Human Resources — AIMS" }, { name: "robots", content: "noindex" }],
-  }),
-  component: () => (
-    <RequireRole
-      roles={["hr"]}
-      message="The HR workspace is restricted to the HR team, CEO and System Administrator."
-    >
-      <ModulePlaceholder
-        title="Human Resources"
-        description="Delivery of recruitment, training, salary surveys and outsourced HR management for Amsol's clients."
-        bullets={[
-          "Recruitment pipeline: requisitions, candidates, interview stages, placement fees",
-          "Training management: programs, trainers, participants, certifications",
-          "Salary survey project management with participating client tracking",
-          "Outsourced HR service delivery, milestones and renewal dates",
-          "Client HR service history and documentation",
-        ]}
-      />
-    </RequireRole>
-  ),
+  component: HrLayout,
 });
+
+function HrLayout() {
+  const showHub = useShowDepartmentHub("hr");
+  return (
+    <>
+      {showHub && <DepartmentHubTabs code="hr" />}
+      <Outlet />
+    </>
+  );
+}

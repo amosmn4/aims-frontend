@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, Search } from "lucide-react";
+import { FileArchive, Loader2, Plus, Search } from "lucide-react";
 import { RequireRole } from "@/components/require-role";
 import {
   useTenders,
@@ -13,10 +13,13 @@ import {
   TENDER_STAGE_STYLES,
   type TenderStage,
 } from "@/features/tender/use-tender";
-import { useDepartments } from "@/features/clients/use-clients-contracts";
+import { useDepartments, useEligibleDepartments } from "@/features/clients/use-clients-contracts";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
 import { FunnelChart } from "@/components/funnel-chart";
+import { DateRangeFilter, type DateRange } from "@/components/date-range-filter";
+import { usePagination } from "@/hooks/use-pagination";
+import { PaginationBar } from "@/components/pagination-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,58 +61,87 @@ export const Route = createFileRoute("/_authenticated/tender/")({
   ),
 });
 
-const FUNNEL_STAGES: TenderStage[] = ["identified", "applying", "submitted", "evaluation", "won", "lost", "withdrawn"];
+const FUNNEL_STAGES: TenderStage[] = [
+  "identified",
+  "applying",
+  "submitted",
+  "won",
+  "lost",
+  "withdrawn",
+  "cancelled",
+];
 const FUNNEL_COLORS: Record<string, string> = {
   identified: "#8C8C8C",
   applying: "#085599",
   submitted: "#F5821F",
-  evaluation: "#6B5490",
   won: "#2E9E4F",
   lost: "#D64545",
   withdrawn: "#94a3b8",
+  cancelled: "#6B5490",
 };
 
-function TenderWorkspace() {
+// Exported so the Tender department hub (_authenticated.tender.tsx) can embed this same
+// workspace as a tab, without a second `/tender`-shaped URL — see that file for the hub layout.
+export function TenderWorkspace() {
   const navigate = useNavigate();
   const [departmentId, setDepartmentId] = useState("all");
   const [serviceLineId, setServiceLineId] = useState("all");
   const [stage, setStage] = useState<TenderStage | "all">("all");
   const [q, setQ] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange>({});
+  const { page, pageSize, setPage, setPageSize } = usePagination(25);
 
   const filters = {
     departmentId: departmentId === "all" ? undefined : departmentId,
     serviceLineId: serviceLineId === "all" ? undefined : serviceLineId,
     stage: stage === "all" ? undefined : stage,
     q: q.trim() || undefined,
+    dateFrom: dateRange.from,
+    dateTo: dateRange.to,
   };
 
-  const tendersQ = useTenders(filters);
+  const tendersQ = useTenders(filters, { page, pageSize });
+  const tendersResult = tendersQ.data;
+  const tenders = tendersResult
+    ? Array.isArray(tendersResult)
+      ? tendersResult
+      : tendersResult.data
+    : [];
+  const tendersTotal =
+    tendersResult && !Array.isArray(tendersResult) ? tendersResult.total : tenders.length;
   const summaryQ = useTenderPipelineSummary({
     departmentId: filters.departmentId,
     serviceLineId: filters.serviceLineId,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
   });
   const departmentsQ = useDepartments();
   const serviceLinesQ = useServiceLines();
   const timeMetricsQ = useTenderTimeMetrics({
     departmentId: filters.departmentId,
     serviceLineId: filters.serviceLineId,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
   });
 
   const summary = summaryQ.data ?? [];
   const totalTenders = summary.reduce((sum, s) => sum + s.count, 0);
   const activeCount = summary
-    .filter((s) => s.stage === "identified" || s.stage === "applying" || s.stage === "submitted" || s.stage === "evaluation")
+    .filter((s) => s.stage === "identified" || s.stage === "applying" || s.stage === "submitted")
     .reduce((sum, s) => sum + s.count, 0);
   const pipelineValue = summary
-    .filter((s) => s.stage === "identified" || s.stage === "applying" || s.stage === "submitted" || s.stage === "evaluation")
+    .filter((s) => s.stage === "identified" || s.stage === "applying" || s.stage === "submitted")
     .reduce((sum, s) => sum + s.total_value, 0);
   const wonCount = summary.find((s) => s.stage === "won")?.count ?? 0;
   const lostCount = summary.find((s) => s.stage === "lost")?.count ?? 0;
   const winRate = wonCount + lostCount > 0 ? wonCount / (wonCount + lostCount) : null;
 
+  // Pass-through funnel: cumulative_count is "how many tenders ever reached at least this
+  // stage" (never shrinks as tenders advance, only when one's deleted) — not the live `count`
+  // of what's sitting in that exact stage right now, which is what a Kanban column shows.
   const funnelData = FUNNEL_STAGES.map((s) => ({
     stage: TENDER_STAGE_LABELS[s],
-    value: summary.find((r) => r.stage === s)?.count ?? 0,
+    value: summary.find((r) => r.stage === s)?.cumulative_count ?? 0,
     color: FUNNEL_COLORS[s],
   }));
 
@@ -122,13 +154,23 @@ function TenderWorkspace() {
             Bid pipeline, resourcing and win/loss tracking.
           </p>
         </div>
-        <NewTenderDialog />
+        <div className="flex gap-2">
+          <Link to="/tender/documents">
+            <Button size="sm" variant="outline">
+              <FileArchive className="h-4 w-4 mr-1" /> Mandatory documents library
+            </Button>
+          </Link>
+          <NewTenderDialog />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiCard label="Active tenders" value={activeCount.toLocaleString()} />
         <KpiCard label="Pipeline value" value={formatCurrency(pipelineValue)} />
-        <KpiCard label="Win rate" value={winRate != null ? `${(winRate * 100).toFixed(0)}%` : "—"} />
+        <KpiCard
+          label="Win rate"
+          value={winRate != null ? `${(winRate * 100).toFixed(0)}%` : "—"}
+        />
         <KpiCard label="Total tenders" value={totalTenders.toLocaleString()} />
       </div>
 
@@ -150,10 +192,24 @@ function TenderWorkspace() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="relative flex-1 min-w-40">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title…" className="pl-7" />
+              <Input
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search title…"
+                className="pl-7"
+              />
             </div>
             <div className="w-40">
-              <Select value={departmentId} onValueChange={setDepartmentId}>
+              <Select
+                value={departmentId}
+                onValueChange={(v) => {
+                  setDepartmentId(v);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -168,7 +224,13 @@ function TenderWorkspace() {
               </Select>
             </div>
             <div className="w-40">
-              <Select value={serviceLineId} onValueChange={setServiceLineId}>
+              <Select
+                value={serviceLineId}
+                onValueChange={(v) => {
+                  setServiceLineId(v);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -183,7 +245,13 @@ function TenderWorkspace() {
               </Select>
             </div>
             <div className="w-36">
-              <Select value={stage} onValueChange={(v) => setStage(v as TenderStage | "all")}>
+              <Select
+                value={stage}
+                onValueChange={(v) => {
+                  setStage(v as TenderStage | "all");
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -197,14 +265,23 @@ function TenderWorkspace() {
                 </SelectContent>
               </Select>
             </div>
+            <DateRangeFilter
+              value={dateRange}
+              onChange={(r) => {
+                setDateRange(r);
+                setPage(1);
+              }}
+            />
           </div>
 
           {tendersQ.isLoading ? (
             <div className="py-8 flex justify-center">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
-          ) : (tendersQ.data ?? []).length === 0 ? (
-            <div className="text-xs text-muted-foreground py-6 text-center">No tenders match these filters.</div>
+          ) : tenders.length === 0 ? (
+            <div className="text-xs text-muted-foreground py-6 text-center">
+              No tenders match these filters.
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -219,11 +296,13 @@ function TenderWorkspace() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(tendersQ.data ?? []).map((t) => (
+                  {tenders.map((t) => (
                     <TableRow
                       key={t.id}
                       className="cursor-pointer hover:bg-secondary/40"
-                      onClick={() => navigate({ to: "/tender/$tenderId", params: { tenderId: t.id } })}
+                      onClick={() =>
+                        navigate({ to: "/tender/$tenderId", params: { tenderId: t.id } })
+                      }
                     >
                       <TableCell className="font-medium">
                         <Link
@@ -234,7 +313,9 @@ function TenderWorkspace() {
                           {t.title}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-xs">{t.client_name ?? t.prospect_client_name ?? "—"}</TableCell>
+                      <TableCell className="text-xs">
+                        {t.client_name ?? t.prospect_client_name ?? "—"}
+                      </TableCell>
                       <TableCell className="text-xs">{t.department_name}</TableCell>
                       <TableCell>
                         <Badge className={TENDER_STAGE_STYLES[t.stage]} variant="secondary">
@@ -243,12 +324,21 @@ function TenderWorkspace() {
                       </TableCell>
                       <TableCell className="text-xs">{t.submission_deadline ?? "—"}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">
-                        {t.estimated_value != null ? formatCurrency(t.estimated_value, t.currency) : "—"}
+                        {t.estimated_value != null
+                          ? formatCurrency(t.estimated_value, t.currency)
+                          : "—"}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              <PaginationBar
+                page={page}
+                pageSize={pageSize}
+                total={tendersTotal}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+              />
             </div>
           )}
         </div>
@@ -265,11 +355,19 @@ function TenderWorkspace() {
             <div className="grid grid-cols-2 gap-3 md:col-span-1">
               <KpiCard
                 label="Avg. days to submit"
-                value={timeMetricsQ.data?.avg_days_to_submit != null ? `${timeMetricsQ.data.avg_days_to_submit}d` : "—"}
+                value={
+                  timeMetricsQ.data?.avg_days_to_submit != null
+                    ? `${timeMetricsQ.data.avg_days_to_submit}d`
+                    : "—"
+                }
               />
               <KpiCard
                 label="Avg. days to decide"
-                value={timeMetricsQ.data?.avg_days_to_decision != null ? `${timeMetricsQ.data.avg_days_to_decision}d` : "—"}
+                value={
+                  timeMetricsQ.data?.avg_days_to_decision != null
+                    ? `${timeMetricsQ.data.avg_days_to_decision}d`
+                    : "—"
+                }
               />
             </div>
             <div className="md:col-span-2">
@@ -327,7 +425,7 @@ function NewTenderDialog() {
   const [submissionDeadline, setSubmissionDeadline] = useState("");
   const [description, setDescription] = useState("");
 
-  const departmentsQ = useDepartments();
+  const departmentsQ = useEligibleDepartments();
   const clientsQ = useClients();
   const serviceLinesQ = useServiceLines();
   const save = useSaveTender();
@@ -354,7 +452,8 @@ function NewTenderDialog() {
         title: title.trim(),
         department_id: departmentId,
         client_id: clientMode === "existing" ? clientId || undefined : undefined,
-        prospect_client_name: clientMode === "prospect" ? prospectClientName.trim() || undefined : undefined,
+        prospect_client_name:
+          clientMode === "prospect" ? prospectClientName.trim() || undefined : undefined,
         service_line_id: serviceLineId || undefined,
         estimated_value: estimatedValue ? Number(estimatedValue) : undefined,
         submission_deadline: submissionDeadline || undefined,
@@ -471,7 +570,11 @@ function NewTenderDialog() {
           </div>
           <div>
             <Label>Description</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
           </div>
         </div>
         <DialogFooter>

@@ -1,5 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { apiFetch, apiJson } from "@/lib/api-client";
+import { useAuth, type AppRole } from "@/lib/auth";
+import type { PaginatedResponse } from "@/hooks/use-pagination";
 
 export type ContractStatus = "draft" | "active" | "on_hold" | "expired" | "terminated";
 export type BillingFrequency = "one_off" | "monthly" | "quarterly" | "annual";
@@ -140,6 +142,12 @@ export interface ContractRow {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  tender_id: string | null;
+  tender_title: string | null;
+  client_request_id: string | null;
+  client_request_title: string | null;
+  project_ids: { id: string; name: string }[];
+  invoice_count: number | null;
 }
 
 export interface ContractDocumentRow {
@@ -191,6 +199,10 @@ type BackendContract = {
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
+  tender?: { id: string; referenceNumber: string | null; title: string } | null;
+  clientRequest?: { id: string; referenceNumber: string | null; title: string } | null;
+  projects?: { id: string; name: string }[];
+  _count?: { invoices: number };
 };
 
 const toDateOnly = (iso: string) => iso.slice(0, 10);
@@ -217,6 +229,14 @@ function mapContract(c: BackendContract): ContractRow {
     created_by: c.createdBy,
     created_at: c.createdAt,
     updated_at: c.updatedAt,
+    tender_id: c.tender?.id ?? null,
+    tender_title: c.tender ? (c.tender.referenceNumber ?? c.tender.title) : null,
+    client_request_id: c.clientRequest?.id ?? null,
+    client_request_title: c.clientRequest
+      ? (c.clientRequest.referenceNumber ?? c.clientRequest.title)
+      : null,
+    project_ids: c.projects ?? [],
+    invoice_count: c._count?.invoices ?? null,
   };
 }
 
@@ -278,11 +298,69 @@ function mapDocument(d: BackendDocument): ContractDocumentRow {
 
 /* ---------- Queries ---------- */
 
-export function useContracts(filters?: { departmentId?: string | null }) {
-  const qs = filters?.departmentId ? `?departmentId=${filters.departmentId}` : "";
+type ContractFilters = { departmentId?: string | null; status?: ContractStatus; q?: string };
+
+// See useTenders' matching overload comment (features/tender/use-tender.ts) — same reasoning.
+export function useContracts(filters?: ContractFilters): UseQueryResult<ContractRow[]>;
+export function useContracts(
+  filters: ContractFilters,
+  pagination: { page: number; pageSize: number },
+): UseQueryResult<ContractRow[] | PaginatedResponse<ContractRow>>;
+export function useContracts(
+  filters: ContractFilters = {},
+  pagination: { page?: number; pageSize?: number } = {},
+) {
   return useQuery({
-    queryKey: ["contracts", filters?.departmentId ?? "all"],
-    queryFn: async () => (await apiJson<BackendContract[]>(`/contracts${qs}`)).map(mapContract),
+    queryKey: ["contracts", filters, pagination],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (filters.departmentId) params.set("departmentId", filters.departmentId);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.q) params.set("q", filters.q);
+      if (pagination.page) params.set("page", String(pagination.page));
+      if (pagination.pageSize) params.set("pageSize", String(pagination.pageSize));
+      const qs = params.toString();
+      const raw = await apiJson<BackendContract[] | PaginatedResponse<BackendContract>>(
+        `/contracts${qs ? `?${qs}` : ""}`,
+      );
+      return Array.isArray(raw)
+        ? raw.map(mapContract)
+        : { ...raw, data: raw.data.map(mapContract) };
+    },
+  });
+}
+
+export interface ContractsSummary {
+  count: number;
+  value: number;
+  active_count: number;
+  active_value: number;
+}
+
+export function useContractsSummary(
+  filters: { departmentId?: string | null; status?: ContractStatus; q?: string } = {},
+) {
+  return useQuery({
+    queryKey: ["contracts", "summary", filters],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (filters.departmentId) params.set("departmentId", filters.departmentId);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.q) params.set("q", filters.q);
+      const qs = params.toString();
+      const raw = await apiJson<{
+        count: number;
+        value: number | string;
+        activeCount: number;
+        activeValue: number | string;
+      }>(`/contracts/summary${qs ? `?${qs}` : ""}`);
+      return {
+        count: raw.count,
+        value: Number(raw.value),
+        active_count: raw.activeCount,
+        active_value: Number(raw.activeValue),
+      } satisfies ContractsSummary;
+    },
   });
 }
 
@@ -323,6 +401,20 @@ export function useDepartments() {
         .sort((a, b) => a.name.localeCompare(b.name));
     },
   });
+}
+
+// The full department list narrowed to ones the current viewer can actually create/assign
+// records under — admin/CEO see all, everyone else only their own department(s). Use this
+// (never the raw useDepartments() list) for any dropdown that ASSIGNS a department to a new or
+// edited record; a pure browse/filter dropdown, or a "grant access to department X" picker where
+// X isn't the viewer's own department, should keep using useDepartments() directly.
+export function useEligibleDepartments() {
+  const departmentsQ = useDepartments();
+  const { isAdminOrCeo, hasRole } = useAuth();
+  const eligible = (departmentsQ.data ?? []).filter(
+    (d) => isAdminOrCeo || hasRole(d.code as AppRole),
+  );
+  return { ...departmentsQ, data: eligible };
 }
 
 export function useOffices() {

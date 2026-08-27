@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, apiJson } from "@/lib/api-client";
 
-export type DocumentResourceType = "project" | "task" | "finance_report" | "tender" | "client_request";
+export type DocumentResourceType =
+  "project" | "task" | "finance_report" | "tender" | "client_request" | "tender_document_library";
 export type LibraryResourceType = DocumentResourceType | "contract";
 export type DocumentAccessType = "everyone" | "department" | "user";
 
@@ -12,6 +13,7 @@ export const RESOURCE_TYPE_LABELS: Record<LibraryResourceType, string> = {
   tender: "Tender",
   client_request: "Client request",
   contract: "Contract",
+  tender_document_library: "Mandatory documents library",
 };
 
 export const ACCESS_TYPE_LABELS: Record<DocumentAccessType, string> = {
@@ -157,6 +159,7 @@ export interface DocumentFilters {
   tag?: string;
   q?: string;
   mine?: boolean;
+  sharedWithMe?: boolean;
 }
 
 function buildQuery(filters: DocumentFilters): string {
@@ -167,6 +170,7 @@ function buildQuery(filters: DocumentFilters): string {
   if (filters.tag) params.set("tag", filters.tag);
   if (filters.q) params.set("q", filters.q);
   if (filters.mine) params.set("mine", "true");
+  if (filters.sharedWithMe) params.set("sharedWithMe", "true");
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
@@ -220,6 +224,7 @@ export function useUploadDocument() {
       description?: string;
       category?: string;
       tags?: string[];
+      access?: { accessType: DocumentAccessType; departmentId?: string; userId?: string }[];
     }) => {
       const form = new FormData();
       form.append("file", input.file);
@@ -229,6 +234,7 @@ export function useUploadDocument() {
       if (input.description) form.append("description", input.description);
       if (input.category) form.append("category", input.category);
       if (input.tags && input.tags.length > 0) form.append("tags", input.tags.join(","));
+      if (input.access) form.append("access", JSON.stringify(input.access));
       const res = await apiFetch("/documents", { method: "POST", body: form });
       if (!res.ok) throw new Error(`Upload failed (${res.status})`);
       return mapDocument(await res.json());
@@ -243,7 +249,10 @@ export function useUploadNewVersion() {
     mutationFn: async ({ documentId, file }: { documentId: string; file: File }) => {
       const form = new FormData();
       form.append("file", file);
-      const res = await apiFetch(`/documents/${documentId}/versions`, { method: "POST", body: form });
+      const res = await apiFetch(`/documents/${documentId}/versions`, {
+        method: "POST",
+        body: form,
+      });
       if (!res.ok) throw new Error(`Upload failed (${res.status})`);
       return mapDocument(await res.json());
     },

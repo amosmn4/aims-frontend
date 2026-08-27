@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { Download, File, History, Share2, Trash2 } from "lucide-react";
 import {
   downloadDocument,
@@ -80,8 +81,14 @@ function DocumentRowItem({
       toast.error(err instanceof Error ? err.message : "Download failed"),
     );
 
-  const handleDelete = () => {
-    if (!confirm(`Delete "${doc.title}"? This removes all versions.`)) return;
+  const handleDelete = async () => {
+    const ok = await confirmDialog({
+      title: `Delete "${doc.title}"?`,
+      description: "This removes all versions.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     setDeleting(true);
     onDelete(doc);
   };
@@ -112,7 +119,12 @@ function DocumentRowItem({
           <Download className="h-4 w-4" />
         </Button>
         {doc.resource_type !== "contract" && (
-          <Button size="icon" variant="ghost" onClick={() => onShowVersions(doc)} title="Version history">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => onShowVersions(doc)}
+            title="Version history"
+          >
             <History className="h-4 w-4" />
           </Button>
         )}

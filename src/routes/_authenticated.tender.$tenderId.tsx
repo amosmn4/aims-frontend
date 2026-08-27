@@ -1,13 +1,18 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2, Upload, Eye, Download } from "lucide-react";
 import { RequireRole } from "@/components/require-role";
+import { confirmDialog } from "@/components/confirm-dialog";
 import { useAuth } from "@/lib/auth";
 import {
   useTender,
   useUpdateTenderStage,
+  useSaveTender,
+  useDeleteTender,
   useConvertToContract,
+  useConvertTenderToProject,
   useTenderResources,
   useSaveTenderResource,
   useDeleteTenderResource,
@@ -15,9 +20,6 @@ import {
   useLogTime,
   useDeleteTimeEntry,
   useTenderCostSummary,
-  useTenderCostItems,
-  useSaveTenderCostItem,
-  useDeleteTenderCostItem,
   useTenderBonds,
   useSaveTenderBond,
   useDeleteTenderBond,
@@ -29,12 +31,12 @@ import {
   useSaveTenderRequirement,
   useDeleteTenderRequirement,
   useApplyRequirementTemplate,
+  useApplyLibraryDocument,
   useSaveRequirementsAsTemplate,
   useRequirementTemplates,
   TENDER_STAGES,
   TENDER_STAGE_LABELS,
   TENDER_STAGE_STYLES,
-  TENDER_COST_CATEGORY_SUGGESTIONS,
   TENDER_BOND_TYPE_LABELS,
   TENDER_BOND_STATUS_LABELS,
   TENDER_BOND_STATUS_STYLES,
@@ -45,16 +47,30 @@ import {
   type TenderBondStatus,
   type TenderRequirementStatus,
   type TenderRequirementRow,
+  type TenderRow,
 } from "@/features/tender/use-tender";
-import { useProfilesLite } from "@/features/clients/use-clients-contracts";
+import { useEligibleDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
+import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
+import { ClientPicker } from "@/features/clients/client-picker";
 import { formatCurrency } from "@/features/finance/finance";
 import { AttachmentsPanel } from "@/features/documents/attachments-panel";
-import { useDocuments } from "@/features/documents/use-documents";
+import {
+  useDocuments,
+  useUploadDocument,
+  useDeleteDocument,
+  downloadDocument,
+  formatFileSize,
+  type DocumentRow,
+} from "@/features/documents/use-documents";
+import { apiFetch } from "@/lib/api-client";
+import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
+import { EntityBreadcrumb, type BreadcrumbSegment } from "@/components/entity-breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -92,11 +108,39 @@ export const Route = createFileRoute("/_authenticated/tender/$tenderId")({
   ),
 });
 
+function buildTenderRelated(tender: ReturnType<typeof useTender>["data"]): RelatedRecordItem[] {
+  if (!tender) return [];
+  const items: RelatedRecordItem[] = [];
+  if (tender.contract_id) {
+    items.push({
+      label: "Converted Contract",
+      title: tender.contract_number ?? "Contract",
+      to: `/clients/contracts/${tender.contract_id}`,
+    });
+  }
+  if (tender.project_id) {
+    items.push({
+      label: "Delivery Project",
+      title: tender.project_name ?? "Project",
+      to: `/projects/${tender.project_id}`,
+    });
+  }
+  return items;
+}
+
+function buildTenderBreadcrumb(tender: ReturnType<typeof useTender>["data"]): BreadcrumbSegment[] {
+  if (!tender) return [];
+  return [{ label: "Tender Records", to: "/tender" }, { label: tender.title }];
+}
+
 function TenderDetail() {
   const { tenderId } = Route.useParams();
+  const navigate = useNavigate();
   const { hasRole, isAdminOrCeo } = useAuth();
   const tenderQ = useTender(tenderId);
   const updateStage = useUpdateTenderStage();
+  const deleteTender = useDeleteTender();
+  const [editing, setEditing] = useState(false);
 
   if (tenderQ.isLoading) {
     return (
@@ -108,13 +152,28 @@ function TenderDetail() {
   const tender = tenderQ.data;
   if (!tender) return <div className="text-sm text-muted-foreground">Tender not found.</div>;
 
-  const canManage = isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing_ops", "tender"]);
+  const canManage = isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing", "tender"]);
 
   const changeStage = (stage: TenderStage) => {
-    if (stage === "lost") {
-      const reason = window.prompt("Reason the tender was lost (optional):") ?? undefined;
+    if (stage === "lost" || stage === "cancelled") {
+      const reason =
+        window.prompt(
+          stage === "lost"
+            ? "Reason the tender was lost (optional):"
+            : "Reason the tender was cancelled (optional):",
+        ) ?? undefined;
       updateStage.mutate(
         { id: tender.id, stage, lost_reason: reason },
+        { onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed") },
+      );
+      return;
+    }
+    if (stage === "won") {
+      const today = new Date().toISOString().slice(0, 10);
+      const input = window.prompt("Date awarded (YYYY-MM-DD):", today);
+      if (input === null) return; // cancelled
+      updateStage.mutate(
+        { id: tender.id, stage, won_at: input.trim() || today },
         { onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed") },
       );
       return;
@@ -125,14 +184,52 @@ function TenderDetail() {
     );
   };
 
+  const handleDelete = async () => {
+    const ok = await confirmDialog({
+      title: `Delete "${tender.title}"?`,
+      description:
+        "This removes the tender and everything tracked against it. This can't be undone.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteTender.mutate(tender.id, {
+      onSuccess: () => {
+        toast.success("Tender deleted");
+        navigate({ to: "/tender" });
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
+    });
+  };
+
   return (
     <div className="space-y-4">
-      <Link
-        to="/tender"
-        className="text-xs text-muted-foreground inline-flex items-center gap-1 hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" /> Back to Tender
-      </Link>
+      <div className="flex items-start justify-between gap-2">
+        <EntityBreadcrumb segments={buildTenderBreadcrumb(tender)} />
+        <div className="flex gap-1 shrink-0">
+          {canManage && (
+            <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+            </Button>
+          )}
+          {isAdminOrCeo && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive"
+              disabled={deleteTender.isPending}
+              onClick={handleDelete}
+            >
+              {deleteTender.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+              )}
+              Delete
+            </Button>
+          )}
+        </div>
+      </div>
 
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -173,23 +270,68 @@ function TenderDetail() {
               </div>
             )}
             {tender.submission_deadline && (
-              <div className="text-xs text-muted-foreground">Deadline {tender.submission_deadline}</div>
+              <div className="text-xs text-muted-foreground">
+                Deadline {tender.submission_deadline}
+              </div>
+            )}
+            {tender.stage === "won" && tender.won_at && (
+              <div className="text-xs text-muted-foreground">
+                Awarded {tender.won_at.slice(0, 10)}
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => changeStage("won")}
+                    className="ml-1.5 text-primary hover:underline"
+                    title="Change the awarded date"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
 
         {tender.stage === "won" && canManage && (
-          <div className="mt-3 pt-3 border-t">
-            {tender.contract_id ? (
-              <div className="text-xs text-success">
-                Converted to contract {tender.contract_number ?? tender.contract_id}
-              </div>
+          <div className="mt-3 pt-3 border-t flex flex-wrap items-center gap-3">
+            {tender.project_id ? (
+              <Link
+                to="/projects/$projectId"
+                params={{ projectId: tender.project_id }}
+                className="text-xs text-success underline hover:opacity-80"
+              >
+                Forwarded to delivery project {tender.project_name ?? ""} →
+              </Link>
             ) : (
-              <ConvertToContractDialog tenderId={tender.id} defaultValue={tender.estimated_value} />
+              <ConvertToProjectDialog
+                tenderId={tender.id}
+                defaultClientId={tender.client_id}
+                prospectClientName={tender.prospect_client_name}
+              />
+            )}
+            {tender.contract_id ? (
+              <Link
+                to="/clients/contracts/$id"
+                params={{ id: tender.contract_id }}
+                className="text-xs text-success underline hover:opacity-80"
+              >
+                Converted to contract {tender.contract_number ?? tender.contract_id} →
+              </Link>
+            ) : (
+              <ConvertToContractDialog
+                tenderId={tender.id}
+                defaultClientId={tender.client_id}
+                defaultValue={tender.estimated_value}
+              />
             )}
           </div>
         )}
       </div>
+
+      <RelatedRecords
+        items={buildTenderRelated(tender)}
+        engagementTo={`/engagements/tender/${tender.id}`}
+      />
 
       <Tabs defaultValue="resources">
         <TabsList>
@@ -203,7 +345,11 @@ function TenderDetail() {
           <ResourcesTab tenderId={tender.id} canManage={canManage} />
         </TabsContent>
         <TabsContent value="financials">
-          <FinancialsTab tenderId={tender.id} canManage={canManage} estimatedValue={tender.estimated_value} />
+          <FinancialsTab
+            tenderId={tender.id}
+            canManage={canManage}
+            estimatedValue={tender.estimated_value}
+          />
         </TabsContent>
         <TabsContent value="requirements">
           <RequirementsTab tenderId={tender.id} canManage={canManage} />
@@ -215,7 +361,170 @@ function TenderDetail() {
           <AttachmentsPanel resourceType="tender" resourceId={tender.id} canManage={canManage} />
         </TabsContent>
       </Tabs>
+
+      {editing && <EditTenderDialog tender={tender} onClose={() => setEditing(false)} />}
     </div>
+  );
+}
+
+function EditTenderDialog({ tender, onClose }: { tender: TenderRow; onClose: () => void }) {
+  const [title, setTitle] = useState(tender.title);
+  const [departmentId, setDepartmentId] = useState(tender.department_id);
+  const [clientMode, setClientMode] = useState<"existing" | "prospect">(
+    tender.client_id ? "existing" : "prospect",
+  );
+  const [clientId, setClientId] = useState(tender.client_id ?? "");
+  const [prospectClientName, setProspectClientName] = useState(tender.prospect_client_name ?? "");
+  const [serviceLineId, setServiceLineId] = useState(tender.service_line_id ?? "");
+  const [estimatedValue, setEstimatedValue] = useState(
+    tender.estimated_value != null ? String(tender.estimated_value) : "",
+  );
+  const [submissionDeadline, setSubmissionDeadline] = useState(tender.submission_deadline ?? "");
+  const [description, setDescription] = useState(tender.description ?? "");
+
+  const departmentsQ = useEligibleDepartments();
+  const clientsQ = useClients();
+  const serviceLinesQ = useServiceLines();
+  const save = useSaveTender();
+
+  const submit = () => {
+    if (!title.trim() || !departmentId) {
+      toast.error("Title and department are required");
+      return;
+    }
+    save.mutate(
+      {
+        id: tender.id,
+        title: title.trim(),
+        department_id: departmentId,
+        client_id: clientMode === "existing" ? clientId || undefined : undefined,
+        prospect_client_name:
+          clientMode === "prospect" ? prospectClientName.trim() || undefined : undefined,
+        service_line_id: serviceLineId || undefined,
+        estimated_value: estimatedValue ? Number(estimatedValue) : undefined,
+        submission_deadline: submissionDeadline || undefined,
+        description: description || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Tender updated");
+          onClose();
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save"),
+      },
+    );
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit tender</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Title</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Department</Label>
+              <Select value={departmentId} onValueChange={setDepartmentId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(departmentsQ.data ?? []).map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <div className="flex items-center justify-between">
+                <Label>Client (optional)</Label>
+                <button
+                  type="button"
+                  onClick={() => setClientMode(clientMode === "existing" ? "prospect" : "existing")}
+                  className="text-[0.6875rem] text-primary hover:underline"
+                >
+                  {clientMode === "existing" ? "+ New company" : "Pick existing client"}
+                </button>
+              </div>
+              {clientMode === "existing" ? (
+                <Select value={clientId} onValueChange={setClientId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Not yet known" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(clientsQ.data ?? []).map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={prospectClientName}
+                  onChange={(e) => setProspectClientName(e.target.value)}
+                  placeholder="Company name (not in system yet)"
+                />
+              )}
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label>Service line</Label>
+              <Select value={serviceLineId} onValueChange={setServiceLineId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Optional" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(serviceLinesQ.data ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Est. value</Label>
+              <Input
+                type="number"
+                value={estimatedValue}
+                onChange={(e) => setEstimatedValue(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Deadline</Label>
+              <Input
+                type="date"
+                value={submissionDeadline}
+                onChange={(e) => setSubmissionDeadline(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Description</Label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={submit} disabled={save.isPending}>
+            {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Save changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -234,7 +543,9 @@ function ResourcesTab({ tenderId, canManage }: { tenderId: string; canManage: bo
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
       ) : (resourcesQ.data ?? []).length === 0 ? (
-        <div className="text-xs text-muted-foreground py-4 text-center">No resources assigned yet.</div>
+        <div className="text-xs text-muted-foreground py-4 text-center">
+          No resources assigned yet.
+        </div>
       ) : (
         <Table>
           <TableHeader>
@@ -250,7 +561,9 @@ function ResourcesTab({ tenderId, canManage }: { tenderId: string; canManage: bo
             {(resourcesQ.data ?? []).map((r) => (
               <TableRow key={r.id}>
                 <TableCell className="text-sm">{r.user_name}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{r.role_note ?? "—"}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {r.role_note ?? "—"}
+                </TableCell>
                 <TableCell className="text-right text-xs tabular-nums">
                   {r.allocated_hours ?? "—"}
                 </TableCell>
@@ -360,7 +673,11 @@ function AddResourceDialog({ tenderId }: { tenderId: string }) {
             </div>
             <div>
               <Label>Hourly rate</Label>
-              <Input type="number" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} />
+              <Input
+                type="number"
+                value={hourlyRate}
+                onChange={(e) => setHourlyRate(e.target.value)}
+              />
             </div>
           </div>
         </div>
@@ -384,8 +701,14 @@ function TimeTrackingTab({ tenderId, canManage }: { tenderId: string; canManage:
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <CostCard label="Budgeted cost" value={costQ.data ? formatCurrency(costQ.data.budgeted_cost) : "—"} />
-        <CostCard label="Actual cost" value={costQ.data ? formatCurrency(costQ.data.actual_cost) : "—"} />
+        <CostCard
+          label="Budgeted cost"
+          value={costQ.data ? formatCurrency(costQ.data.budgeted_cost) : "—"}
+        />
+        <CostCard
+          label="Actual cost"
+          value={costQ.data ? formatCurrency(costQ.data.actual_cost) : "—"}
+        />
         <CostCard
           label="Hours logged"
           value={costQ.data ? costQ.data.actual_hours.toLocaleString() : "—"}
@@ -507,7 +830,12 @@ function LogTimeDialog({ tenderId }: { tenderId: string }) {
             </div>
             <div>
               <Label>Hours</Label>
-              <Input type="number" step="0.25" value={hours} onChange={(e) => setHours(e.target.value)} />
+              <Input
+                type="number"
+                step="0.25"
+                value={hours}
+                onChange={(e) => setHours(e.target.value)}
+              />
             </div>
           </div>
           <div>
@@ -526,19 +854,95 @@ function LogTimeDialog({ tenderId }: { tenderId: string }) {
   );
 }
 
+function ConvertToProjectDialog({
+  tenderId,
+  defaultClientId,
+  prospectClientName,
+}: {
+  tenderId: string;
+  defaultClientId: string | null;
+  prospectClientName: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [clientId, setClientId] = useState(defaultClientId ?? "");
+  const convert = useConvertTenderToProject();
+
+  const submit = () => {
+    if (!defaultClientId && !clientId) {
+      toast.error("Choose a client — a delivery project needs a real client on file");
+      return;
+    }
+    convert.mutate(
+      { tenderId, name: name.trim() || undefined, clientId: clientId || undefined },
+      {
+        onSuccess: () => {
+          toast.success("Forwarded to a delivery project");
+          setOpen(false);
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Conversion failed"),
+      },
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm">Forward to department (project)</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Forward to department as a delivery project</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Project name (optional)</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Defaults to tender title"
+            />
+          </div>
+          {!defaultClientId && (
+            <div>
+              <Label>Client</Label>
+              <ClientPicker value={clientId} onChange={setClientId} />
+              {prospectClientName && !clientId && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  This tender was tracked against prospect "{prospectClientName}" — create or select
+                  their real client record to proceed.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button onClick={submit} disabled={convert.isPending}>
+            {convert.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Forward
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ConvertToContractDialog({
   tenderId,
+  defaultClientId,
   defaultValue,
 }: {
   tenderId: string;
+  defaultClientId: string | null;
   defaultValue: number | null;
 }) {
   const [open, setOpen] = useState(false);
   const [contractNumber, setContractNumber] = useState("");
-  const [billingFrequency, setBillingFrequency] = useState<"one_off" | "monthly" | "quarterly" | "annual">(
-    "one_off",
-  );
+  const [billingFrequency, setBillingFrequency] = useState<
+    "one_off" | "monthly" | "quarterly" | "annual"
+  >("one_off");
   const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [clientId, setClientId] = useState(defaultClientId ?? "");
 
   const convert = useConvertToContract();
 
@@ -547,8 +951,18 @@ function ConvertToContractDialog({
       toast.error("Contract number is required");
       return;
     }
+    if (!defaultClientId && !clientId) {
+      toast.error("Choose a client — a contract needs a real client on file");
+      return;
+    }
     convert.mutate(
-      { tenderId, contractNumber: contractNumber.trim(), billingFrequency, startDate },
+      {
+        tenderId,
+        contractNumber: contractNumber.trim(),
+        billingFrequency,
+        startDate,
+        clientId: clientId || undefined,
+      },
       {
         onSuccess: () => {
           toast.success("Converted to contract");
@@ -562,7 +976,9 @@ function ConvertToContractDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm">Convert to contract</Button>
+        <Button size="sm" variant="outline">
+          Convert to contract
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -573,10 +989,19 @@ function ConvertToContractDialog({
             <Label>Contract number</Label>
             <Input value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} />
           </div>
+          {!defaultClientId && (
+            <div>
+              <Label>Client</Label>
+              <ClientPicker value={clientId} onChange={setClientId} />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Billing frequency</Label>
-              <Select value={billingFrequency} onValueChange={(v) => setBillingFrequency(v as typeof billingFrequency)}>
+              <Select
+                value={billingFrequency}
+                onValueChange={(v) => setBillingFrequency(v as typeof billingFrequency)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -595,7 +1020,8 @@ function ConvertToContractDialog({
           </div>
           {defaultValue != null && (
             <p className="text-xs text-muted-foreground">
-              Contract value defaults to the tender's estimated value ({formatCurrency(defaultValue)}).
+              Contract value defaults to the tender's estimated value (
+              {formatCurrency(defaultValue)}).
             </p>
           )}
         </div>
@@ -630,154 +1056,336 @@ function FinancialsTab({
           label="Cost to pursue"
           value={summaryQ.data ? formatCurrency(summaryQ.data.total_cost_to_pursue) : "—"}
         />
-        <CostCard label="Bid price" value={summaryQ.data ? formatCurrency(summaryQ.data.bid_price) : "—"} />
-        <CostCard label="Bonds" value={summaryQ.data ? formatCurrency(summaryQ.data.bonds_total) : "—"} />
-        <CostCard label="Estimated value" value={estimatedValue != null ? formatCurrency(estimatedValue) : "—"} />
+        <CostCard
+          label="Bid price"
+          value={summaryQ.data ? formatCurrency(summaryQ.data.bid_price) : "—"}
+        />
+        <CostCard
+          label="Bonds"
+          value={summaryQ.data ? formatCurrency(summaryQ.data.bonds_total) : "—"}
+        />
+        <CostCard
+          label="Estimated value"
+          value={estimatedValue != null ? formatCurrency(estimatedValue) : "—"}
+        />
       </div>
 
-      <CostItemsSection tenderId={tenderId} canManage={canManage} />
       <BondsSection tenderId={tenderId} canManage={canManage} />
       <PricingItemsSection tenderId={tenderId} canManage={canManage} />
+      <FinancialBreakdownSection tenderId={tenderId} canManage={canManage} />
     </div>
   );
 }
 
-function CostItemsSection({ tenderId, canManage }: { tenderId: string; canManage: boolean }) {
-  const itemsQ = useTenderCostItems(tenderId);
-  const deleteItem = useDeleteTenderCostItem(tenderId);
-  const total = (itemsQ.data ?? []).reduce((sum, i) => sum + i.amount, 0);
+const FINANCIAL_BREAKDOWN_TAG = "financial_breakdown";
+
+function FinancialBreakdownSection({
+  tenderId,
+  canManage,
+}: {
+  tenderId: string;
+  canManage: boolean;
+}) {
+  const documentsQ = useDocuments({
+    resourceType: "tender",
+    resourceId: tenderId,
+    tag: FINANCIAL_BREAKDOWN_TAG,
+  });
+  const deleteDocument = useDeleteDocument();
+  const [previewDoc, setPreviewDoc] = useState<DocumentRow | null>(null);
+  const docs = documentsQ.data ?? [];
 
   return (
     <div className="rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold">Cost items (pursuing this bid)</div>
-        {canManage && <CostItemDialog tenderId={tenderId} />}
+        <div>
+          <div className="text-sm font-semibold">Financial breakdown upload</div>
+          <div className="text-xs text-muted-foreground">
+            Attach the pricing spreadsheet or document prepared for this bid.
+          </div>
+        </div>
+        {canManage && <FinancialBreakdownUploadDialog tenderId={tenderId} />}
       </div>
-      {itemsQ.isLoading ? (
+      {documentsQ.isLoading ? (
         <div className="py-6 flex justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
-      ) : (itemsQ.data ?? []).length === 0 ? (
-        <div className="text-xs text-muted-foreground py-4 text-center">No cost items yet.</div>
+      ) : docs.length === 0 ? (
+        <div className="text-xs text-muted-foreground py-4 text-center">
+          No financial breakdown uploaded yet.
+        </div>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Description</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              {canManage && <TableHead />}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(itemsQ.data ?? []).map((i) => (
-              <TableRow key={i.id}>
-                <TableCell className="text-sm">{i.description}</TableCell>
-                <TableCell className="text-xs text-muted-foreground capitalize">{i.category}</TableCell>
-                <TableCell className="text-right text-xs tabular-nums">{formatCurrency(i.amount)}</TableCell>
+        <div className="space-y-2">
+          {docs.map((doc) => (
+            <div
+              key={doc.id}
+              className="flex items-center justify-between gap-2 rounded-md border px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">{doc.title}</div>
+                <div className="text-xs text-muted-foreground">
+                  {doc.latest_version ? formatFileSize(doc.latest_version.size_bytes) : "—"}
+                  {" · "}
+                  {new Date(doc.created_at).toLocaleDateString()}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Preview"
+                  onClick={() => setPreviewDoc(doc)}
+                >
+                  <Eye className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Download"
+                  onClick={() =>
+                    downloadDocument(doc).catch((err) =>
+                      toast.error(err instanceof Error ? err.message : "Could not open file"),
+                    )
+                  }
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
                 {canManage && (
-                  <TableCell className="text-right">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() =>
-                        deleteItem.mutate(i.id, {
-                          onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to delete"),
-                        })
-                      }
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </TableCell>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Delete"
+                    onClick={() =>
+                      deleteDocument.mutate(doc.id, {
+                        onError: (err) =>
+                          toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                      })
+                    }
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
                 )}
-              </TableRow>
-            ))}
-            <TableRow>
-              <TableCell className="text-xs font-semibold" colSpan={2}>
-                Total
-              </TableCell>
-              <TableCell className="text-right text-xs font-semibold tabular-nums">
-                {formatCurrency(total)}
-              </TableCell>
-              {canManage && <TableCell />}
-            </TableRow>
-          </TableBody>
-        </Table>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
+      <FinancialBreakdownPreviewDialog doc={previewDoc} onClose={() => setPreviewDoc(null)} />
     </div>
   );
 }
 
-function CostItemDialog({ tenderId }: { tenderId: string }) {
+function FinancialBreakdownUploadDialog({ tenderId }: { tenderId: string }) {
   const [open, setOpen] = useState(false);
-  const [category, setCategory] = useState("other");
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const save = useSaveTenderCostItem(tenderId);
+  const [title, setTitle] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const upload = useUploadDocument();
 
   const submit = () => {
-    if (!description.trim() || !amount) {
-      toast.error("Description and amount are required");
+    if (!file) {
+      toast.error("Choose a file to upload");
       return;
     }
-    save.mutate(
-      { category, description: description.trim(), amount: Number(amount) },
+    upload.mutate(
+      {
+        file,
+        resourceType: "tender",
+        resourceId: tenderId,
+        title: title.trim() || undefined,
+        category: "financial_breakdown",
+        tags: [FINANCIAL_BREAKDOWN_TAG],
+      },
       {
         onSuccess: () => {
-          toast.success("Cost item added");
+          toast.success("Financial breakdown uploaded");
           setOpen(false);
-          setDescription("");
-          setAmount("");
+          setTitle("");
+          setFile(null);
         },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to add"),
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Upload failed"),
       },
     );
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) {
+          setTitle("");
+          setFile(null);
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button size="sm" variant="outline">
-          <Plus className="h-4 w-4 mr-1" /> Add cost item
+          <Upload className="h-4 w-4 mr-1" /> Upload breakdown
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add cost item</DialogTitle>
+          <DialogTitle>Upload financial breakdown</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <Label>Description</Label>
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Label>Title (optional)</Label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Defaults to the file name"
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Category</Label>
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TENDER_COST_CATEGORY_SUGGESTIONS.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c[0].toUpperCase() + c.slice(1)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Amount</Label>
-              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            </div>
+          <div>
+            <Label>File</Label>
+            <Input
+              type="file"
+              accept=".xlsx,.xls,.csv,.pdf,image/*"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={submit} disabled={save.isPending}>
-            {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Add
+          <Button onClick={submit} disabled={upload.isPending}>
+            {upload.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Upload
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type PreviewKind = "excel" | "pdf" | "image" | "unsupported";
+
+function FinancialBreakdownPreviewDialog({
+  doc,
+  onClose,
+}: {
+  doc: DocumentRow | null;
+  onClose: () => void;
+}) {
+  const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [kind, setKind] = useState<PreviewKind | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!doc) {
+      setRows(null);
+      setBlobUrl(null);
+      setKind(null);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const res = await apiFetch(`/documents/${doc.id}/download`);
+        if (!res.ok) throw new Error(`Could not open file (${res.status})`);
+        const blob = await res.blob();
+        if (cancelled) return;
+        const fileName = doc.latest_version?.file_name ?? doc.title;
+        const mime = doc.latest_version?.mime_type ?? blob.type;
+        const isExcel =
+          /\.(xlsx|xls|csv)$/i.test(fileName) || /spreadsheet|ms-excel|csv/i.test(mime ?? "");
+        const isPdf = /\.pdf$/i.test(fileName) || mime === "application/pdf";
+        const isImage = /^image\//.test(mime ?? "") || /\.(png|jpe?g|gif|webp)$/i.test(fileName);
+
+        if (isExcel) {
+          const buf = await blob.arrayBuffer();
+          const wb = XLSX.read(buf, { type: "array" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+          if (cancelled) return;
+          setRows(json.slice(0, 200));
+          setKind("excel");
+        } else if (isPdf || isImage) {
+          setBlobUrl(URL.createObjectURL(blob));
+          setKind(isPdf ? "pdf" : "image");
+        } else {
+          setKind("unsupported");
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Could not preview this file");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [doc]);
+
+  useEffect(() => {
+    return () => {
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [blobUrl]);
+
+  const columns = rows && rows.length > 0 ? Object.keys(rows[0]) : [];
+
+  return (
+    <Dialog open={!!doc} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader>
+          <DialogTitle>{doc?.title}</DialogTitle>
+        </DialogHeader>
+        <div className="flex-1 overflow-auto">
+          {loading ? (
+            <div className="py-12 flex justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : error ? (
+            <div className="text-sm text-destructive py-8 text-center">{error}</div>
+          ) : kind === "excel" ? (
+            rows && rows.length > 0 ? (
+              <div className="overflow-auto rounded-md border">
+                <table className="w-full text-xs">
+                  <thead className="bg-secondary/40 sticky top-0">
+                    <tr>
+                      {columns.map((c) => (
+                        <th key={c} className="px-2 py-1.5 text-left font-medium whitespace-nowrap">
+                          {c}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r, i) => (
+                      <tr key={i} className="border-t">
+                        {columns.map((c) => (
+                          <td key={c} className="px-2 py-1 whitespace-nowrap">
+                            {String(r[c] ?? "")}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground py-8 text-center">
+                This spreadsheet has no rows.
+              </div>
+            )
+          ) : kind === "pdf" && blobUrl ? (
+            <iframe
+              src={blobUrl}
+              className="h-[65vh] w-full rounded-md border"
+              title="Financial breakdown preview"
+            />
+          ) : kind === "image" && blobUrl ? (
+            <img src={blobUrl} alt={doc?.title} className="mx-auto max-w-full rounded-md border" />
+          ) : (
+            <div className="text-xs text-muted-foreground py-8 text-center">
+              Preview isn't available for this file type — use Download instead.
+            </div>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -816,7 +1424,9 @@ function BondsSection({ tenderId, canManage }: { tenderId: string; canManage: bo
               <TableRow key={b.id}>
                 <TableCell className="text-sm">{TENDER_BOND_TYPE_LABELS[b.bond_type]}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{b.provider ?? "—"}</TableCell>
-                <TableCell className="text-right text-xs tabular-nums">{formatCurrency(b.amount)}</TableCell>
+                <TableCell className="text-right text-xs tabular-nums">
+                  {formatCurrency(b.amount)}
+                </TableCell>
                 <TableCell>
                   <Badge className={TENDER_BOND_STATUS_STYLES[b.status]} variant="secondary">
                     {TENDER_BOND_STATUS_LABELS[b.status]}
@@ -830,7 +1440,8 @@ function BondsSection({ tenderId, canManage }: { tenderId: string; canManage: bo
                       variant="ghost"
                       onClick={() =>
                         deleteBond.mutate(b.id, {
-                          onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                          onError: (err) =>
+                            toast.error(err instanceof Error ? err.message : "Failed to delete"),
                         })
                       }
                     >
@@ -862,7 +1473,13 @@ function BondDialog({ tenderId }: { tenderId: string }) {
       return;
     }
     save.mutate(
-      { bond_type: bondType, amount: Number(amount), provider: provider || undefined, status, expiry_date: expiryDate || undefined },
+      {
+        bond_type: bondType,
+        amount: Number(amount),
+        provider: provider || undefined,
+        status,
+        expiry_date: expiryDate || undefined,
+      },
       {
         onSuccess: () => {
           toast.success("Bond added");
@@ -979,7 +1596,9 @@ function PricingItemsSection({ tenderId, canManage }: { tenderId: string; canMan
               <TableRow key={i.id}>
                 <TableCell className="text-sm">{i.description}</TableCell>
                 <TableCell className="text-right text-xs tabular-nums">{i.quantity}</TableCell>
-                <TableCell className="text-right text-xs tabular-nums">{formatCurrency(i.unit_price)}</TableCell>
+                <TableCell className="text-right text-xs tabular-nums">
+                  {formatCurrency(i.unit_price)}
+                </TableCell>
                 <TableCell className="text-right text-xs tabular-nums">
                   {formatCurrency(i.quantity * i.unit_price)}
                 </TableCell>
@@ -990,7 +1609,8 @@ function PricingItemsSection({ tenderId, canManage }: { tenderId: string; canMan
                       variant="ghost"
                       onClick={() =>
                         deleteItem.mutate(i.id, {
-                          onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                          onError: (err) =>
+                            toast.error(err instanceof Error ? err.message : "Failed to delete"),
                         })
                       }
                     >
@@ -1029,7 +1649,11 @@ function PricingItemDialog({ tenderId }: { tenderId: string }) {
       return;
     }
     save.mutate(
-      { description: description.trim(), quantity: Number(quantity) || 1, unit_price: Number(unitPrice) },
+      {
+        description: description.trim(),
+        quantity: Number(quantity) || 1,
+        unit_price: Number(unitPrice),
+      },
       {
         onSuccess: () => {
           toast.success("Pricing item added");
@@ -1066,7 +1690,11 @@ function PricingItemDialog({ tenderId }: { tenderId: string }) {
             </div>
             <div>
               <Label>Unit price</Label>
-              <Input type="number" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
+              <Input
+                type="number"
+                value={unitPrice}
+                onChange={(e) => setUnitPrice(e.target.value)}
+              />
             </div>
           </div>
         </div>
@@ -1101,6 +1729,7 @@ function RequirementsTab({ tenderId, canManage }: { tenderId: string; canManage:
         <div className="text-sm font-semibold">Requirements checklist</div>
         {canManage && (
           <div className="flex gap-2">
+            <ApplyLibraryDocumentsDialog tenderId={tenderId} />
             <ApplyTemplateDialog tenderId={tenderId} />
             <SaveAsTemplateDialog tenderId={tenderId} disabled={(reqsQ.data ?? []).length === 0} />
             <AddRequirementDialog tenderId={tenderId} />
@@ -1130,7 +1759,9 @@ function RequirementsTab({ tenderId, canManage }: { tenderId: string; canManage:
                     <div className="flex-1 min-w-0">
                       <div className="text-sm">{r.title}</div>
                       {r.notes && <div className="text-xs text-muted-foreground">{r.notes}</div>}
-                      {linkedDoc && <div className="text-xs text-primary">📎 {linkedDoc.title}</div>}
+                      {linkedDoc && (
+                        <div className="text-xs text-primary">📎 {linkedDoc.title}</div>
+                      )}
                     </div>
                     {canManage ? (
                       <Select
@@ -1139,7 +1770,8 @@ function RequirementsTab({ tenderId, canManage }: { tenderId: string; canManage:
                           saveReq.mutate(
                             { id: r.id, status: v as TenderRequirementStatus },
                             {
-                              onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed"),
+                              onError: (err) =>
+                                toast.error(err instanceof Error ? err.message : "Update failed"),
                             },
                           )
                         }
@@ -1156,13 +1788,21 @@ function RequirementsTab({ tenderId, canManage }: { tenderId: string; canManage:
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Badge className={TENDER_REQUIREMENT_STATUS_STYLES[r.status]} variant="secondary">
+                      <Badge
+                        className={TENDER_REQUIREMENT_STATUS_STYLES[r.status]}
+                        variant="secondary"
+                      >
                         {TENDER_REQUIREMENT_STATUS_LABELS[r.status]}
                       </Badge>
                     )}
                     {canManage && (
                       <>
-                        <Button size="icon" variant="ghost" onClick={() => setLinkDialogFor(r)} title="Link document">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setLinkDialogFor(r)}
+                          title="Link document"
+                        >
                           <Plus className="h-3.5 w-3.5" />
                         </Button>
                         <Button
@@ -1170,7 +1810,10 @@ function RequirementsTab({ tenderId, canManage }: { tenderId: string; canManage:
                           variant="ghost"
                           onClick={() =>
                             deleteReq.mutate(r.id, {
-                              onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to delete"),
+                              onError: (err) =>
+                                toast.error(
+                                  err instanceof Error ? err.message : "Failed to delete",
+                                ),
                             })
                           }
                         >
@@ -1234,11 +1877,19 @@ function AddRequirementDialog({ tenderId }: { tenderId: string }) {
         <div className="space-y-3">
           <div>
             <Label>Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Tax compliance certificate" />
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Tax compliance certificate"
+            />
           </div>
           <div>
             <Label>Category</Label>
-            <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Legal" />
+            <Input
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g. Legal"
+            />
           </div>
         </div>
         <DialogFooter>
@@ -1315,6 +1966,90 @@ function ApplyTemplateDialog({ tenderId }: { tenderId: string }) {
   );
 }
 
+function ApplyLibraryDocumentsDialog({ tenderId }: { tenderId: string }) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const libraryQ = useDocuments({ resourceType: "tender_document_library" });
+  const apply = useApplyLibraryDocument(tenderId);
+  const library = libraryQ.data ?? [];
+
+  const toggle = (id: string, checked: boolean) => {
+    setSelected((cur) => (checked ? [...cur, id] : cur.filter((x) => x !== id)));
+  };
+
+  const submit = async () => {
+    if (selected.length === 0) {
+      toast.error("Tick at least one document");
+      return;
+    }
+    try {
+      for (const id of selected) {
+        await apply.mutateAsync(id);
+      }
+      toast.success(`${selected.length} document${selected.length === 1 ? "" : "s"} attached`);
+      setOpen(false);
+      setSelected([]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to attach documents");
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setSelected([]);
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          Apply from document library
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Apply mandatory documents</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Tick which of the company&apos;s standard documents apply to this tender — each ticked
+            document is attached here and marked obtained, no re-uploading needed.
+          </p>
+          {libraryQ.isLoading ? (
+            <div className="py-6 flex justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            </div>
+          ) : library.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">
+              The mandatory documents library is empty — add documents to it from the Tender
+              Documents page first.
+            </p>
+          ) : (
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {library.map((doc) => (
+                <label key={doc.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={selected.includes(doc.id)}
+                    onCheckedChange={(checked) => toggle(doc.id, checked === true)}
+                  />
+                  {doc.title}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button onClick={submit} disabled={apply.isPending || selected.length === 0}>
+            {apply.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Attach {selected.length > 0 ? `(${selected.length})` : ""}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SaveAsTemplateDialog({ tenderId, disabled }: { tenderId: string; disabled: boolean }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -1354,11 +2089,19 @@ function SaveAsTemplateDialog({ tenderId, disabled }: { tenderId: string; disabl
         <div className="space-y-3">
           <div>
             <Label>Template name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Government tender standard requirements" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Government tender standard requirements"
+            />
           </div>
           <div>
             <Label>Description (optional)</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+            />
           </div>
         </div>
         <DialogFooter>

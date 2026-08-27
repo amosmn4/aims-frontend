@@ -29,7 +29,7 @@ export const DEPT_COLORS: Record<string, { text: string; bg: string }> = {
   tender: { text: "#8C5F1D", bg: PIPELINE_GOLD_SOFT },
   hr: { text: PIPELINE_TEAL, bg: PIPELINE_TEAL_SOFT },
   finance: { text: PIPELINE_BLUE, bg: PIPELINE_BLUE_SOFT },
-  marketing_ops: { text: PIPELINE_PURPLE, bg: PIPELINE_PURPLE_SOFT },
+  marketing: { text: PIPELINE_PURPLE, bg: PIPELINE_PURPLE_SOFT },
   it: { text: "#2E7A6B", bg: "#DBEFE9" },
 };
 export const DEPT_COLOR_FALLBACK = { text: PIPELINE_SLATE, bg: PIPELINE_LINE_SOFT };
@@ -48,10 +48,10 @@ export const TENDER_PIPELINE_STAGES: PipelineStageDef[] = [
   { key: "identified", label: "Identified", color: PIPELINE_SLATE_LIGHT },
   { key: "applying", label: "Preparing Application", color: PIPELINE_GOLD },
   { key: "submitted", label: "Submitted", color: PIPELINE_BLUE },
-  { key: "evaluation", label: "Under Evaluation", color: PIPELINE_PURPLE },
   { key: "won", label: "Awarded", color: PIPELINE_TEAL },
   { key: "lost", label: "Not Awarded", color: PIPELINE_CORAL },
   { key: "withdrawn", label: "Withdrawn", color: PIPELINE_SLATE },
+  { key: "cancelled", label: "Cancelled", color: PIPELINE_PURPLE },
 ];
 
 export const ENGAGEMENT_PIPELINE_STAGES: PipelineStageDef[] = [

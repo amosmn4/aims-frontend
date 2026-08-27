@@ -3,17 +3,16 @@ import { useEffect, useState } from "react";
 import { useAuth, homeRouteFor } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, Crown, Shield, Wallet } from "lucide-react";
-
-type DemoRole = "system_admin" | "ceo" | "finance";
+import { AlertCircle, Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
       { title: "Sign in — AIMS" },
-      { name: "description", content: "Sign in to Amsol Integrated Management System (AIMS)." },
+      { name: "description", content: "Sign in to AMSOL Management System (AIMS)." },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -22,24 +21,11 @@ export const Route = createFileRoute("/auth")({
 
 function AuthPage() {
   const navigate = useNavigate();
-  const { session, roles, loading, login, demoLogin } = useAuth();
+  const { session, roles, loading, login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [demoLoading, setDemoLoading] = useState<DemoRole | null>(null);
-
-  const handleDemo = async (role: DemoRole) => {
-    setDemoLoading(role);
-    try {
-      const newRoles = await demoLogin(role);
-      toast.success(`Signed in as ${role.replace("_", " ")}`);
-      navigate({ to: homeRouteFor(newRoles) });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Demo login failed");
-    } finally {
-      setDemoLoading(null);
-    }
-  };
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && session) navigate({ to: homeRouteFor(roles) });
@@ -48,13 +34,17 @@ function AuthPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setError(null);
     try {
       const newRoles = await login(email, password);
       toast.success("Welcome back.");
       navigate({ to: homeRouteFor(newRoles) });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Authentication failed";
-      toast.error(msg);
+      // The backend already sends a specific, human-readable reason (wrong password vs
+      // unregistered email vs deactivated account vs malformed email) — surface that exact
+      // text here on the page itself, not just a toast that can be missed or dismissed before
+      // it's read.
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -71,7 +61,7 @@ function AuthPage() {
             </div>
             <div>
               <div className="text-lg font-semibold leading-tight">AIMS</div>
-              <div className="text-xs text-white/70">Amsol Integrated Management System</div>
+              <div className="text-xs text-white/70">AMSOL Management System</div>
             </div>
           </div>
         </div>
@@ -110,6 +100,16 @@ function AuthPage() {
           <h2 className="text-2xl font-semibold">Sign in</h2>
           <p className="text-sm text-muted-foreground mt-1">Access your Amsol workspace.</p>
 
+          {error && (
+            <div
+              role="alert"
+              className="mt-4 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
+            >
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
               <Label htmlFor="email">Work email</Label>
@@ -117,18 +117,23 @@ function AuthPage() {
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setError(null);
+                }}
                 required
                 autoComplete="email"
               />
             </div>
             <div>
               <Label htmlFor="password">Password</Label>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError(null);
+                }}
                 required
                 minLength={6}
                 autoComplete="current-password"
@@ -141,48 +146,9 @@ function AuthPage() {
           </form>
 
           <p className="mt-4 text-xs text-muted-foreground text-center">
-            Accounts are created by your System Administrator.
+            Accounts are created by your System Administrator — check your email for an invite link.
+            Trouble signing in? Ask your admin for a password reset.
           </p>
-
-          <div className="mt-6 rounded-lg border border-dashed border-accent/40 bg-accent/5 p-4">
-            <div className="text-xs font-semibold uppercase tracking-wider text-accent mb-1">
-              Demo access
-            </div>
-            <p className="text-xs text-muted-foreground mb-3">
-              Click to auto-create and sign in as a seeded account.
-            </p>
-            <div className="grid gap-2">
-              {[
-                { role: "system_admin" as const, label: "System Admin", icon: Shield },
-                { role: "ceo" as const, label: "CEO", icon: Crown },
-                { role: "finance" as const, label: "Finance", icon: Wallet },
-              ].map((d) => {
-                const Icon = d.icon;
-                const busy = demoLoading === d.role;
-                return (
-                  <Button
-                    key={d.role}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="justify-start"
-                    disabled={!!demoLoading}
-                    onClick={() => handleDemo(d.role)}
-                  >
-                    {busy ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Icon className="h-4 w-4 mr-2" />
-                    )}
-                    Enter as {d.label}
-                  </Button>
-                );
-              })}
-            </div>
-            <div className="mt-2 text-[0.625rem] text-muted-foreground">
-              Password for all demo accounts: <span className="font-mono">AmsolDemo!2026</span>
-            </div>
-          </div>
 
           <div className="mt-8 text-center">
             <Link to="/" className="text-xs text-muted-foreground hover:text-foreground">
