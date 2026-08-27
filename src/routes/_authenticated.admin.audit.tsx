@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
 import { PageHeader } from "@/components/app-shell";
 import { useAuth } from "@/lib/auth";
+import { usePagination, type PaginatedResponse } from "@/hooks/use-pagination";
+import { PaginationBar } from "@/components/pagination-bar";
 import {
   Table,
   TableBody,
@@ -31,12 +33,16 @@ export const Route = createFileRoute("/_authenticated/admin/audit")({
 
 function AuditPage() {
   const { isAdminOrCeo } = useAuth();
+  const { page, pageSize, setPage, setPageSize } = usePagination(25);
 
   const q = useQuery({
-    queryKey: ["audit_log"],
+    queryKey: ["audit_log", page, pageSize],
     enabled: isAdminOrCeo,
-    queryFn: () => apiJson<AuditLogRow[]>("/audit-log"),
+    queryFn: () =>
+      apiJson<PaginatedResponse<AuditLogRow>>(`/audit-log?page=${page}&pageSize=${pageSize}`),
   });
+  const rows = q.data?.data ?? [];
+  const total = q.data?.total ?? 0;
 
   if (!isAdminOrCeo) {
     return (
@@ -61,43 +67,52 @@ function AuditPage() {
           <div className="p-8 flex justify-center">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
-        ) : (q.data ?? []).length === 0 ? (
+        ) : rows.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">
             No audit entries yet. Actions across AIMS will appear here as departments start using
             the system.
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>When</TableHead>
-                <TableHead>Action</TableHead>
-                <TableHead>Entity</TableHead>
-                <TableHead>User</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(q.data ?? []).map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="text-xs whitespace-nowrap">
-                    {new Date(row.createdAt).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{row.action}</Badge>
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {row.entityType}
-                    {row.entityId && (
-                      <span className="text-muted-foreground"> · {row.entityId}</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {row.user?.fullName || row.user?.email || "System"}
-                  </TableCell>
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Entity</TableHead>
+                  <TableHead>User</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {new Date(row.createdAt).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{row.action}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {row.entityType}
+                      {row.entityId && (
+                        <span className="text-muted-foreground"> · {row.entityId}</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {row.user?.fullName || row.user?.email || "System"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <PaginationBar
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+            />
+          </>
         )}
       </div>
     </div>
