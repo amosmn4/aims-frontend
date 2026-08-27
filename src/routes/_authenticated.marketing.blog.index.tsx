@@ -2,12 +2,19 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
-import { useBlogPosts, useSaveBlogPost, BLOG_POST_STATUS_LABELS, BLOG_POST_STATUS_STYLES } from "@/features/marketing/use-blog";
+import {
+  useBlogPosts,
+  useSaveBlogPost,
+  BLOG_POST_STATUS_LABELS,
+  BLOG_POST_STATUS_STYLES,
+} from "@/features/marketing/use-blog";
+import { RichTextEditor } from "@/features/marketing/rich-text-editor";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -52,7 +59,7 @@ function BlogList() {
                 <Plus className="h-4 w-4 mr-1" /> New post
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
               <NewPostForm onDone={() => setNewOpen(false)} />
             </DialogContent>
           </Dialog>
@@ -84,7 +91,11 @@ function BlogList() {
               {posts.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell>
-                    <Link to="/marketing/blog/$postId" params={{ postId: p.id }} className="font-medium hover:underline">
+                    <Link
+                      to="/marketing/blog/$postId"
+                      params={{ postId: p.id }}
+                      className="font-medium hover:underline"
+                    >
                       {p.title}
                     </Link>
                   </TableCell>
@@ -111,6 +122,10 @@ function BlogList() {
 
 function NewPostForm({ onDone }: { onDone: () => void }) {
   const [title, setTitle] = useState("");
+  const [excerpt, setExcerpt] = useState("");
+  const [content, setContent] = useState("");
+  const [tags, setTags] = useState("");
+  const [authorName, setAuthorName] = useState("");
   const save = useSaveBlogPost();
   const navigate = useNavigate();
 
@@ -120,7 +135,16 @@ function NewPostForm({ onDone }: { onDone: () => void }) {
       return;
     }
     save.mutate(
-      { title: title.trim() },
+      {
+        title: title.trim(),
+        excerpt,
+        content,
+        author_name: authorName,
+        tags: tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+      },
       {
         onSuccess: (post) => {
           toast.success("Draft created");
@@ -140,10 +164,45 @@ function NewPostForm({ onDone }: { onDone: () => void }) {
       <div className="space-y-3 py-2">
         <div>
           <Label>Title</Label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. 5 Payroll Compliance Pitfalls" />
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. 5 Payroll Compliance Pitfalls"
+          />
+        </div>
+        <div>
+          <Label>Excerpt</Label>
+          <Textarea
+            value={excerpt}
+            onChange={(e) => setExcerpt(e.target.value)}
+            rows={2}
+            placeholder="A short summary shown in the blog list"
+          />
+        </div>
+        <div>
+          <Label>Content</Label>
+          <RichTextEditor value={content} onChange={setContent} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Tags (comma-separated)</Label>
+            <Input
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="payroll, compliance, kenya"
+            />
+          </div>
+          <div>
+            <Label>Author name (optional)</Label>
+            <Input
+              value={authorName}
+              onChange={(e) => setAuthorName(e.target.value)}
+              placeholder="AMSOL Marketing Team"
+            />
+          </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Saved as a draft — add the excerpt, content and image next, then publish when ready.
+          Saved as a draft — add a cover image or video next, then publish when ready.
         </p>
       </div>
       <DialogFooter>

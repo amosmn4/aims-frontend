@@ -13,7 +13,7 @@ import {
   TENDER_STAGE_STYLES,
   type TenderStage,
 } from "@/features/tender/use-tender";
-import { useDepartments } from "@/features/clients/use-clients-contracts";
+import { useDepartments, useEligibleDepartments } from "@/features/clients/use-clients-contracts";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
 import { FunnelChart } from "@/components/funnel-chart";
@@ -425,7 +425,7 @@ function NewTenderDialog() {
   const [submissionDeadline, setSubmissionDeadline] = useState("");
   const [description, setDescription] = useState("");
 
-  const departmentsQ = useDepartments();
+  const departmentsQ = useEligibleDepartments();
   const clientsQ = useClients();
   const serviceLinesQ = useServiceLines();
   const save = useSaveTender();

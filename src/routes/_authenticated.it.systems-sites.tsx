@@ -95,7 +95,7 @@ function SystemsSites() {
             </TableHeader>
             <TableBody>
               {systems.map((s) => (
-                <TableRow key={s.id}>
+                <TableRow key={s.id} className="cursor-pointer" onClick={() => setEditing(s)}>
                   <TableCell>
                     <div className="font-medium">{s.name}</div>
                     {s.notes && (
@@ -112,13 +112,21 @@ function SystemsSites() {
                   <TableCell>
                     {canManage && (
                       <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => setEditing(s)}>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditing(s);
+                          }}
+                        >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           size="icon"
                           variant="ghost"
-                          onClick={async () => {
+                          onClick={async (e) => {
+                            e.stopPropagation();
                             const ok = await confirmDialog({
                               title: `Remove "${s.name}"?`,
                               confirmLabel: "Remove",
@@ -146,28 +154,44 @@ function SystemsSites() {
         </div>
       )}
 
-      <EditSystemDialog value={editing} onClose={() => setEditing(null)} />
+      <EditSystemDialog value={editing} readOnly={!canManage} onClose={() => setEditing(null)} />
     </div>
   );
 }
 
 function EditSystemDialog({
   value,
+  readOnly,
   onClose,
 }: {
   value: ItSystemRow | "new" | null;
+  readOnly: boolean;
   onClose: () => void;
 }) {
   return (
     <Dialog open={!!value} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
-        {value && <EditSystemForm value={value === "new" ? null : value} onDone={onClose} />}
+        {value && (
+          <EditSystemForm
+            value={value === "new" ? null : value}
+            readOnly={readOnly}
+            onDone={onClose}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function EditSystemForm({ value, onDone }: { value: ItSystemRow | null; onDone: () => void }) {
+function EditSystemForm({
+  value,
+  readOnly,
+  onDone,
+}: {
+  value: ItSystemRow | null;
+  readOnly: boolean;
+  onDone: () => void;
+}) {
   const save = useSaveItSystem();
   const [name, setName] = useState(value?.name ?? "");
   const [type, setType] = useState<ItSystemType>(value?.type ?? "website");
@@ -202,7 +226,9 @@ function EditSystemForm({ value, onDone }: { value: ItSystemRow | null; onDone: 
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{value ? "Edit entry" : "New entry"}</DialogTitle>
+        <DialogTitle>
+          {readOnly ? (value?.name ?? "Entry") : value ? "Edit entry" : "New entry"}
+        </DialogTitle>
       </DialogHeader>
       <div className="space-y-3">
         <div>
@@ -211,12 +237,17 @@ function EditSystemForm({ value, onDone }: { value: ItSystemRow | null; onDone: 
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. amsol.com"
+            disabled={readOnly}
           />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Type</Label>
-            <Select value={type} onValueChange={(v) => setType(v as ItSystemType)}>
+            <Select
+              value={type}
+              onValueChange={(v) => setType(v as ItSystemType)}
+              disabled={readOnly}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -231,7 +262,11 @@ function EditSystemForm({ value, onDone }: { value: ItSystemRow | null; onDone: 
           </div>
           <div>
             <Label>Status</Label>
-            <Select value={status} onValueChange={(v) => setStatus(v as ItSystemStatus)}>
+            <Select
+              value={status}
+              onValueChange={(v) => setStatus(v as ItSystemStatus)}
+              disabled={readOnly}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -251,18 +286,30 @@ function EditSystemForm({ value, onDone }: { value: ItSystemRow | null; onDone: 
             value={owner}
             onChange={(e) => setOwner(e.target.value)}
             placeholder="Who's responsible for this"
+            disabled={readOnly}
           />
         </div>
         <div>
           <Label>Notes</Label>
-          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            disabled={readOnly}
+          />
         </div>
       </div>
       <DialogFooter>
-        <Button onClick={submit} disabled={save.isPending}>
-          {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Save
-        </Button>
+        {readOnly ? (
+          <Button variant="outline" onClick={onDone}>
+            Close
+          </Button>
+        ) : (
+          <Button onClick={submit} disabled={save.isPending}>
+            {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Save
+          </Button>
+        )}
       </DialogFooter>
     </>
   );

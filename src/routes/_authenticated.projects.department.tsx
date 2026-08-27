@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth, type AppRole } from "@/lib/auth";
-import { useDepartments } from "@/features/clients/use-clients-contracts";
+import { useDepartments, useEligibleDepartments } from "@/features/clients/use-clients-contracts";
 import { useTasks, useUpdateTask, type TaskStatus } from "@/features/projects/use-projects";
 import { KanbanBoard } from "@/components/kanban-board";
 import { TaskDetailDialog } from "@/features/projects/task-detail-dialog";
@@ -23,7 +23,7 @@ export const Route = createFileRoute("/_authenticated/projects/department")({
 
 function DepartmentBoard() {
   const { profile } = useAuth();
-  const departmentsQ = useDepartments();
+  const eligibleDepartmentsQ = useEligibleDepartments();
   const [departmentId, setDepartmentId] = useState(profile?.departmentId ?? "");
 
   // Once departments/profile load, default to the user's own department if nothing picked yet.
@@ -40,7 +40,7 @@ function DepartmentBoard() {
             <SelectValue placeholder="Select department" />
           </SelectTrigger>
           <SelectContent>
-            {(departmentsQ.data ?? []).map((d) => (
+            {(eligibleDepartmentsQ.data ?? []).map((d) => (
               <SelectItem key={d.id} value={d.id}>
                 {d.name}
               </SelectItem>

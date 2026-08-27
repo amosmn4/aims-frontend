@@ -7,9 +7,15 @@ import {
   DOCUMENT_CATEGORY_SUGGESTIONS,
   type DocumentResourceType,
 } from "@/features/documents/use-documents";
+import {
+  AccessModePicker,
+  draftAccessGrants,
+  type AccessMode,
+} from "@/features/documents/document-access-picker";
 import { useProjects, useTasks } from "@/features/projects/use-projects";
 import { useFinanceReports } from "@/features/finance/use-finance-reports";
 import { useTenders } from "@/features/tender/use-tender";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,7 +59,11 @@ export function DocumentUploadDialog({
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("other");
   const [file, setFile] = useState<File | null>(null);
+  const [accessMode, setAccessMode] = useState<AccessMode>("everyone");
+  const [departmentIds, setDepartmentIds] = useState<string[]>([]);
+  const [userIds, setUserIds] = useState<string[]>([]);
 
+  const { profile } = useAuth();
   const upload = useUploadDocument();
   const projectsQ = useProjects();
   const tasksQ = useTasks();
@@ -75,7 +85,14 @@ export function DocumentUploadDialog({
     setTitle("");
     setCategory("other");
     setFile(null);
+    setAccessMode("everyone");
+    setDepartmentIds([]);
+    setUserIds([]);
     if (showPicker) setResourceId("");
+  };
+
+  const toggle = (list: string[], setList: (v: string[]) => void, id: string) => {
+    setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   };
 
   const submit = () => {
@@ -87,8 +104,16 @@ export function DocumentUploadDialog({
       toast.error("Choose what to attach this document to");
       return;
     }
+    if (!profile) return;
     upload.mutate(
-      { file, resourceType, resourceId, title: title.trim() || undefined, category },
+      {
+        file,
+        resourceType,
+        resourceId,
+        title: title.trim() || undefined,
+        category,
+        access: draftAccessGrants(accessMode, departmentIds, userIds, profile.id),
+      },
       {
         onSuccess: () => {
           toast.success("Document uploaded");
@@ -186,6 +211,19 @@ export function DocumentUploadDialog({
           <div>
             <Label>File</Label>
             <Input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </div>
+          <div>
+            <Label>Who can see this</Label>
+            <div className="mt-1.5">
+              <AccessModePicker
+                mode={accessMode}
+                onModeChange={setAccessMode}
+                departmentIds={departmentIds}
+                onToggleDepartment={(id) => toggle(departmentIds, setDepartmentIds, id)}
+                userIds={userIds}
+                onToggleUser={(id) => toggle(userIds, setUserIds, id)}
+              />
+            </div>
           </div>
         </div>
         <DialogFooter>

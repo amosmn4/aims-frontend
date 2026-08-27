@@ -2,8 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Loader2, Plus, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth, type AppRole } from "@/lib/auth";
-import { useDepartments } from "@/features/clients/use-clients-contracts";
+import { useAuth } from "@/lib/auth";
+import { useDepartments, useEligibleDepartments } from "@/features/clients/use-clients-contracts";
 import { useClients } from "@/features/finance/use-finance-data";
 import {
   useProjects,
@@ -150,8 +150,8 @@ function ProjectsIndex() {
 // department user had to leave their own workspace to start a project not routed here from a
 // won tender or converted client request.
 export function NewProjectDialog({ fixedDepartmentId }: { fixedDepartmentId?: string } = {}) {
-  const { profile, hasRole, isAdminOrCeo } = useAuth();
-  const departmentsQ = useDepartments();
+  const { profile } = useAuth();
+  const eligibleDepartmentsQ = useEligibleDepartments();
   const clientsQ = useClients();
   const createProject = useCreateProject();
   const [open, setOpen] = useState(false);
@@ -164,9 +164,7 @@ export function NewProjectDialog({ fixedDepartmentId }: { fixedDepartmentId?: st
   const [engagementType, setEngagementType] = useState<ProjectEngagementType>("one_off");
 
   // Default to the user's own department when they only have one obvious choice.
-  const eligibleDepartments = (departmentsQ.data ?? []).filter(
-    (d) => isAdminOrCeo || hasRole(d.code as AppRole),
-  );
+  const eligibleDepartments = eligibleDepartmentsQ.data ?? [];
   const departmentName = eligibleDepartments.find((d) => d.id === departmentId)?.name ?? "";
 
   const submit = () => {

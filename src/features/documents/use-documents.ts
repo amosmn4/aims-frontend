@@ -224,6 +224,7 @@ export function useUploadDocument() {
       description?: string;
       category?: string;
       tags?: string[];
+      access?: { accessType: DocumentAccessType; departmentId?: string; userId?: string }[];
     }) => {
       const form = new FormData();
       form.append("file", input.file);
@@ -233,6 +234,7 @@ export function useUploadDocument() {
       if (input.description) form.append("description", input.description);
       if (input.category) form.append("category", input.category);
       if (input.tags && input.tags.length > 0) form.append("tags", input.tags.join(","));
+      if (input.access) form.append("access", JSON.stringify(input.access));
       const res = await apiFetch("/documents", { method: "POST", body: form });
       if (!res.ok) throw new Error(`Upload failed (${res.status})`);
       return mapDocument(await res.json());

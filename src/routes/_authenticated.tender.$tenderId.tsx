@@ -49,7 +49,7 @@ import {
   type TenderRequirementRow,
   type TenderRow,
 } from "@/features/tender/use-tender";
-import { useDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
+import { useEligibleDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import { ClientPicker } from "@/features/clients/client-picker";
 import { formatCurrency } from "@/features/finance/finance";
@@ -382,7 +382,7 @@ function EditTenderDialog({ tender, onClose }: { tender: TenderRow; onClose: () 
   const [submissionDeadline, setSubmissionDeadline] = useState(tender.submission_deadline ?? "");
   const [description, setDescription] = useState(tender.description ?? "");
 
-  const departmentsQ = useDepartments();
+  const departmentsQ = useEligibleDepartments();
   const clientsQ = useClients();
   const serviceLinesQ = useServiceLines();
   const save = useSaveTender();

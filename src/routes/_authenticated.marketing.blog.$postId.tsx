@@ -17,6 +17,7 @@ import {
   BLOG_POST_STATUS_STYLES,
 } from "@/features/marketing/use-blog";
 import { useAuth } from "@/lib/auth";
+import { RichTextEditor } from "@/features/marketing/rich-text-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -207,13 +208,7 @@ function BlogEditor() {
             </div>
             <div>
               <Label>Content</Label>
-              <Textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                rows={16}
-                placeholder="Full post content"
-                disabled={!canManage}
-              />
+              <RichTextEditor value={content} onChange={setContent} disabled={!canManage} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -240,6 +235,25 @@ function BlogEditor() {
                 {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Save changes
               </Button>
+            )}
+          </div>
+
+          <div className="rounded-lg border bg-card p-4">
+            <h2 className="text-sm font-semibold mb-1">Preview</h2>
+            <p className="text-xs text-muted-foreground mb-3">
+              How the saved content renders — updates after you Save changes, not as you type.
+            </p>
+            {post.content ? (
+              <div
+                className="prose-sm max-w-none [&_a]:text-primary [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                // Safe: post.content is what blog.service.ts's sanitizeContent() persisted —
+                // never raw client input taking a new, unsanitized path.
+                dangerouslySetInnerHTML={{ __html: post.content }}
+              />
+            ) : (
+              <div className="text-xs text-muted-foreground">
+                Nothing saved yet — write some content and Save changes to preview it.
+              </div>
             )}
           </div>
         </div>

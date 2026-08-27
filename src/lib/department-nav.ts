@@ -18,7 +18,7 @@ import type { DepartmentCode } from "@/lib/auth";
 // Documents. Every target route already exists and is already scoped to that department — this
 // is purely a navigation reshuffle, no new pages beyond the "domain" sub-pages that used to be
 // tabs.
-const DOMAIN_ITEMS: Record<DepartmentCode, { to: string; label: string }[]> = {
+export const DOMAIN_ITEMS: Record<DepartmentCode, { to: string; label: string }[]> = {
   finance: [
     { to: "/finance/pipeline", label: "Pipeline" },
     { to: "/finance/invoices", label: "Invoices & Billing" },

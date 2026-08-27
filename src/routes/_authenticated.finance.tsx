@@ -1,27 +1,20 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
-import { PageHeader } from "@/components/app-shell";
-import { RequireRole } from "@/components/require-role";
+import { DepartmentHubTabs, useShowDepartmentHub } from "@/components/department-hub-tabs";
 
-// Navigation for Finance now lives in the global top nav (see lib/department-nav.ts + AppShell)
-// instead of an in-page tab bar — this layout just gates access and keeps the page heading.
+// Thin layout — lets CEO/admin get an in-page tab bar across Finance's existing routes (see
+// DepartmentHubTabs). A regular Finance-scoped user's experience is untouched: bare Outlet, no
+// RequireRole here (there wasn't one before this file existed either), navigation stays in the
+// global top nav via lib/department-nav.ts.
 export const Route = createFileRoute("/_authenticated/finance")({
-  head: () => ({ meta: [{ title: "Finance — AIMS" }, { name: "robots", content: "noindex" }] }),
   component: FinanceLayout,
 });
 
 function FinanceLayout() {
+  const showHub = useShowDepartmentHub("finance");
   return (
-    <RequireRole
-      roles={["finance"]}
-      message="Finance workspace is restricted to the Finance team, CEO and System Administrator."
-    >
-      <div>
-        <PageHeader
-          title="Finance"
-          description="Invoicing, debtor management, revenue and margin reporting for Amsol."
-        />
-        <Outlet />
-      </div>
-    </RequireRole>
+    <>
+      {showHub && <DepartmentHubTabs code="finance" />}
+      <Outlet />
+    </>
   );
 }

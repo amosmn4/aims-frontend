@@ -1,29 +1,20 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
-import { PageHeader } from "@/components/app-shell";
-import { RequireRole } from "@/components/require-role";
+import { DepartmentHubTabs, useShowDepartmentHub } from "@/components/department-hub-tabs";
 
-// Navigation for Marketing now lives in the global top nav (see lib/department-nav.ts +
-// AppShell) instead of an in-page tab bar — this layout just gates access and keeps the heading.
+// Thin layout — lets CEO/admin get an in-page tab bar across Marketing's existing routes (see
+// DepartmentHubTabs). A regular Marketing-scoped user's experience is untouched: bare Outlet, no
+// RequireRole here (there wasn't one before this file existed either), navigation stays in the
+// global top nav via lib/department-nav.ts.
 export const Route = createFileRoute("/_authenticated/marketing")({
-  head: () => ({
-    meta: [{ title: "Marketing — AIMS" }, { name: "robots", content: "noindex" }],
-  }),
   component: MarketingLayout,
 });
 
 function MarketingLayout() {
+  const showHub = useShowDepartmentHub("marketing");
   return (
-    <RequireRole
-      roles={["marketing"]}
-      message="The Marketing workspace is restricted to the Marketing team, CEO and System Administrator."
-    >
-      <div>
-        <PageHeader
-          title="Marketing"
-          description="Leads, follow-ups and website performance for Amsol."
-        />
-        <Outlet />
-      </div>
-    </RequireRole>
+    <>
+      {showHub && <DepartmentHubTabs code="marketing" />}
+      <Outlet />
+    </>
   );
 }

@@ -110,6 +110,7 @@ export interface WaterMeterReadingRow {
 export interface WaterDashboard {
   month: string;
   active_households: number;
+  active_meters: number;
   units_sold: number;
   units_sold_change_pct: number | null;
   revenue: number;
@@ -502,6 +503,26 @@ function mapReading(r: BackendReading): WaterMeterReadingRow {
   };
 }
 
+// `<input type="datetime-local">` produces a naive string with no UTC offset (e.g.
+// "2026-08-14T07:00"). The backend's `new Date(dto.readingDate)` parses a string like that as
+// the SERVER's local time, not the browser's — in production that's UTC, so a value typed as
+// 07:00 Nairobi time was silently being stored as 07:00Z and displayed back 3 hours later than
+// intended. `new Date(naiveLocalString)` in the BROWSER correctly parses it as browser-local
+// time, so converting to a real ISO instant here (before it ever leaves the client) fixes both
+// the write path and keeps the read path (which already formats in browser-local time) correct.
+function toUtcInstant(naiveLocalDateTime: string): string {
+  return new Date(naiveLocalDateTime).toISOString();
+}
+
+// The inverse — formats a stored UTC instant back into a `datetime-local`-compatible string in
+// the browser's local time, for pre-filling the input (a raw `.slice(0, 16)` of the ISO string
+// would show the UTC wall-clock instead, reintroducing the same offset bug on edit/reopen).
+export function toLocalDateTimeInputValue(value: string | Date): string {
+  const d = typeof value === "string" ? new Date(value) : value;
+  const localMs = d.getTime() - d.getTimezoneOffset() * 60_000;
+  return new Date(localMs).toISOString().slice(0, 16);
+}
+
 type WaterReadingFilters = { meterId?: string; from?: string; to?: string };
 
 export function useWaterReadings(
@@ -531,7 +552,10 @@ export function useLogWaterReading() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { meterId: string; readingDate: string; value: number; notes?: string }) =>
-      apiJson("/water/readings", { method: "POST", body: JSON.stringify(input) }),
+      apiJson("/water/readings", {
+        method: "POST",
+        body: JSON.stringify({ ...input, readingDate: toUtcInstant(input.readingDate) }),
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["water", "readings"] });
       qc.invalidateQueries({ queryKey: ["water", "dashboard"] });
@@ -553,7 +577,14 @@ export function useUpdateWaterReading() {
       readingDate?: string;
       value?: number;
       notes?: string;
-    }) => apiJson(`/water/readings/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    }) =>
+      apiJson(`/water/readings/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...input,
+          readingDate: input.readingDate ? toUtcInstant(input.readingDate) : undefined,
+        }),
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["water", "readings"] });
       qc.invalidateQueries({ queryKey: ["water", "dashboard"] });
@@ -691,6 +722,7 @@ export function useWaterUsageRecords(
 type BackendDashboard = {
   month: string;
   activeHouseholds: number;
+  activeMeters: number;
   unitsSold: number;
   unitsSoldChangePct: number | null;
   revenue: number;
@@ -705,6 +737,7 @@ function mapDashboard(raw: BackendDashboard): WaterDashboard {
   return {
     month: raw.month,
     active_households: raw.activeHouseholds,
+    active_meters: raw.activeMeters,
     units_sold: raw.unitsSold,
     units_sold_change_pct: raw.unitsSoldChangePct,
     revenue: raw.revenue,

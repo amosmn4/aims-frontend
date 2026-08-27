@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { apiFetch, apiJson } from "@/lib/api-client";
+import { useAuth, type AppRole } from "@/lib/auth";
 import type { PaginatedResponse } from "@/hooks/use-pagination";
 
 export type ContractStatus = "draft" | "active" | "on_hold" | "expired" | "terminated";
@@ -400,6 +401,20 @@ export function useDepartments() {
         .sort((a, b) => a.name.localeCompare(b.name));
     },
   });
+}
+
+// The full department list narrowed to ones the current viewer can actually create/assign
+// records under — admin/CEO see all, everyone else only their own department(s). Use this
+// (never the raw useDepartments() list) for any dropdown that ASSIGNS a department to a new or
+// edited record; a pure browse/filter dropdown, or a "grant access to department X" picker where
+// X isn't the viewer's own department, should keep using useDepartments() directly.
+export function useEligibleDepartments() {
+  const departmentsQ = useDepartments();
+  const { isAdminOrCeo, hasRole } = useAuth();
+  const eligible = (departmentsQ.data ?? []).filter(
+    (d) => isAdminOrCeo || hasRole(d.code as AppRole),
+  );
+  return { ...departmentsQ, data: eligible };
 }
 
 export function useOffices() {

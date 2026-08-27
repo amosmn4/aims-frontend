@@ -10,7 +10,7 @@ import {
   type TenderStage,
 } from "@/features/tender/use-tender";
 import { useTenderActivities, useLogTenderActivity } from "@/features/pipeline/use-pipeline";
-import { useDepartments } from "@/features/clients/use-clients-contracts";
+import { useEligibleDepartments } from "@/features/clients/use-clients-contracts";
 import { formatCurrency } from "@/features/finance/finance";
 import { useAuth } from "@/lib/auth";
 import { TENDER_PIPELINE_STAGES, deptColor, initials } from "@/features/pipeline/pipeline-theme";
@@ -528,7 +528,7 @@ function NewTenderForm({ onDone }: { onDone: () => void }) {
   const [value, setValue] = useState("");
   const [deadline, setDeadline] = useState("");
   const [departmentId, setDepartmentId] = useState("");
-  const departmentsQ = useDepartments();
+  const departmentsQ = useEligibleDepartments();
   const save = useSaveTender();
 
   const submit = () => {

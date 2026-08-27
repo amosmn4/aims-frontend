@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil } from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -16,12 +16,16 @@ import { confirmDialog } from "@/components/confirm-dialog";
 import {
   useWaterReadings,
   useLogWaterReading,
+  useUpdateWaterReading,
   useDeleteWaterReading,
   useWaterMeters,
+  toLocalDateTimeInputValue,
   WATER_METER_TYPE_LABELS,
+  type WaterMeterReadingRow,
 } from "@/features/water/use-water";
 import { usePagination } from "@/hooks/use-pagination";
 import { PaginationBar } from "@/components/pagination-bar";
+import { DateRangeFilter, type DateRange } from "@/components/date-range-filter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +45,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_authenticated/water/readings")({
   head: () => ({ meta: [{ title: "Water Project — Readings — AIMS" }] }),
@@ -49,7 +60,9 @@ export const Route = createFileRoute("/_authenticated/water/readings")({
 
 function WaterReadingsPage() {
   const { page, pageSize, setPage, setPageSize } = usePagination(25);
-  const chartReadingsQ = useWaterReadings();
+  const [range, setRange] = useState<DateRange>({});
+  const [editing, setEditing] = useState<WaterMeterReadingRow | null>(null);
+  const chartReadingsQ = useWaterReadings({ from: range.from, to: range.to });
   const pagedReadingsQ = useWaterReadings({}, { page, pageSize });
   const deleteReading = useDeleteWaterReading();
 
@@ -94,7 +107,10 @@ function WaterReadingsPage() {
       </div>
 
       <div className="rounded-lg border bg-card p-4">
-        <div className="text-sm font-semibold mb-2">Reading history</div>
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <div className="text-sm font-semibold">Reading history</div>
+          <DateRangeFilter value={range} onChange={setRange} />
+        </div>
         {chartReadingsQ.isLoading ? (
           <div className="py-8 flex justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -164,25 +180,32 @@ function WaterReadingsPage() {
                       {r.notes ?? "—"}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={async () => {
-                          const ok = await confirmDialog({
-                            title: "Remove this reading?",
-                            confirmLabel: "Remove",
-                            destructive: true,
-                            description: "This can't be undone.",
-                          });
-                          if (!ok) return;
-                          deleteReading.mutate(r.id, {
-                            onError: (err) =>
-                              toast.error(err instanceof Error ? err.message : "Failed to delete"),
-                          });
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => setEditing(r)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={async () => {
+                            const ok = await confirmDialog({
+                              title: "Remove this reading?",
+                              confirmLabel: "Remove",
+                              destructive: true,
+                              description: "This can't be undone.",
+                            });
+                            if (!ok) return;
+                            deleteReading.mutate(r.id, {
+                              onError: (err) =>
+                                toast.error(
+                                  err instanceof Error ? err.message : "Failed to delete",
+                                ),
+                            });
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -198,6 +221,8 @@ function WaterReadingsPage() {
           </div>
         )}
       </div>
+
+      <EditReadingDialog value={editing} onClose={() => setEditing(null)} />
     </div>
   );
 }
@@ -206,7 +231,7 @@ function LogReadingForm() {
   const metersQ = useWaterMeters();
   const logReading = useLogWaterReading();
   const [meterId, setMeterId] = useState("");
-  const [readingDate, setReadingDate] = useState(new Date().toISOString().slice(0, 16));
+  const [readingDate, setReadingDate] = useState(toLocalDateTimeInputValue(new Date()));
   const [value, setValue] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -279,5 +304,76 @@ function LogReadingForm() {
         Log reading
       </Button>
     </div>
+  );
+}
+
+function EditReadingDialog({
+  value,
+  onClose,
+}: {
+  value: WaterMeterReadingRow | null;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={!!value} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>{value && <EditReadingForm value={value} onDone={onClose} />}</DialogContent>
+    </Dialog>
+  );
+}
+
+function EditReadingForm({ value, onDone }: { value: WaterMeterReadingRow; onDone: () => void }) {
+  const updateReading = useUpdateWaterReading();
+  const [readingDate, setReadingDate] = useState(toLocalDateTimeInputValue(value.reading_date));
+  const [val, setVal] = useState(String(value.value));
+  const [notes, setNotes] = useState(value.notes ?? "");
+
+  const submit = () => {
+    if (!val) {
+      toast.error("Reading value is required");
+      return;
+    }
+    updateReading.mutate(
+      { id: value.id, readingDate, value: Number(val), notes: notes || undefined },
+      {
+        onSuccess: () => {
+          toast.success("Reading updated");
+          onDone();
+        },
+        onError: (err) =>
+          toast.error(err instanceof Error ? err.message : "Failed to update reading"),
+      },
+    );
+  };
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Edit reading — {value.meter_number}</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-3">
+        <div>
+          <Label>Reading date & time</Label>
+          <Input
+            type="datetime-local"
+            value={readingDate}
+            onChange={(e) => setReadingDate(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label>Reading value</Label>
+          <Input type="number" value={val} onChange={(e) => setVal(e.target.value)} />
+        </div>
+        <div>
+          <Label>Notes (optional)</Label>
+          <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button onClick={submit} disabled={updateReading.isPending}>
+          {updateReading.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+          Save
+        </Button>
+      </DialogFooter>
+    </>
   );
 }

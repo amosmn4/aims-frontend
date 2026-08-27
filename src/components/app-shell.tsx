@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
@@ -169,6 +170,107 @@ function LiveClock() {
           second: "2-digit",
         })}
       </span>
+    </div>
+  );
+}
+
+// Renders its dropdown panel through a portal to document.body instead of a nested `absolute`
+// div. The top-nav's own `overflow-x-auto` (a horizontal-scroll safety net for in-between
+// window widths) forces `overflow-y` to `auto` too per the CSS overflow spec — coupling that
+// can't be undone by also setting `overflow-y-visible` — which was silently clipping every
+// dropdown panel below it even though the open/close state was working correctly. Portaling
+// escapes that clipping ancestor entirely. Close is debounced (not instant on mouseleave)
+// because the panel is no longer a DOM descendant of the trigger once portaled — moving the
+// mouse from the button down into the panel now crosses a real element boundary, so an instant
+// close would unmount the panel before the cursor ever reaches it.
+const NAV_DROPDOWN_CLOSE_DELAY_MS = 150;
+
+function TopNavDropdown({
+  item,
+  active,
+  open,
+  onOpenChange,
+  visibleChildren,
+  isChildActive,
+}: {
+  item: NavItem;
+  active: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  visibleChildren: NavChild[];
+  isChildActive: (child: NavChild) => boolean;
+}) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<{ top: number; left: number } | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const Icon = item.icon;
+
+  const cancelClose = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => onOpenChange(false), NAV_DROPDOWN_CLOSE_DELAY_MS);
+  };
+  const openNow = () => {
+    cancelClose();
+    if (wrapperRef.current) {
+      const r = wrapperRef.current.getBoundingClientRect();
+      setRect({ top: r.bottom + 4, left: r.left });
+    }
+    onOpenChange(true);
+  };
+
+  useEffect(() => cancelClose, []);
+
+  return (
+    <div
+      ref={wrapperRef}
+      className="relative shrink-0"
+      onMouseEnter={openNow}
+      onMouseLeave={scheduleClose}
+    >
+      <button
+        className={cn(
+          "flex items-center gap-1.5 px-3 h-9 rounded-md text-sm transition-colors whitespace-nowrap",
+          active
+            ? "bg-accent text-accent-foreground font-medium"
+            : "text-sidebar-foreground/90 hover:bg-white/10",
+        )}
+        onClick={() => (open ? onOpenChange(false) : openNow())}
+      >
+        <Icon className="h-4 w-4" />
+        {item.label}
+        <ChevronDown className="h-3 w-3 opacity-60" />
+      </button>
+      {open &&
+        rect &&
+        createPortal(
+          <div
+            className="fixed min-w-65 rounded-md border bg-popover text-popover-foreground shadow-lg py-1 z-50"
+            style={{ top: rect.top, left: rect.left }}
+            onMouseEnter={cancelClose}
+            onMouseLeave={scheduleClose}
+          >
+            {visibleChildren.map((c) => (
+              <Link
+                key={c.to}
+                to={c.to}
+                onClick={() => onOpenChange(false)}
+                className={cn(
+                  "block px-3 py-2 text-sm hover:bg-secondary",
+                  isChildActive(c) && "bg-secondary font-medium text-primary",
+                )}
+              >
+                {c.label}
+              </Link>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -404,45 +506,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               const active = isActive(item);
               const Icon = item.icon;
               if (item.children) {
-                const open = openMenu === item.to;
                 return (
-                  <div
+                  <TopNavDropdown
                     key={item.to}
-                    className="relative shrink-0"
-                    onMouseEnter={() => setOpenMenu(item.to)}
-                    onMouseLeave={() => setOpenMenu(null)}
-                  >
-                    <button
-                      className={cn(
-                        "flex items-center gap-1.5 px-3 h-9 rounded-md text-sm transition-colors whitespace-nowrap",
-                        active
-                          ? "bg-accent text-accent-foreground font-medium"
-                          : "text-sidebar-foreground/90 hover:bg-white/10",
-                      )}
-                      onClick={() => setOpenMenu(open ? null : item.to)}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {item.label}
-                      <ChevronDown className="h-3 w-3 opacity-60" />
-                    </button>
-                    {open && (
-                      <div className="absolute left-0 top-full mt-1 min-w-65 rounded-md border bg-popover text-popover-foreground shadow-lg py-1 z-40">
-                        {visibleChildren(item).map((c) => (
-                          <Link
-                            key={c.to}
-                            to={c.to}
-                            onClick={() => setOpenMenu(null)}
-                            className={cn(
-                              "block px-3 py-2 text-sm hover:bg-secondary",
-                              isChildActive(c) && "bg-secondary font-medium text-primary",
-                            )}
-                          >
-                            {c.label}
-                          </Link>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                    item={item}
+                    active={active}
+                    open={openMenu === item.to}
+                    onOpenChange={(v) => setOpenMenu(v ? item.to : null)}
+                    visibleChildren={visibleChildren(item)}
+                    isChildActive={isChildActive}
+                  />
                 );
               }
               return (

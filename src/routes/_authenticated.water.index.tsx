@@ -128,8 +128,9 @@ function WaterDashboardPage() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <KpiCard label="Active households" value={d.active_households.toLocaleString()} />
+            <KpiCard label="Active meters" value={d.active_meters.toLocaleString()} />
             <KpiCard
               label="Units sold this period"
               value={`${fmt(d.units_sold)} m³`}
