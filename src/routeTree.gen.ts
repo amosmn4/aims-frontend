@@ -49,6 +49,7 @@ import { Route as AuthenticatedWaterReportsRouteImport } from './routes/_authent
 import { Route as AuthenticatedWaterReadingsRouteImport } from './routes/_authenticated.water.readings'
 import { Route as AuthenticatedWaterMetersRouteImport } from './routes/_authenticated.water.meters'
 import { Route as AuthenticatedWaterCustomersRouteImport } from './routes/_authenticated.water.customers'
+import { Route as AuthenticatedWaterAiRouteImport } from './routes/_authenticated.water.ai'
 import { Route as AuthenticatedTenderWorkspaceRouteImport } from './routes/_authenticated.tender.workspace'
 import { Route as AuthenticatedTenderTasksRouteImport } from './routes/_authenticated.tender.tasks'
 import { Route as AuthenticatedTenderSharedProjectsRouteImport } from './routes/_authenticated.tender.shared-projects'
@@ -122,6 +123,7 @@ import { Route as AuthenticatedFinanceBudgetsRouteImport } from './routes/_authe
 import { Route as AuthenticatedDepartmentsDeptIdRouteImport } from './routes/_authenticated.departments.$deptId'
 import { Route as AuthenticatedClientsContractsRouteImport } from './routes/_authenticated.clients.contracts'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated.admin.users'
+import { Route as AuthenticatedAdminPermissionsRouteImport } from './routes/_authenticated.admin.permissions'
 import { Route as AuthenticatedAdminDepartmentsRouteImport } from './routes/_authenticated.admin.departments'
 import { Route as AuthenticatedAdminAuditRouteImport } from './routes/_authenticated.admin.audit'
 import { Route as AuthenticatedMarketingBlogIndexRouteImport } from './routes/_authenticated.marketing.blog.index'
@@ -356,6 +358,11 @@ const AuthenticatedWaterCustomersRoute =
     path: '/customers',
     getParentRoute: () => AuthenticatedWaterRoute,
   } as any)
+const AuthenticatedWaterAiRoute = AuthenticatedWaterAiRouteImport.update({
+  id: '/ai',
+  path: '/ai',
+  getParentRoute: () => AuthenticatedWaterRoute,
+} as any)
 const AuthenticatedTenderWorkspaceRoute =
   AuthenticatedTenderWorkspaceRouteImport.update({
     id: '/workspace',
@@ -783,6 +790,12 @@ const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   path: '/admin/users',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedAdminPermissionsRoute =
+  AuthenticatedAdminPermissionsRouteImport.update({
+    id: '/admin/permissions',
+    path: '/admin/permissions',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAdminDepartmentsRoute =
   AuthenticatedAdminDepartmentsRouteImport.update({
     id: '/admin/departments',
@@ -914,6 +927,7 @@ export interface FileRoutesByFullPath {
   '/water': typeof AuthenticatedWaterRouteWithChildren
   '/admin/audit': typeof AuthenticatedAdminAuditRoute
   '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
+  '/admin/permissions': typeof AuthenticatedAdminPermissionsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/clients/contracts': typeof AuthenticatedClientsContractsRouteWithChildren
   '/departments/$deptId': typeof AuthenticatedDepartmentsDeptIdRoute
@@ -987,6 +1001,7 @@ export interface FileRoutesByFullPath {
   '/tender/shared-projects': typeof AuthenticatedTenderSharedProjectsRoute
   '/tender/tasks': typeof AuthenticatedTenderTasksRoute
   '/tender/workspace': typeof AuthenticatedTenderWorkspaceRoute
+  '/water/ai': typeof AuthenticatedWaterAiRoute
   '/water/customers': typeof AuthenticatedWaterCustomersRouteWithChildren
   '/water/meters': typeof AuthenticatedWaterMetersRouteWithChildren
   '/water/readings': typeof AuthenticatedWaterReadingsRoute
@@ -1033,6 +1048,7 @@ export interface FileRoutesByTo {
   '/guide': typeof AuthenticatedGuideRoute
   '/admin/audit': typeof AuthenticatedAdminAuditRoute
   '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
+  '/admin/permissions': typeof AuthenticatedAdminPermissionsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/departments/$deptId': typeof AuthenticatedDepartmentsDeptIdRoute
   '/finance/budgets': typeof AuthenticatedFinanceBudgetsRoute
@@ -1103,6 +1119,7 @@ export interface FileRoutesByTo {
   '/tender/shared-projects': typeof AuthenticatedTenderSharedProjectsRoute
   '/tender/tasks': typeof AuthenticatedTenderTasksRoute
   '/tender/workspace': typeof AuthenticatedTenderWorkspaceRoute
+  '/water/ai': typeof AuthenticatedWaterAiRoute
   '/water/customers': typeof AuthenticatedWaterCustomersRouteWithChildren
   '/water/meters': typeof AuthenticatedWaterMetersRouteWithChildren
   '/water/readings': typeof AuthenticatedWaterReadingsRoute
@@ -1164,6 +1181,7 @@ export interface FileRoutesById {
   '/_authenticated/water': typeof AuthenticatedWaterRouteWithChildren
   '/_authenticated/admin/audit': typeof AuthenticatedAdminAuditRoute
   '/_authenticated/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
+  '/_authenticated/admin/permissions': typeof AuthenticatedAdminPermissionsRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/clients/contracts': typeof AuthenticatedClientsContractsRouteWithChildren
   '/_authenticated/departments/$deptId': typeof AuthenticatedDepartmentsDeptIdRoute
@@ -1237,6 +1255,7 @@ export interface FileRoutesById {
   '/_authenticated/tender/shared-projects': typeof AuthenticatedTenderSharedProjectsRoute
   '/_authenticated/tender/tasks': typeof AuthenticatedTenderTasksRoute
   '/_authenticated/tender/workspace': typeof AuthenticatedTenderWorkspaceRoute
+  '/_authenticated/water/ai': typeof AuthenticatedWaterAiRoute
   '/_authenticated/water/customers': typeof AuthenticatedWaterCustomersRouteWithChildren
   '/_authenticated/water/meters': typeof AuthenticatedWaterMetersRouteWithChildren
   '/_authenticated/water/readings': typeof AuthenticatedWaterReadingsRoute
@@ -1298,6 +1317,7 @@ export interface FileRouteTypes {
     | '/water'
     | '/admin/audit'
     | '/admin/departments'
+    | '/admin/permissions'
     | '/admin/users'
     | '/clients/contracts'
     | '/departments/$deptId'
@@ -1371,6 +1391,7 @@ export interface FileRouteTypes {
     | '/tender/shared-projects'
     | '/tender/tasks'
     | '/tender/workspace'
+    | '/water/ai'
     | '/water/customers'
     | '/water/meters'
     | '/water/readings'
@@ -1417,6 +1438,7 @@ export interface FileRouteTypes {
     | '/guide'
     | '/admin/audit'
     | '/admin/departments'
+    | '/admin/permissions'
     | '/admin/users'
     | '/departments/$deptId'
     | '/finance/budgets'
@@ -1487,6 +1509,7 @@ export interface FileRouteTypes {
     | '/tender/shared-projects'
     | '/tender/tasks'
     | '/tender/workspace'
+    | '/water/ai'
     | '/water/customers'
     | '/water/meters'
     | '/water/readings'
@@ -1547,6 +1570,7 @@ export interface FileRouteTypes {
     | '/_authenticated/water'
     | '/_authenticated/admin/audit'
     | '/_authenticated/admin/departments'
+    | '/_authenticated/admin/permissions'
     | '/_authenticated/admin/users'
     | '/_authenticated/clients/contracts'
     | '/_authenticated/departments/$deptId'
@@ -1620,6 +1644,7 @@ export interface FileRouteTypes {
     | '/_authenticated/tender/shared-projects'
     | '/_authenticated/tender/tasks'
     | '/_authenticated/tender/workspace'
+    | '/_authenticated/water/ai'
     | '/_authenticated/water/customers'
     | '/_authenticated/water/meters'
     | '/_authenticated/water/readings'
@@ -1944,6 +1969,13 @@ declare module '@tanstack/react-router' {
       path: '/customers'
       fullPath: '/water/customers'
       preLoaderRoute: typeof AuthenticatedWaterCustomersRouteImport
+      parentRoute: typeof AuthenticatedWaterRoute
+    }
+    '/_authenticated/water/ai': {
+      id: '/_authenticated/water/ai'
+      path: '/ai'
+      fullPath: '/water/ai'
+      preLoaderRoute: typeof AuthenticatedWaterAiRouteImport
       parentRoute: typeof AuthenticatedWaterRoute
     }
     '/_authenticated/tender/workspace': {
@@ -2455,6 +2487,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/users'
       fullPath: '/admin/users'
       preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/permissions': {
+      id: '/_authenticated/admin/permissions'
+      path: '/admin/permissions'
+      fullPath: '/admin/permissions'
+      preLoaderRoute: typeof AuthenticatedAdminPermissionsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/admin/departments': {
@@ -3015,6 +3054,7 @@ const AuthenticatedWaterMetersRouteWithChildren =
   )
 
 interface AuthenticatedWaterRouteChildren {
+  AuthenticatedWaterAiRoute: typeof AuthenticatedWaterAiRoute
   AuthenticatedWaterCustomersRoute: typeof AuthenticatedWaterCustomersRouteWithChildren
   AuthenticatedWaterMetersRoute: typeof AuthenticatedWaterMetersRouteWithChildren
   AuthenticatedWaterReadingsRoute: typeof AuthenticatedWaterReadingsRoute
@@ -3025,6 +3065,7 @@ interface AuthenticatedWaterRouteChildren {
 }
 
 const AuthenticatedWaterRouteChildren: AuthenticatedWaterRouteChildren = {
+  AuthenticatedWaterAiRoute: AuthenticatedWaterAiRoute,
   AuthenticatedWaterCustomersRoute:
     AuthenticatedWaterCustomersRouteWithChildren,
   AuthenticatedWaterMetersRoute: AuthenticatedWaterMetersRouteWithChildren,
@@ -3058,6 +3099,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedWaterRoute: typeof AuthenticatedWaterRouteWithChildren
   AuthenticatedAdminAuditRoute: typeof AuthenticatedAdminAuditRoute
   AuthenticatedAdminDepartmentsRoute: typeof AuthenticatedAdminDepartmentsRoute
+  AuthenticatedAdminPermissionsRoute: typeof AuthenticatedAdminPermissionsRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedSettingsNotificationsRoute: typeof AuthenticatedSettingsNotificationsRoute
   AuthenticatedEngagementsAnchorTypeAnchorIdRoute: typeof AuthenticatedEngagementsAnchorTypeAnchorIdRoute
@@ -3083,6 +3125,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedWaterRoute: AuthenticatedWaterRouteWithChildren,
   AuthenticatedAdminAuditRoute: AuthenticatedAdminAuditRoute,
   AuthenticatedAdminDepartmentsRoute: AuthenticatedAdminDepartmentsRoute,
+  AuthenticatedAdminPermissionsRoute: AuthenticatedAdminPermissionsRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
   AuthenticatedSettingsNotificationsRoute:
     AuthenticatedSettingsNotificationsRoute,

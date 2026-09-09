@@ -11,6 +11,7 @@ import {
   useWaterCustomers,
   WATER_METER_TYPE_LABELS,
   WATER_VENDING_SYSTEM_LABELS,
+  MAIN_METER_NAMES,
   vendingHealth,
   VENDING_HEALTH_LABELS,
   VENDING_HEALTH_ROW_STYLES,
@@ -498,19 +499,32 @@ function EditMeterForm({ value, onDone }: { value: WaterMeterRow | null; onDone:
           <>
             <p className="text-xs text-muted-foreground -mt-1">
               {meterType === "main"
-                ? "The borehole meter — covers the entire volume pumped, before it splits into any zone. No customer; readings are taken directly off this meter's dial."
+                ? "One of the network's two main-stage meters — borehole into the tank, or tank into the distribution network. No customer; readings are taken directly off this meter's dial."
                 : "A zone bulk meter — used only to take dial readings for reconciling that zone's usage. No customer; assigning it a zone below covers that zone and every sub-zone nested under it."}
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Name</Label>
-                <Input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={
-                    meterType === "main" ? "Borehole Main Meter" : "e.g. Zone A Bulk Meter"
-                  }
-                />
+                {meterType === "main" ? (
+                  <Select value={name} onValueChange={setName}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select stage…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MAIN_METER_NAMES.map((n) => (
+                        <SelectItem key={n} value={n}>
+                          {n}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Zone A Bulk Meter"
+                  />
+                )}
               </div>
               <div>
                 <Label>Location</Label>

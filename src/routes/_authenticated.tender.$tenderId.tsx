@@ -63,6 +63,7 @@ import {
   type DocumentRow,
 } from "@/features/documents/use-documents";
 import { apiFetch } from "@/lib/api-client";
+import { ShareDialog } from "@/features/permissions/share-dialog";
 import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
 import { EntityBreadcrumb, type BreadcrumbSegment } from "@/components/entity-breadcrumb";
 import { Button } from "@/components/ui/button";
@@ -211,6 +212,9 @@ function TenderDetail() {
             <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
               <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
             </Button>
+          )}
+          {canManage && (
+            <ShareDialog resource="tenders" resourceId={tender.id} recordLabel="tender" />
           )}
           {isAdminOrCeo && (
             <Button

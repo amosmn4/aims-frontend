@@ -14,6 +14,7 @@ const TABS = [
   { to: "/water/readings", label: "Bulk & Main Readings" },
   { to: "/water/upload", label: "Upload & Analytics" },
   { to: "/water/reports", label: "Reports" },
+  { to: "/water/ai", label: "AI Insights" },
 ] as const;
 
 // Not tied to any of the six core departments — access is the "water" role, assigned per user in

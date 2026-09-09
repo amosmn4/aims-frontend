@@ -10,6 +10,7 @@ import {
   FileText,
   FolderKanban,
   ArrowRight,
+  ShieldCheck,
 } from "lucide-react";
 import {
   useContracts,
@@ -31,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useAuth, departmentScopeFor } from "@/lib/auth";
 import { PermissionDenied } from "@/components/require-role";
+import { PermissionsPanel } from "@/features/permissions/permissions-panel";
 
 const PROJECT_STATUS_STYLES: Record<ProjectStatus, string> = {
   planning: "bg-secondary text-secondary-foreground",
@@ -61,8 +63,9 @@ export function DepartmentWorkspaceContent({
   deptId: string;
   scoped?: boolean;
 }) {
-  const { roles } = useAuth();
+  const { roles, hasRole, profile } = useAuth();
   const scope = departmentScopeFor(roles);
+  const isOwnDepartmentHead = hasRole("department_head") && profile?.departmentId === deptId;
   const deptsQ = useDepartments();
   const clientsQ = useClients();
   const linesQ = useServiceLines();
@@ -398,6 +401,15 @@ export function DepartmentWorkspaceContent({
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {isOwnDepartmentHead && (
+        <div className="rounded-lg border bg-card p-4">
+          <div className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+            <ShieldCheck className="h-4 w-4 text-primary" /> Team permissions
+          </div>
+          <PermissionsPanel departmentId={deptId} />
         </div>
       )}
     </div>

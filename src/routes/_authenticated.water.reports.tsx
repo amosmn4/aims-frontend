@@ -185,27 +185,25 @@ function WaterReportsPage() {
                   </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="text-sm">Non-revenue water (main → household)</TableCell>
+                  <TableCell className="text-sm">
+                    Non-revenue water (borehole → household)
+                  </TableCell>
                   <TableCell className="text-right text-sm">
                     <span
                       className={
-                        s.dashboard.nrw_main_to_household_pct !== null &&
-                        s.dashboard.nrw_main_to_household_pct > 8
+                        s.dashboard.nrw_overall_pct !== null && s.dashboard.nrw_overall_pct > 8
                           ? "text-destructive"
                           : "text-success"
                       }
                     >
-                      {pct(s.dashboard.nrw_main_to_household_pct)}
+                      {pct(s.dashboard.nrw_overall_pct)}
                     </span>
                   </TableCell>
                   <TableCell className="text-right text-sm text-muted-foreground">
-                    {pct(s.prev_dashboard.nrw_main_to_household_pct)}
+                    {pct(s.prev_dashboard.nrw_overall_pct)}
                   </TableCell>
                   <TableCell className="text-right text-xs text-muted-foreground">
-                    {pctDelta(
-                      s.dashboard.nrw_main_to_household_pct,
-                      s.prev_dashboard.nrw_main_to_household_pct,
-                    ) ?? "—"}
+                    {pctDelta(s.dashboard.nrw_overall_pct, s.prev_dashboard.nrw_overall_pct) ?? "—"}
                   </TableCell>
                 </TableRow>
                 <TableRow>
@@ -315,25 +313,33 @@ function WaterReportsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Zone</TableHead>
-                    <TableHead className="text-right">Bulk reading</TableHead>
-                    <TableHead className="text-right">Household sum</TableHead>
-                    <TableHead>Bulk → household loss</TableHead>
+                    <TableHead className="text-right">Own bulk reading</TableHead>
+                    <TableHead className="text-right">Accounted for</TableHead>
+                    <TableHead className="text-right">Loss (units)</TableHead>
+                    <TableHead>Loss %</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {s.zone_loss.map((z) => (
-                    <TableRow key={z.zone_id}>
-                      <TableCell className="text-sm">{z.zone_name}</TableCell>
+                    <TableRow key={z.zone_id ?? "unzoned"}>
+                      <TableCell className="text-sm">
+                        {z.parent_zone_id ? `↳ ${z.zone_name}` : z.zone_name}
+                      </TableCell>
                       <TableCell className="text-right text-sm font-mono tabular-nums">
                         {fmt(z.bulk_total)}
                       </TableCell>
                       <TableCell className="text-right text-sm font-mono tabular-nums">
                         {fmt(z.household_total)}
                       </TableCell>
+                      <TableCell className="text-right text-sm font-mono tabular-nums">
+                        {z.loss_pct !== null ? fmt(z.loss_units) : "—"}
+                      </TableCell>
                       <TableCell className="text-sm">{pct(z.loss_pct)}</TableCell>
                       <TableCell>
-                        {z.loss_pct !== null && z.loss_pct > 8 ? (
+                        {z.loss_pct === null ? (
+                          <Badge variant="secondary">No bulk meter</Badge>
+                        ) : z.loss_pct > 8 ? (
                           <Badge className="bg-destructive/15 text-destructive" variant="secondary">
                             Investigate
                           </Badge>
@@ -370,8 +376,7 @@ function MeterReadingComparison() {
   const [range, setRange] = useState<DateRange>(last30Days());
 
   const allZonesQ = useWaterAllZones();
-  // "All time" resolves to an empty range from DateRangeFilter — fall back to a wide window so
-  // the reading-series/delta queries (which need a real bound) still return something sensible.
+  // "All time" gives an empty range — fall back to a wide window so queries return something.
   const dateFrom = range.from ?? "2000-01-01";
   const dateTo = range.to ?? new Date().toISOString().slice(0, 10);
 

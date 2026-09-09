@@ -31,23 +31,55 @@ function get(row: Record<string, unknown>, keys: string[]): string {
   return "";
 }
 
+// Looks up a column's raw parsed value (not string-coerced) — needed for the date column
+// specifically, see parseDateValue below.
+function getRaw(row: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of Object.keys(row)) {
+    if (keys.includes(key.trim().toLowerCase())) return row[key];
+  }
+  return undefined;
+}
+
+// XLSX.read is called with `cellDates: true`, so a genuinely date-formatted cell already arrives
+// as a real JS Date object — go through get()'s generic `String(value)` for that and you get
+// Date.prototype.toString()'s locale/timezone-dependent human-readable form (e.g. "Sun Sep 06
+// 2026 17:51:40 GMT+0300 (...)")  instead of an unambiguous one, which then has to be re-parsed
+// by `new Date(thatString)` — a completely needless round trip through a fragile, ambiguous
+// format when the exact instant is already sitting right there on the Date object. That's what
+// was producing wrong years (e.g. 2001) instead of the date actually shown in the source file.
+// Only fall back to string parsing for a column that's genuinely text (CSV import, or a
+// text-formatted Excel cell) rather than a native date cell.
+function parseDateValue(value: unknown): Date | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "string" && value.trim()) {
+    const d = new Date(value.trim());
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
 function normalizeRow(row: Record<string, unknown>): UsageUploadRowInput | null {
   const meterNumber = get(row, ["meter", "meter_number", "meter no", "meter number"]);
   const customerName = get(row, ["customer", "name", "customer_name"]);
   const unitsSold = Number(get(row, ["units", "units_sold", "units sold", "consumption"]));
   const amountPaid = Number(get(row, ["amount", "payment", "amount paid", "amount_paid"]));
-  const rawDate = get(row, ["created at", "date", "transaction date", "period", "recorded_at"]);
+  const rawDateValue = getRaw(row, [
+    "created at",
+    "date",
+    "transaction date",
+    "period",
+    "recorded_at",
+  ]);
+  const recordedAt = parseDateValue(rawDateValue);
   if (
     !meterNumber ||
     !customerName ||
-    !rawDate ||
+    !recordedAt ||
     !Number.isFinite(unitsSold) ||
     !Number.isFinite(amountPaid)
   ) {
     return null;
   }
-  const recordedAt = new Date(rawDate);
-  if (Number.isNaN(recordedAt.getTime())) return null;
   return { meterNumber, customerName, unitsSold, amountPaid, recordedAt: recordedAt.toISOString() };
 }
 

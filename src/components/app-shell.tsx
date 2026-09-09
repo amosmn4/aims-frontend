@@ -138,6 +138,7 @@ const NAV: NavItem[] = [
     match: ["/admin"],
     children: [
       { to: "/admin/users", label: "Users" },
+      { to: "/admin/permissions", label: "Permissions" },
       { to: "/admin/departments", label: "Departments" },
       { to: "/admin/audit", label: "Audit Log" },
     ],

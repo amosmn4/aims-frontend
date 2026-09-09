@@ -32,6 +32,7 @@ import { AttachmentsPanel } from "@/features/documents/attachments-panel";
 import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
 import { EntityBreadcrumb, type BreadcrumbSegment } from "@/components/entity-breadcrumb";
 import { confirmDialog } from "@/components/confirm-dialog";
+import { ShareDialog } from "@/features/permissions/share-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -170,6 +171,9 @@ function ClientRequestDetail() {
             <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
               <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
             </Button>
+          )}
+          {canManage && (
+            <ShareDialog resource="client-requests" resourceId={request.id} recordLabel="request" />
           )}
           {isAdminOrCeo && (
             <Button

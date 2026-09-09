@@ -10,6 +10,9 @@ export const WATER_METER_TYPE_LABELS: Record<WaterMeterType, string> = {
   household: "Household",
 };
 
+// Two stages of one chain, not parallel sources. Must match backend's MAIN_METER_NAMES exactly.
+export const MAIN_METER_NAMES = ["Borehole → Tank", "Tank → Distribution"] as const;
+
 export type WaterVendingSystem = "amsol" | "mpaya";
 
 export const WATER_VENDING_SYSTEM_LABELS: Record<WaterVendingSystem, string> = {
@@ -28,9 +31,7 @@ export interface WaterZoneRow {
   created_at: string;
 }
 
-// Flat, unpaginated — every zone's id/name/parent, used to build the "Zone" then "Sub-zone"
-// cascading pickers on the Meter/Customer forms (top-level = parent_zone_id null, sub-zone =
-// any zone whose parent is the one picked) and the parent-zone picker on the Zones page itself.
+// Flat, unpaginated — builds the "Zone" then "Sub-zone" cascading pickers on forms.
 export interface WaterZoneTreeNode {
   id: string;
   name: string;
@@ -116,9 +117,10 @@ export interface WaterDashboard {
   revenue: number;
   main_reading_total: number;
   bulk_reading_total: number;
-  nrw_main_to_bulk_pct: number | null;
-  nrw_bulk_to_household_pct: number | null;
-  nrw_main_to_household_pct: number | null;
+  // Stage 1: borehole -> tank. Stage 2: tank -> distribution. Overall: borehole vs. all households.
+  nrw_borehole_to_tank_pct: number | null;
+  nrw_tank_to_network_pct: number | null;
+  nrw_overall_pct: number | null;
 }
 
 export interface WaterTrendPoint {
@@ -129,23 +131,20 @@ export interface WaterTrendPoint {
 }
 
 export interface WaterZoneComparisonRow {
-  zone_id: string;
+  zone_id: string | null;
   zone_name: string;
+  parent_zone_id: string | null;
   bulk_total: number;
   household_total: number;
+  loss_units: number;
+  loss_pct: number | null;
 }
 
 export interface WaterReportSummary {
   month: string;
   dashboard: WaterDashboard;
   prev_dashboard: WaterDashboard;
-  zone_loss: {
-    zone_id: string;
-    zone_name: string;
-    bulk_total: number;
-    household_total: number;
-    loss_pct: number | null;
-  }[];
+  zone_loss: WaterZoneComparisonRow[];
   insights: string[];
 }
 
@@ -265,9 +264,7 @@ function mapCustomer(c: BackendCustomer): WaterCustomerRow {
 
 type WaterCustomerFilters = { zoneId?: string; q?: string };
 
-// Overloaded so a bare call (dropdown pickers, the "apply to meter" list) gets a plain
-// `WaterCustomerRow[]` at the type level, matching what the backend actually returns then; only
-// a call with concrete `{page, pageSize}` sees the paginated-envelope union it has to narrow.
+// Overloaded so a bare call gets a plain array type; only a paginated call sees the envelope union.
 export function useWaterCustomers(
   filters?: WaterCustomerFilters,
 ): UseQueryResult<WaterCustomerRow[]>;
@@ -503,20 +500,12 @@ function mapReading(r: BackendReading): WaterMeterReadingRow {
   };
 }
 
-// `<input type="datetime-local">` produces a naive string with no UTC offset (e.g.
-// "2026-08-14T07:00"). The backend's `new Date(dto.readingDate)` parses a string like that as
-// the SERVER's local time, not the browser's — in production that's UTC, so a value typed as
-// 07:00 Nairobi time was silently being stored as 07:00Z and displayed back 3 hours later than
-// intended. `new Date(naiveLocalString)` in the BROWSER correctly parses it as browser-local
-// time, so converting to a real ISO instant here (before it ever leaves the client) fixes both
-// the write path and keeps the read path (which already formats in browser-local time) correct.
+// Naive datetime-local strings parse as server-local time on the backend — convert client-side.
 function toUtcInstant(naiveLocalDateTime: string): string {
   return new Date(naiveLocalDateTime).toISOString();
 }
 
-// The inverse — formats a stored UTC instant back into a `datetime-local`-compatible string in
-// the browser's local time, for pre-filling the input (a raw `.slice(0, 16)` of the ISO string
-// would show the UTC wall-clock instead, reintroducing the same offset bug on edit/reopen).
+// Inverse — formats a stored UTC instant into a datetime-local string in browser-local time.
 export function toLocalDateTimeInputValue(value: string | Date): string {
   const d = typeof value === "string" ? new Date(value) : value;
   const localMs = d.getTime() - d.getTimezoneOffset() * 60_000;
@@ -728,9 +717,9 @@ type BackendDashboard = {
   revenue: number;
   mainReadingTotal: number;
   bulkReadingTotal: number;
-  nrwMainToBulkPct: number | null;
-  nrwBulkToHouseholdPct: number | null;
-  nrwMainToHouseholdPct: number | null;
+  nrwBoreholeToTankPct: number | null;
+  nrwTankToNetworkPct: number | null;
+  nrwOverallPct: number | null;
 };
 
 function mapDashboard(raw: BackendDashboard): WaterDashboard {
@@ -743,9 +732,9 @@ function mapDashboard(raw: BackendDashboard): WaterDashboard {
     revenue: raw.revenue,
     main_reading_total: raw.mainReadingTotal,
     bulk_reading_total: raw.bulkReadingTotal,
-    nrw_main_to_bulk_pct: raw.nrwMainToBulkPct,
-    nrw_bulk_to_household_pct: raw.nrwBulkToHouseholdPct,
-    nrw_main_to_household_pct: raw.nrwMainToHouseholdPct,
+    nrw_borehole_to_tank_pct: raw.nrwBoreholeToTankPct,
+    nrw_tank_to_network_pct: raw.nrwTankToNetworkPct,
+    nrw_overall_pct: raw.nrwOverallPct,
   };
 }
 
@@ -776,19 +765,36 @@ export function useWaterTrend(filters: { zoneId?: string; months?: number } = {}
   });
 }
 
+type BackendZoneComparisonRow = {
+  zoneId: string | null;
+  zoneName: string;
+  parentZoneId: string | null;
+  bulkTotal: number;
+  householdTotal: number;
+  lossUnits: number;
+  lossPct: number | null;
+};
+
+function mapZoneComparisonRow(r: BackendZoneComparisonRow): WaterZoneComparisonRow {
+  return {
+    zone_id: r.zoneId,
+    zone_name: r.zoneName,
+    parent_zone_id: r.parentZoneId,
+    bulk_total: r.bulkTotal,
+    household_total: r.householdTotal,
+    loss_units: r.lossUnits,
+    loss_pct: r.lossPct,
+  };
+}
+
 export function useWaterZoneComparison(filters: { month?: string } = {}) {
   return useQuery({
     queryKey: ["water", "zone-comparison", filters],
     queryFn: async () => {
-      const raw = await apiJson<
-        { zoneId: string; zoneName: string; bulkTotal: number; householdTotal: number }[]
-      >(`/water/zone-comparison${buildQuery(filters)}`);
-      return raw.map((r): WaterZoneComparisonRow => ({
-        zone_id: r.zoneId,
-        zone_name: r.zoneName,
-        bulk_total: r.bulkTotal,
-        household_total: r.householdTotal,
-      }));
+      const raw = await apiJson<BackendZoneComparisonRow[]>(
+        `/water/zone-comparison${buildQuery(filters)}`,
+      );
+      return raw.map(mapZoneComparisonRow);
     },
   });
 }
@@ -801,26 +807,14 @@ export function useWaterReportSummary(filters: { month?: string } = {}) {
         month: string;
         dashboard: BackendDashboard;
         prevDashboard: BackendDashboard;
-        zoneLoss: {
-          zoneId: string;
-          zoneName: string;
-          bulkTotal: number;
-          householdTotal: number;
-          lossPct: number | null;
-        }[];
+        zoneLoss: BackendZoneComparisonRow[];
         insights: string[];
       }>(`/water/reports/summary${buildQuery(filters)}`);
       return {
         month: raw.month,
         dashboard: mapDashboard(raw.dashboard),
         prev_dashboard: mapDashboard(raw.prevDashboard),
-        zone_loss: raw.zoneLoss.map((z) => ({
-          zone_id: z.zoneId,
-          zone_name: z.zoneName,
-          bulk_total: z.bulkTotal,
-          household_total: z.householdTotal,
-          loss_pct: z.lossPct,
-        })),
+        zone_loss: raw.zoneLoss.map(mapZoneComparisonRow),
         insights: raw.insights,
       } satisfies WaterReportSummary;
     },
@@ -919,8 +913,7 @@ export function useWaterReadingsWithDelta(filters: {
 
 export type VendingHealth = "active" | "slowing" | "inactive" | "never";
 
-// Recency-based read on how a meter is vending: recent purchases = healthy, a long silence is
-// the strongest signal something needs attention (broken meter, inactive customer, a data gap).
+// Recency-based read: recent purchases = healthy, a long silence signals something's wrong.
 export function vendingHealth(lastVendAt: string | null): VendingHealth {
   if (!lastVendAt) return "never";
   const days = (Date.now() - new Date(lastVendAt).getTime()) / 86_400_000;
@@ -936,8 +929,7 @@ export const VENDING_HEALTH_LABELS: Record<VendingHealth, string> = {
   never: "No vends yet",
 };
 
-// Light theme-color row tints — deliberately subtle, same convention as Inventory's condition
-// row colors, so the table stays scannable rather than looking like a stoplight.
+// Subtle row tints, same convention as Inventory — scannable, not a stoplight.
 export const VENDING_HEALTH_ROW_STYLES: Record<VendingHealth, string> = {
   active: "bg-success/5",
   slowing: "bg-warning/8",

@@ -149,20 +149,16 @@ function WaterDashboardPage() {
             />
             <KpiCard label="Revenue collected" value={formatCurrency(d.revenue)} tone="good" />
             <KpiCard
-              label="Non-revenue water (main → household)"
-              value={pct(d.nrw_main_to_household_pct)}
+              label="Non-revenue water (borehole → household)"
+              value={pct(d.nrw_overall_pct)}
               sub={
-                d.nrw_main_to_household_pct !== null && d.nrw_main_to_household_pct > 8
+                d.nrw_overall_pct !== null && d.nrw_overall_pct > 8
                   ? "above 8% threshold"
-                  : d.nrw_main_to_household_pct !== null
+                  : d.nrw_overall_pct !== null
                     ? "within normal range"
-                    : "no main/bulk readings yet"
+                    : "no borehole/tank readings yet"
               }
-              tone={
-                d.nrw_main_to_household_pct !== null && d.nrw_main_to_household_pct > 8
-                  ? "bad"
-                  : "good"
-              }
+              tone={d.nrw_overall_pct !== null && d.nrw_overall_pct > 8 ? "bad" : "good"}
             />
           </div>
 
@@ -172,8 +168,8 @@ function WaterDashboardPage() {
               mainTotal={d.main_reading_total}
               bulkTotal={d.bulk_reading_total}
               householdTotal={d.units_sold}
-              nrwMainToBulk={d.nrw_main_to_bulk_pct}
-              nrwBulkToHousehold={d.nrw_bulk_to_household_pct}
+              nrwBoreholeToTank={d.nrw_borehole_to_tank_pct}
+              nrwTankToNetwork={d.nrw_tank_to_network_pct}
             />
           </div>
 
@@ -280,14 +276,14 @@ function FlowLadder({
   mainTotal,
   bulkTotal,
   householdTotal,
-  nrwMainToBulk,
-  nrwBulkToHousehold,
+  nrwBoreholeToTank,
+  nrwTankToNetwork,
 }: {
   mainTotal: number;
   bulkTotal: number;
   householdTotal: number;
-  nrwMainToBulk: number | null;
-  nrwBulkToHousehold: number | null;
+  nrwBoreholeToTank: number | null;
+  nrwTankToNetwork: number | null;
 }) {
   const Node = ({
     label,
@@ -329,10 +325,15 @@ function FlowLadder({
   );
   return (
     <div className="flex items-center justify-between flex-wrap gap-2">
-      <Node label="Borehole / main meter" sub="MAIN" value={mainTotal} color="#0F7A78" />
-      <Loss value={nrwMainToBulk} />
-      <Node label="Zone bulk meters" sub="BULK — combined" value={bulkTotal} color="#B9762A" />
-      <Loss value={nrwBulkToHousehold} />
+      <Node label="Borehole" sub="MAIN — borehole → tank" value={mainTotal} color="#0F7A78" />
+      <Loss value={nrwBoreholeToTank} />
+      <Node
+        label="Zone bulk meters + unzoned"
+        sub="BULK — tank → distribution"
+        value={bulkTotal}
+        color="#B9762A"
+      />
+      <Loss value={nrwTankToNetwork} />
       <Node
         label="Household meters"
         sub="metered consumption"
