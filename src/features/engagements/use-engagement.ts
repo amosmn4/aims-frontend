@@ -42,6 +42,7 @@ export interface EngagementActivity {
   summary: string;
   occurredAt: string;
   createdByName: string | null;
+  parentId: string | null;
 }
 
 export interface EngagementResolution {

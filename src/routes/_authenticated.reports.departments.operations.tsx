@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
-import { RequireRole } from "@/components/require-role";
+import { RequireDepartmentAccess } from "@/components/require-role";
+import { LoadError } from "@/components/load-error";
 import {
   useClientRequests,
   useClientRequestPipelineSummary,
@@ -13,9 +14,11 @@ import {
 import { FunnelChart } from "@/components/funnel-chart";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/features/finance/finance";
+import { DepartmentReportsPanel } from "@/features/reports/department-reports-panel";
+import { ReportHeader } from "@/features/reports/report-header";
 
 export const Route = createFileRoute("/_authenticated/reports/departments/operations")({
-  head: () => ({ meta: [{ title: "Operations Report — AIMS" }] }),
+  head: () => ({ meta: [{ title: "Operations report — AIMS" }] }),
   component: OperationsReport,
 });
 
@@ -38,34 +41,41 @@ const FUNNEL_COLORS: Record<string, string> = {
   withdrawn: "#94a3b8",
 };
 
-// Exported so the Operations department hub can embed this same report as a "Reports" tab.
-export function OperationsReport() {
+function Spinner() {
   return (
-    <RequireRole
-      roles={["operations"]}
-      message="The Operations report is restricted to the Operations team, CEO and System Administrator."
-    >
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-base font-semibold">Operations</div>
-            <div className="text-xs text-muted-foreground">
-              Client request intake funnel — conversion rate, where requests stall, recent activity.
-            </div>
-          </div>
-          <Link to="/operations" className="text-xs text-primary hover:underline">
-            Open Operations workspace
-          </Link>
-        </div>
-        <PipelineSummary />
-        <TimeInStage />
-        <RecentRequests />
-      </div>
-    </RequireRole>
+    <div className="flex justify-center py-6">
+      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+    </div>
   );
 }
 
-function PipelineSummary() {
+// Exported so the Operations department hub can embed this same report as a "Reports" tab.
+export function OperationsReport() {
+  return (
+    <RequireDepartmentAccess
+      code="operations"
+      message="The Operations report is for the Operations team, people given Operations access and the CEO."
+    >
+      <div className="space-y-4">
+        <ReportHeader
+          title="Operations report"
+          description="Client requests from first contact to won or lost: how many convert, where they get stuck, and the latest ones."
+          actions={
+            <Link to="/operations" className="text-xs text-primary hover:underline">
+              Open Operations
+            </Link>
+          }
+        />
+        <DepartmentReportsPanel departmentCode="operations" />
+        <RequestsSummary />
+        <TimeInStage />
+        <RecentRequests />
+      </div>
+    </RequireDepartmentAccess>
+  );
+}
+
+function RequestsSummary() {
   const summaryQ = useClientRequestPipelineSummary();
   const lostBreakdownQ = useLostBreakdown();
   const summary = summaryQ.data ?? [];
@@ -75,7 +85,7 @@ function PipelineSummary() {
   const withdrawnCount = summary.find((s) => s.stage === "withdrawn")?.count ?? 0;
   const resolved = wonCount + lostCount + withdrawnCount;
   const conversionRate = resolved > 0 ? wonCount / resolved : null;
-  const pipelineValue = summary
+  const openValue = summary
     .filter((s) => !["won", "lost", "withdrawn"].includes(s.stage))
     .reduce((sum, s) => sum + s.total_value, 0);
 
@@ -89,59 +99,58 @@ function PipelineSummary() {
   const lostBreakdownTotal = lostBreakdown.reduce((s, r) => s + r.count, 0);
 
   return (
-    <div className="rounded-lg border bg-card p-4">
-      {summaryQ.isLoading ? (
-        <div className="py-8 flex justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </div>
+    <section className="rounded-lg border bg-card p-4" aria-labelledby="ops-summary-heading">
+      <h3 id="ops-summary-heading" className="mb-2 text-sm font-semibold">
+        Client requests by stage
+      </h3>
+      {summaryQ.isError ? (
+        <LoadError
+          what="client requests"
+          error={summaryQ.error}
+          onRetry={() => summaryQ.refetch()}
+        />
+      ) : summaryQ.isLoading ? (
+        <Spinner />
       ) : total === 0 ? (
-        <div className="text-xs text-muted-foreground py-6 text-center">
-          No client requests recorded yet.
-        </div>
+        <p className="py-6 text-center text-xs text-muted-foreground">No client requests yet.</p>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 min-w-0 overflow-hidden">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="min-w-0 overflow-hidden lg:col-span-2">
             <FunnelChart stages={funnelData} formatValue={(v) => v.toLocaleString()} />
           </div>
-          <div className="space-y-3">
+          <dl className="space-y-3">
             <div>
-              <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                Active pipeline value
-              </div>
-              <div className="text-xl font-semibold tabular-nums">
-                {formatCurrency(pipelineValue)}
-              </div>
+              <dt className="text-xs text-muted-foreground">Value of open client requests</dt>
+              <dd className="text-xl font-semibold tabular-nums">{formatCurrency(openValue)}</dd>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                Conversion rate
-              </div>
-              <div className="text-xl font-semibold tabular-nums">
+              <dt className="text-xs text-muted-foreground">Conversion rate</dt>
+              <dd className="text-xl font-semibold tabular-nums">
                 {conversionRate != null ? `${(conversionRate * 100).toFixed(0)}%` : "—"}
-              </div>
+              </dd>
             </div>
             {lostBreakdownTotal > 0 && (
               <div>
-                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
-                  Where requests fail
-                </div>
-                <ul className="space-y-1">
-                  {lostBreakdown
-                    .slice()
-                    .sort((a, b) => b.count - a.count)
-                    .map((r) => (
-                      <li key={r.stage} className="flex items-center justify-between text-xs">
-                        <span>{CLIENT_REQUEST_STAGE_LABELS[r.stage]}</span>
-                        <span className="text-muted-foreground tabular-nums">{r.count}</span>
-                      </li>
-                    ))}
-                </ul>
+                <dt className="mb-1 text-xs text-muted-foreground">Stage they were lost at</dt>
+                <dd>
+                  <ul className="space-y-1">
+                    {lostBreakdown
+                      .slice()
+                      .sort((a, b) => b.count - a.count)
+                      .map((r) => (
+                        <li key={r.stage} className="flex items-center justify-between text-xs">
+                          <span>{CLIENT_REQUEST_STAGE_LABELS[r.stage]}</span>
+                          <span className="tabular-nums text-muted-foreground">{r.count}</span>
+                        </li>
+                      ))}
+                  </ul>
+                </dd>
               </div>
             )}
-          </div>
+          </dl>
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -151,48 +160,54 @@ function TimeInStage() {
   const stuck = rows.filter((r) => r.stuck_count > 0);
 
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="text-sm font-semibold mb-1">Where requests are stuck today</div>
-      <p className="text-xs text-muted-foreground mb-3">
-        Average days per stage, and the oldest request still waiting in each.
+    <section className="rounded-lg border bg-card p-4" aria-labelledby="ops-stuck-heading">
+      <h3 id="ops-stuck-heading" className="mb-1 text-sm font-semibold">
+        Where client requests are stuck today
+      </h3>
+      <p className="mb-3 text-xs text-muted-foreground">
+        Average days in each stage, and the oldest request still waiting there.
       </p>
-      {timeInStageQ.isLoading ? (
-        <div className="py-6 flex justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </div>
+      {timeInStageQ.isError ? (
+        <LoadError
+          what="time in each stage"
+          error={timeInStageQ.error}
+          onRetry={() => timeInStageQ.refetch()}
+        />
+      ) : timeInStageQ.isLoading ? (
+        <Spinner />
       ) : rows.every((r) => r.sample_size === 0) ? (
-        <div className="text-xs text-muted-foreground py-4 text-center">
-          Not enough history yet.
-        </div>
+        <p className="py-4 text-center text-xs text-muted-foreground">Not enough history yet.</p>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {rows.map((r) => (
-            <div key={r.stage} className="rounded-md border p-3">
-              <div className="text-xs text-muted-foreground">
-                {CLIENT_REQUEST_STAGE_LABELS[r.stage]}
-              </div>
-              <div className="text-lg font-semibold tabular-nums mt-1">
-                {r.avg_days != null ? `${r.avg_days}d` : "—"}
-              </div>
-              <div className="text-[0.6875rem] text-muted-foreground mt-0.5">avg time in stage</div>
-              {r.oldest_stuck && (
-                <div
-                  className="text-[0.6875rem] text-warning mt-1.5 truncate"
-                  title={r.oldest_stuck.title}
-                >
-                  Oldest stuck: {r.oldest_stuck.days}d — {r.oldest_stuck.title}
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {rows.map((r) => (
+              <div key={r.stage} className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">
+                  {CLIENT_REQUEST_STAGE_LABELS[r.stage]}
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
+                <div className="mt-1 text-lg font-semibold tabular-nums">
+                  {r.avg_days != null ? `${r.avg_days} days` : "—"}
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">on average</div>
+                {r.oldest_stuck && (
+                  <div
+                    className="mt-1.5 truncate text-xs text-warning"
+                    title={r.oldest_stuck.title}
+                  >
+                    Oldest: {r.oldest_stuck.days} days — {r.oldest_stuck.title}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {stuck.length === 0 && (
+            <p className="mt-3 text-xs text-success">
+              Nothing stuck. Every open client request has moved recently.
+            </p>
+          )}
+        </>
       )}
-      {stuck.length === 0 && !timeInStageQ.isLoading && (
-        <p className="text-xs text-success mt-3">
-          Nothing stuck — every open request has moved recently.
-        </p>
-      )}
-    </div>
+    </section>
   );
 }
 
@@ -201,38 +216,45 @@ function RecentRequests() {
   const rows = (requestsQ.data ?? []).slice(0, 5);
 
   return (
-    <div className="rounded-lg border bg-card p-3">
-      <div className="text-sm font-semibold mb-2">Recent requests</div>
-      {requestsQ.isLoading ? (
-        <div className="py-4 flex justify-center">
-          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-        </div>
+    <section className="rounded-lg border bg-card p-3" aria-labelledby="ops-recent-heading">
+      <h3 id="ops-recent-heading" className="mb-2 text-sm font-semibold">
+        Latest client requests
+      </h3>
+      {requestsQ.isError ? (
+        <LoadError
+          what="client requests"
+          error={requestsQ.error}
+          onRetry={() => requestsQ.refetch()}
+        />
+      ) : requestsQ.isLoading ? (
+        <Spinner />
       ) : rows.length === 0 ? (
-        <div className="text-xs text-muted-foreground py-2">No client requests yet.</div>
+        <p className="py-2 text-xs text-muted-foreground">No client requests yet.</p>
       ) : (
-        <div className="divide-y">
+        <ul className="divide-y">
           {rows.map((r) => (
-            <Link
-              key={r.id}
-              to="/requests/$requestId"
-              params={{ requestId: r.id }}
-              className="flex items-center gap-2 py-2 hover:bg-secondary/50 rounded px-1"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{r.title}</div>
-                <div className="text-[0.6875rem] text-muted-foreground">
-                  {r.department_name ?? "Unrouted"}
-                  {(r.client_name ?? r.prospect_client_name) &&
-                    ` · ${r.client_name ?? r.prospect_client_name}`}
+            <li key={r.id}>
+              <Link
+                to="/requests/$requestId"
+                params={{ requestId: r.id }}
+                className="flex items-center gap-2 rounded px-1 py-2 hover:bg-secondary/50"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{r.title}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {r.department_name ?? "Not routed yet"}
+                    {(r.client_name ?? r.prospect_client_name) &&
+                      ` · ${r.client_name ?? r.prospect_client_name}`}
+                  </div>
                 </div>
-              </div>
-              <Badge className={CLIENT_REQUEST_STAGE_STYLES[r.stage]} variant="secondary">
-                {CLIENT_REQUEST_STAGE_LABELS[r.stage]}
-              </Badge>
-            </Link>
+                <Badge className={CLIENT_REQUEST_STAGE_STYLES[r.stage]} variant="secondary">
+                  {CLIENT_REQUEST_STAGE_LABELS[r.stage]}
+                </Badge>
+              </Link>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

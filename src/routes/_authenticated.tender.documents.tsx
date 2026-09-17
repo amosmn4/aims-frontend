@@ -1,18 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, Trash2, Upload } from "lucide-react";
-import { useDepartments } from "@/features/clients/use-clients-contracts";
-import { useAuth } from "@/lib/auth";
+import { Loader2, Plus, Upload } from "lucide-react";
+import { usePermissions } from "@/lib/permissions";
 import {
   useDocuments,
   useUploadDocument,
   useDeleteDocument,
-  formatFileSize,
+  DOCUMENT_ACCEPT,
+  MAX_DOCUMENT_BYTES,
+  type DocumentRow,
 } from "@/features/documents/use-documents";
+import { DocumentList } from "@/features/documents/document-list";
+import { DocumentVersionHistoryDialog } from "@/features/documents/document-version-history-dialog";
+import { DepartmentDocumentsPage } from "@/features/documents/documents-library";
+import { FormField, RequiredNote } from "@/components/form-field";
+import { LoadError } from "@/components/load-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +26,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { DocumentsLibrary } from "./_authenticated.documents";
 
 export const Route = createFileRoute("/_authenticated/tender/documents")({
   head: () => ({ meta: [{ title: "Tender — Documents — AIMS" }] }),
@@ -29,106 +33,131 @@ export const Route = createFileRoute("/_authenticated/tender/documents")({
 });
 
 function TenderDocuments() {
-  const departmentsQ = useDepartments();
-  const dept = departmentsQ.data?.find((d) => d.code === "tender");
-  if (!dept) {
-    return (
-      <div className="py-12 flex justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
-    );
-  }
   return (
-    <div className="space-y-4">
-      <MandatoryDocumentsLibrary />
-      <DocumentsLibrary departmentId={dept.id} />
-    </div>
+    <DepartmentDocumentsPage
+      code="tender"
+      extraTabs={[
+        {
+          value: "mandatory",
+          label: "Mandatory documents",
+          content: <MandatoryDocumentsLibrary />,
+        },
+      ]}
+    />
   );
 }
 
-// The sentinel resourceId every "tender_document_library" Document shares — this catalog isn't
-// attached to any real record, it IS the record (see the schema's DocumentResourceType comment).
+// Every mandatory-library file shares this resourceId; the catalog isn't tied to a record.
 const LIBRARY_RESOURCE_ID = "global";
 
 function MandatoryDocumentsLibrary() {
-  const { isAdminOrCeo, hasRole } = useAuth();
-  const canManage = isAdminOrCeo || hasRole("tender");
+  const { canManageTenders: canManage } = usePermissions();
   const libraryQ = useDocuments({
     resourceType: "tender_document_library",
     resourceId: LIBRARY_RESOURCE_ID,
   });
   const deleteDocument = useDeleteDocument();
+  const [versionsDoc, setVersionsDoc] = useState<DocumentRow | null>(null);
   const library = libraryQ.data ?? [];
 
   return (
-    <div className="rounded-lg border bg-card p-4 space-y-3">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 className="text-sm font-semibold">Mandatory documents library</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Documents that are the same across every tender — upload once here, then tick which
-            apply from any tender&apos;s Requirements tab instead of re-uploading them.
-          </p>
-        </div>
-        {canManage && <LibraryUploadDialog />}
+    <div className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <p className="max-w-2xl text-xs text-muted-foreground">
+          Files most tenders ask for, like a Certificate of Incorporation. Add them once here, then
+          tick the ones that apply on a tender&apos;s Requirements tab.
+        </p>
+        {canManage ? (
+          <MandatoryUploadDialog />
+        ) : (
+          <div className="flex flex-col items-start gap-1 sm:items-end">
+            <Button size="sm" disabled>
+              <Plus className="h-4 w-4 mr-1" /> Add mandatory document
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Only people who manage tenders can add these.
+            </p>
+          </div>
+        )}
       </div>
+
       {libraryQ.isLoading ? (
-        <div className="py-6 flex justify-center">
+        <div className="py-8 flex justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
-      ) : library.length === 0 ? (
-        <div className="text-xs text-muted-foreground py-4 text-center">
-          No mandatory documents yet.
-        </div>
+      ) : libraryQ.isError ? (
+        <LoadError
+          what="mandatory documents"
+          error={libraryQ.error}
+          onRetry={() => libraryQ.refetch()}
+        />
       ) : (
-        <div className="space-y-2">
-          {library.map((doc) => (
-            <div
-              key={doc.id}
-              className="flex items-center justify-between gap-2 rounded-md border px-3 py-2"
-            >
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{doc.title}</div>
-                <div className="text-xs text-muted-foreground">
-                  {doc.latest_version ? formatFileSize(doc.latest_version.size_bytes) : "—"}
-                  {" · "}
-                  {new Date(doc.created_at).toLocaleDateString()}
-                </div>
-              </div>
+        <DocumentList
+          documents={library}
+          canManage={() => canManage}
+          emptyState={
+            <div className="rounded-lg border bg-card px-6 py-12 text-center">
+              <p className="text-sm font-medium">No mandatory documents yet</p>
               {canManage && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  title="Remove from library"
-                  onClick={() =>
-                    deleteDocument.mutate(doc.id, {
-                      onError: (err) =>
-                        toast.error(err instanceof Error ? err.message : "Failed to delete"),
-                    })
-                  }
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+                <div className="mt-3 flex justify-center">
+                  <MandatoryUploadDialog />
+                </div>
               )}
             </div>
-          ))}
-        </div>
+          }
+          deleteCopy={(doc) => ({
+            title: `Remove "${doc.title}" from mandatory documents?`,
+            description: "Tenders that already use it keep their copy. This can't be undone.",
+            confirmLabel: "Remove document",
+          })}
+          onDelete={(doc) =>
+            deleteDocument
+              .mutateAsync(doc.id)
+              .then(() => toast.success(`Removed "${doc.title}" from mandatory documents`))
+              .catch((err) =>
+                toast.error(err instanceof Error ? err.message : "Couldn't remove the document"),
+              )
+          }
+          onShowVersions={setVersionsDoc}
+        />
       )}
+
+      <DocumentVersionHistoryDialog
+        doc={versionsDoc}
+        canManage={canManage}
+        onClose={() => setVersionsDoc(null)}
+      />
     </div>
   );
 }
 
-function LibraryUploadDialog() {
+function MandatoryUploadDialog() {
+  const uid = useId();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string>();
+  const [submitError, setSubmitError] = useState<string>();
   const upload = useUploadDocument();
 
-  const submit = () => {
+  const reset = () => {
+    setTitle("");
+    setFile(null);
+    setFileError(undefined);
+    setSubmitError(undefined);
+  };
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
     if (!file) {
-      toast.error("Choose a file to upload");
+      setFileError("Choose a file to upload");
       return;
     }
+    if (file.size > MAX_DOCUMENT_BYTES) {
+      setFileError("This file is bigger than 25 MB. Choose a smaller file.");
+      return;
+    }
+    setSubmitError(undefined);
     upload.mutate(
       {
         file,
@@ -137,13 +166,15 @@ function LibraryUploadDialog() {
         title: title.trim() || undefined,
       },
       {
-        onSuccess: () => {
-          toast.success("Added to the mandatory documents library");
+        onSuccess: (doc) => {
+          toast.success(`Added "${doc.title}" to mandatory documents`);
           setOpen(false);
-          setTitle("");
-          setFile(null);
+          reset();
         },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Upload failed"),
+        onError: (err) =>
+          setSubmitError(
+            err instanceof Error ? err.message : "Couldn't upload the file. Try again.",
+          ),
       },
     );
   };
@@ -153,45 +184,75 @@ function LibraryUploadDialog() {
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
-        if (!o) {
-          setTitle("");
-          setFile(null);
-        }
+        if (!o) reset();
       }}
     >
       <DialogTrigger asChild>
         <Button size="sm">
-          <Plus className="h-4 w-4 mr-1" /> Add to library
+          <Plus className="h-4 w-4 mr-1" /> Add mandatory document
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add a mandatory document</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Title</Label>
+        <form onSubmit={submit} noValidate className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Add a mandatory document</DialogTitle>
+            <RequiredNote />
+          </DialogHeader>
+          <FormField
+            id={`${uid}-file`}
+            label="File"
+            required
+            error={fileError}
+            hint="PDF, Word, Excel, PowerPoint, images, text or zip — up to 25 MB"
+          >
             <Input
+              id={`${uid}-file`}
+              type="file"
+              accept={DOCUMENT_ACCEPT}
+              aria-invalid={!!fileError}
+              onChange={(e) => {
+                setFile(e.target.files?.[0] ?? null);
+                setFileError(undefined);
+              }}
+            />
+          </FormField>
+          <FormField id={`${uid}-title`} label="Title" hint="Leave blank to use the file name">
+            <Input
+              id={`${uid}-title`}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Certificate of Incorporation"
             />
-          </div>
-          <div>
-            <Label>File</Label>
-            <Input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={submit} disabled={upload.isPending}>
-            {upload.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4 mr-1" />
-            )}
-            Upload
-          </Button>
-        </DialogFooter>
+          </FormField>
+          {submitError && (
+            <p
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+            >
+              {submitError}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setOpen(false);
+                reset();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={upload.isPending}>
+              {upload.isPending ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4 mr-1" />
+              )}
+              Add mandatory document
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

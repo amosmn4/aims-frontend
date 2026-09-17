@@ -1,25 +1,31 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
+import { CheckCircle2, Loader2, Pencil, Plus, Rocket, Trash2 } from "lucide-react";
 import {
   useClientRequests,
   useUpdateClientRequestStage,
-  useConvertToProject,
-  useConvertClientRequestToContract,
+  useDeleteClientRequest,
   useClientRequestActivities,
   useLogActivity,
   type ClientRequestRow,
   type ClientRequestStage,
 } from "@/features/client-requests/use-client-requests";
 import { NewRequestDialog } from "@/features/client-requests/new-request-dialog";
-import { useDepartments } from "@/features/clients/use-clients-contracts";
-import { ClientPicker } from "@/features/clients/client-picker";
+import { EditRequestDialog } from "@/features/client-requests/edit-request-dialog";
+import { StartProjectDialog } from "@/features/client-requests/start-project-dialog";
 import { formatCurrency } from "@/features/finance/finance";
+import { usePermissions } from "@/lib/permissions";
 import { useAuth } from "@/lib/auth";
+import { confirmDialog } from "@/components/confirm-dialog";
+import { LoadError } from "@/components/load-error";
+import { ActionHint } from "@/components/help-link";
+import { BoardNoMatches, BoardSearch, matchesQuery } from "@/components/pipeline/board-search";
 import {
   ENGAGEMENT_PIPELINE_STAGES,
   deptColor,
   initials,
+  type PipelineStageDef,
 } from "@/features/pipeline/pipeline-theme";
 import { Spine } from "@/components/pipeline/spine";
 import { PipelineBoard } from "@/components/pipeline/pipeline-board";
@@ -30,17 +36,9 @@ import {
   StageTracker,
 } from "@/components/pipeline/detail-sheet";
 import { ActivityPane } from "@/components/pipeline/activity-pane";
+import { AttachmentsPanel } from "@/features/documents/attachments-panel";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -48,18 +46,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { askLossReason, isLossStage } from "@/features/pipeline/stage-reasons";
 
 export const Route = createFileRoute("/_authenticated/pipeline/engagements")({
-  head: () => ({ meta: [{ title: "Client Requests — AIMS" }] }),
+  head: () => ({ meta: [{ title: "Client requests — AIMS" }] }),
   component: EngagementBoard,
 });
 
-/**
- * Discoverable "mark as not proceeding" shortcut — usable from any routed stage (the backend
- * never enforced sequential stage order). Exists alongside the generic "Move stage" select above
- * because that path never sends a lostReason, silently dropping the "why" once a request is
- * marked lost/withdrawn from the board.
- */
+type DetailTab = "overview" | "activity" | "docs";
+
+const stageLabel = (key: string) =>
+  ENGAGEMENT_PIPELINE_STAGES.find((s) => s.key === key)?.label ?? key;
+
+// "New Request" is set by logging; a request only returns there if it's un-routed.
+const moveTargetsFor = (r: ClientRequestRow): PipelineStageDef[] =>
+  ENGAGEMENT_PIPELINE_STAGES.filter((s) => s.key !== "new" || r.stage === "new");
+
+const isStarted = (r: ClientRequestRow) => !!r.converted_project_id || !!r.converted_contract_id;
+
+/** Asks for the why, then records a lost/withdrawn request. */
 function DropOutAction({
   currentStage,
   isPending,
@@ -72,6 +77,7 @@ function DropOutAction({
   const [open, setOpen] = useState(false);
   const [stage, setStage] = useState<"lost" | "withdrawn">("lost");
   const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
 
   if (currentStage === "lost" || currentStage === "withdrawn") return null;
 
@@ -80,21 +86,29 @@ function DropOutAction({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-2 text-xs"
+        className="mt-2 text-xs underline-offset-2 hover:underline"
         style={{ color: "var(--pipeline-coral)" }}
       >
-        Mark as not proceeding →
+        Mark as not going ahead
       </button>
     );
   }
 
   return (
-    <div
+    <form
       className="mt-2 space-y-2 rounded-lg border p-2.5"
       style={{ borderColor: "var(--pipeline-line)" }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!reason.trim()) {
+          setError("Say why it isn't going ahead.");
+          return;
+        }
+        onSubmit(stage, reason.trim());
+      }}
     >
       <Select value={stage} onValueChange={(v) => setStage(v as "lost" | "withdrawn")}>
-        <SelectTrigger className="h-8 w-full text-xs">
+        <SelectTrigger className="h-8 w-full text-xs" aria-label="Outcome">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -104,105 +118,228 @@ function DropOutAction({
       </Select>
       <Textarea
         value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        placeholder="Reason for not proceeding (required)"
+        onChange={(e) => {
+          setReason(e.target.value);
+          setError("");
+        }}
+        aria-label="Why it isn't going ahead"
+        aria-invalid={!!error}
+        placeholder="Why isn't it going ahead? (required)"
         className="min-h-[60px] text-xs"
       />
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
       <div className="flex gap-2">
-        <Button size="sm" variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="flex-1"
+          onClick={() => setOpen(false)}
+        >
           Cancel
         </Button>
         <Button
+          type="submit"
           size="sm"
           className="flex-1"
           style={{ background: "var(--pipeline-coral)" }}
-          disabled={isPending || !reason.trim()}
-          onClick={() => onSubmit(stage, reason)}
+          disabled={isPending}
         >
-          Confirm
+          Mark as {stage}
         </Button>
       </div>
-    </div>
+    </form>
   );
 }
 
-// Exported so every department hub can embed this board as a tab, scoped to that department via
-// the optional `departmentId` prop — the central `/pipeline/engagements` route renders it with no
-// filter (every request, every department), department hubs pass their own id. Same component,
-// same query, just a narrower filter — not a fork.
+// Shared by the central board and every department hub; `departmentId` narrows it to one department.
 export function EngagementBoard({ departmentId }: { departmentId?: string } = {}) {
-  const { isAdminOrCeo, hasRole } = useAuth();
-  const canManage =
-    isAdminOrCeo || hasRole(["finance", "hr", "it", "marketing", "tender", "operations"]);
-  // Creating a new request (intake) is Operations' job specifically, not every department that
-  // might later be routed one — narrower than canManage, which governs already-routed requests.
-  const canCreateRequest = isAdminOrCeo || hasRole("operations");
+  const perms = usePermissions();
+  const { user } = useAuth();
+  const canCreateRequest = perms.canManageIntake;
   const requestsQ = useClientRequests({ departmentId });
   const updateStage = useUpdateClientRequestStage();
-  const convertToProject = useConvertToProject();
-  const convertToContract = useConvertClientRequestToContract();
+  const [query, setQuery] = useState("");
+  const [mineOnly, setMineOnly] = useState(false);
+  const [editing, setEditing] = useState<ClientRequestRow | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"overview" | "activity" | "docs">("overview");
-  const [onboardOpen, setOnboardOpen] = useState<ClientRequestRow | null>(null);
+  const [tab, setTab] = useState<DetailTab>("overview");
+  const [startFor, setStartFor] = useState<ClientRequestRow | null>(null);
 
-  const requests = requestsQ.data ?? [];
+  const all = requestsQ.data ?? [];
+  const mineCount = user ? all.filter((r) => r.assigned_to_id === user.id).length : 0;
+  const requests = all.filter(
+    (r) =>
+      (!mineOnly || r.assigned_to_id === user?.id) &&
+      matchesQuery(
+        query,
+        r.title,
+        r.client_name,
+        r.prospect_client_name,
+        r.reference_number,
+        r.contact_name,
+        r.department_name,
+      ),
+  );
   const counts: Record<string, number> = {};
   for (const s of ENGAGEMENT_PIPELINE_STAGES)
     counts[s.key] = requests.filter((r) => r.stage === s.key).length;
 
-  const open = requests.find((r) => r.id === openId) ?? null;
+  const open = all.find((r) => r.id === openId) ?? null;
+  // Unrouted requests must be routed (Edit request → Department) before they move.
+  const canMove = (r: ClientRequestRow) => perms.canEditRequest(r) && !!r.department_id;
+  const moveBlockedReason = (r: ClientRequestRow) =>
+    !perms.canEditRequest(r)
+      ? "Only Operations and the owning department can move requests."
+      : "Route this request to a department first: Edit request, then choose a department.";
 
-  const move = (id: string, stage: string) => {
+  const offerStart = async (r: ClientRequestRow) => {
+    if (!perms.canOnboardRequest(r) || isStarted(r)) return;
+    const ok = await confirmDialog({
+      title: "Start the project now?",
+      description: `“${r.title}” is Won. Start its project now, or do it later from the request.`,
+      confirmLabel: "Start project from request",
+      cancelLabel: "Later",
+    });
+    if (ok) setStartFor(r);
+  };
+
+  const moveRequest = async (r: ClientRequestRow, stage: string) => {
+    if (stage === r.stage) return;
+    if (!canMove(r)) {
+      toast.error(moveBlockedReason(r));
+      return;
+    }
+    const label = stageLabel(stage);
+    const reason = isLossStage(stage) ? await askLossReason("request", label) : undefined;
+    if (reason === null) return;
     updateStage.mutate(
-      { id, stage: stage as ClientRequestStage },
+      { id: r.id, stage: stage as ClientRequestStage, lost_reason: reason },
       {
-        onSuccess: () =>
-          toast.success(
-            `Moved to ${ENGAGEMENT_PIPELINE_STAGES.find((s) => s.key === stage)?.label}`,
-          ),
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Move failed"),
+        onSuccess: () => {
+          toast.success(`Moved to ${label}`);
+          if (stage === "won") void offerStart({ ...r, stage: "won" });
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : "The move didn't save"),
       },
     );
   };
+
+  const newRequestButton = (
+    <NewRequestDialog
+      trigger={
+        <Button style={{ background: "var(--pipeline-ink)" }}>
+          <Plus className="h-4 w-4 mr-1" /> New client request
+        </Button>
+      }
+      defaultSource="operations"
+    />
+  );
 
   return (
     <div>
       <div className="mb-1 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="p-title text-lg">Client Requests</h1>
-          <div className="text-xs" style={{ color: "var(--pipeline-slate)" }}>
-            Inbound requests from the operations desk through to won/lost decisions.
-          </div>
+          <h1 className="p-title text-lg">Client requests</h1>
+          <p className="text-xs" style={{ color: "var(--pipeline-slate)" }}>
+            Every client request from logging to Won or Lost. Open a card to work on it.
+          </p>
         </div>
-        {canCreateRequest && (
-          <NewRequestDialog
-            trigger={<Button style={{ background: "var(--pipeline-ink)" }}>+ New request</Button>}
-            defaultSource="operations"
-            successMessage="Request added to engagement board"
-          />
+        {canCreateRequest ? (
+          newRequestButton
+        ) : (
+          <ActionHint topic="client requests">
+            Requests are logged by Operations. Ask them to add one.
+          </ActionHint>
         )}
       </div>
 
-      <Spine stages={ENGAGEMENT_PIPELINE_STAGES} counts={counts} />
+      {requestsQ.isLoading ? (
+        <div
+          className="flex justify-center py-16"
+          role="status"
+          aria-label="Loading client requests"
+        >
+          <Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--pipeline-slate)" }} />
+        </div>
+      ) : requestsQ.isError ? (
+        <LoadError
+          className="mt-4"
+          what="client requests"
+          error={requestsQ.error}
+          onRetry={() => requestsQ.refetch()}
+        />
+      ) : all.length === 0 ? (
+        <div className="mt-4 flex flex-col items-center gap-2 rounded-lg border border-dashed py-12 text-center">
+          <p className="text-sm font-medium">No client requests yet</p>
+          {canCreateRequest ? (
+            newRequestButton
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Requests are logged by Operations. Ask them to add one.
+            </p>
+          )}
+        </div>
+      ) : (
+        <>
+          <Spine stages={ENGAGEMENT_PIPELINE_STAGES} counts={counts} />
+          <div className="flex flex-wrap items-start gap-2">
+            <BoardSearch
+              value={query}
+              onChange={setQuery}
+              placeholder="Search client, request, reference or contact"
+            />
+            {mineCount > 0 && (
+              <Button
+                type="button"
+                variant={mineOnly ? "default" : "outline"}
+                aria-pressed={mineOnly}
+                onClick={() => setMineOnly((v) => !v)}
+              >
+                Assigned to me ({mineCount})
+              </Button>
+            )}
+          </div>
 
-      <PipelineBoard
-        stages={ENGAGEMENT_PIPELINE_STAGES}
-        items={requests}
-        getStage={(r) => r.stage}
-        getId={(r) => r.id}
-        onMove={move}
-        defaultVisiblePerColumn={5}
-        renderCard={(r) => (
-          <EngagementCard
-            r={r}
-            onClick={() => {
-              setOpenId(r.id);
-              setTab("overview");
-            }}
-            onOnboard={() => setOnboardOpen(r)}
-          />
-        )}
-      />
+          {requests.length === 0 ? (
+            <BoardNoMatches
+              onClear={() => {
+                setQuery("");
+                setMineOnly(false);
+              }}
+            />
+          ) : (
+            <PipelineBoard
+              stages={ENGAGEMENT_PIPELINE_STAGES}
+              items={requests}
+              getStage={(r) => r.stage}
+              getId={(r) => r.id}
+              getLabel={(r) => r.client_name ?? r.prospect_client_name ?? r.title}
+              onMove={(id, stage) => {
+                const target = requests.find((r) => r.id === id);
+                if (target) void moveRequest(target, stage);
+              }}
+              canDrag={canMove}
+              moveTargets={moveTargetsFor}
+              defaultVisiblePerColumn={5}
+              onOpen={(r) => {
+                setOpenId(r.id);
+                setTab("overview");
+              }}
+              renderCard={(r) => (
+                <EngagementCard
+                  r={r}
+                  onStart={perms.canOnboardRequest(r) ? () => setStartFor(r) : undefined}
+                />
+              )}
+            />
+          )}
+        </>
+      )}
 
       {open && (
         <EngagementDetail
@@ -210,71 +347,64 @@ export function EngagementBoard({ departmentId }: { departmentId?: string } = {}
           tab={tab}
           onTabChange={setTab}
           onClose={() => setOpenId(null)}
-          canManage={canManage}
-          onOnboard={() => setOnboardOpen(open)}
+          canManage={perms.canEditRequest(open)}
+          canDelete={perms.canManageIntake}
+          canMove={canMove(open)}
+          moveBlockedReason={moveBlockedReason(open)}
+          canStart={perms.canOnboardRequest(open)}
+          onMove={(stage) => void moveRequest(open, stage)}
+          movePending={updateStage.isPending}
+          onStart={() => setStartFor(open)}
+          onEdit={() => setEditing(open)}
+          onDeleted={() => setOpenId(null)}
         />
       )}
 
-      <Dialog open={!!onboardOpen} onOpenChange={(v) => !v && setOnboardOpen(null)}>
-        <DialogContent className="pipeline-scope">
-          {onboardOpen && (
-            <OnboardForm
-              request={onboardOpen}
-              onDone={() => setOnboardOpen(null)}
-              convertToProject={convertToProject}
-              convertToContract={convertToContract}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {editing && <EditRequestDialog request={editing} onClose={() => setEditing(null)} />}
+
+      {startFor && (
+        <StartProjectDialog request={startFor} open onOpenChange={(o) => !o && setStartFor(null)} />
+      )}
     </div>
   );
 }
 
-function EngagementCard({
-  r,
-  onClick,
-  onOnboard,
-}: {
-  r: ClientRequestRow;
-  onClick: () => void;
-  onOnboard: () => void;
-}) {
+function EngagementCard({ r, onStart }: { r: ClientRequestRow; onStart?: () => void }) {
   const c = deptColor(r.department_code);
   return (
-    <div onClick={onClick}>
+    <div>
       <div className="mb-1.5 flex items-start justify-between gap-2">
-        <span className="p-mono text-[10px]" style={{ color: "var(--pipeline-slate-light)" }}>
-          {r.reference_number ?? r.id.slice(0, 8)}
+        <span className="p-mono text-xs" style={{ color: "var(--pipeline-slate-light)" }}>
+          {r.reference_number ?? ""}
         </span>
         <span className="p-chip" style={{ background: c.bg, color: c.text }}>
-          {r.department_name ?? "Unassigned"}
+          {r.department_name ?? "Not routed yet"}
         </span>
       </div>
-      <div className="mb-2 text-[13.5px] font-semibold leading-snug">
+      <div className="mb-2 text-[14px] font-semibold leading-snug">
         {r.client_name ?? r.prospect_client_name ?? r.title}
       </div>
-      <div className="text-[11.5px]" style={{ color: "var(--pipeline-slate)" }}>
+      <div className="text-xs" style={{ color: "var(--pipeline-slate)" }}>
         {r.title}
       </div>
-      <div className="mt-2 flex items-center justify-between text-[11.5px]">
+      <div className="mt-2 flex items-center justify-between text-xs">
         <span className="p-mono font-medium">
           {r.estimated_value != null ? formatCurrency(r.estimated_value, r.currency) : "—"}
         </span>
         {r.stage === "won" && (
           <span
-            className="rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold"
+            className="rounded-md px-1.5 py-0.5 text-xs font-semibold"
             style={{ background: "var(--pipeline-teal-soft)", color: "var(--pipeline-teal)" }}
           >
             Won
           </span>
         )}
-        {r.stage === "lost" && (
+        {(r.stage === "lost" || r.stage === "withdrawn") && (
           <span
-            className="rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold"
+            className="rounded-md px-1.5 py-0.5 text-xs font-semibold"
             style={{ background: "var(--pipeline-coral-soft)", color: "var(--pipeline-coral)" }}
           >
-            Lost
+            {stageLabel(r.stage)}
           </span>
         )}
       </div>
@@ -283,30 +413,35 @@ function EngagementCard({
         style={{ borderColor: "var(--pipeline-line)", borderStyle: "dashed" }}
       >
         <div className="flex items-center gap-1.5">
-          <div className="mini-avatar">{initials(r.assigned_to_name)}</div>
-          <span className="text-[11px]" style={{ color: "var(--pipeline-slate)" }}>
+          <div className="mini-avatar" aria-hidden="true">
+            {initials(r.assigned_to_name)}
+          </div>
+          <span className="text-xs" style={{ color: "var(--pipeline-slate)" }}>
             {r.assigned_to_name ?? "Unassigned"}
           </span>
         </div>
       </div>
-      {r.stage === "won" && !r.converted_project_id && !r.converted_contract_id && (
+      {r.stage === "won" && !isStarted(r) && onStart && (
         <button
-          className="mt-2.5 w-full rounded-md border-none py-1.5 text-xs font-semibold text-white"
+          type="button"
+          className="mt-2.5 flex w-full items-center justify-center gap-1 rounded-md border-none py-1.5 text-xs font-semibold text-white"
           style={{ background: "var(--pipeline-teal)" }}
           onClick={(e) => {
             e.stopPropagation();
-            onOnboard();
+            onStart();
           }}
+          onKeyDown={(e) => e.stopPropagation()}
         >
-          Onboard as Client →
+          <Rocket className="h-3.5 w-3.5" aria-hidden="true" /> Start project from request
         </button>
       )}
-      {r.stage === "won" && (r.converted_project_id || r.converted_contract_id) && (
+      {isStarted(r) && (
         <div
-          className="mt-2.5 flex items-center gap-1 text-[11px] font-semibold"
+          className="mt-2.5 flex items-center gap-1 text-xs font-semibold"
           style={{ color: "var(--pipeline-teal)" }}
         >
-          ✓ Onboarded as client {r.converted_project_id ? "project" : "contract"}
+          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+          {r.converted_project_id ? "Project started" : "Contract created"}
         </div>
       )}
     </div>
@@ -319,39 +454,75 @@ function EngagementDetail({
   onTabChange,
   onClose,
   canManage,
-  onOnboard,
+  canDelete,
+  canMove,
+  moveBlockedReason,
+  canStart,
+  onMove,
+  movePending,
+  onStart,
+  onEdit,
+  onDeleted,
 }: {
   request: ClientRequestRow;
-  tab: "overview" | "activity" | "docs";
-  onTabChange: (t: "overview" | "activity" | "docs") => void;
+  tab: DetailTab;
+  onTabChange: (t: DetailTab) => void;
   onClose: () => void;
   canManage: boolean;
-  onOnboard: () => void;
+  canDelete: boolean;
+  canMove: boolean;
+  moveBlockedReason: string;
+  canStart: boolean;
+  onMove: (stage: string) => void;
+  movePending: boolean;
+  onStart: () => void;
+  onEdit: () => void;
+  onDeleted: () => void;
 }) {
+  const deleteRequest = useDeleteClientRequest();
+  const updateStage = useUpdateClientRequestStage();
   const activitiesQ = useClientRequestActivities(request.id);
   const logActivity = useLogActivity(request.id);
-  const updateStage = useUpdateClientRequestStage();
+
+  const handleDelete = async () => {
+    const ok = await confirmDialog({
+      title: `Delete "${request.title}"?`,
+      description: "This removes the request and its activity. This can't be undone.",
+      confirmLabel: "Delete client request",
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteRequest.mutate(request.id, {
+      onSuccess: () => {
+        toast.success("Client request deleted");
+        onDeleted();
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
+    });
+  };
+
   const idx = ENGAGEMENT_PIPELINE_STAGES.findIndex((s) => s.key === request.stage);
   const c = deptColor(request.department_code);
   const isWon = request.stage === "won";
-  const alreadyOnboarded = !!request.converted_project_id || !!request.converted_contract_id;
+  const started = isStarted(request);
+  const closed = request.stage === "lost" || request.stage === "withdrawn";
 
   return (
     <PipelineDetailSheet
       open
       onClose={onClose}
-      refId={request.reference_number ?? request.id.slice(0, 8)}
+      refId={request.reference_number ?? ""}
       title={request.client_name ?? request.prospect_client_name ?? request.title}
       tags={
         <>
           <span className="p-chip" style={{ background: c.bg, color: c.text }}>
-            {request.department_name ?? "Unassigned"}
+            {request.department_name ?? "Not routed yet"}
           </span>
           <span
             className="p-chip"
             style={{ background: "var(--pipeline-line-soft)", color: "var(--pipeline-slate)" }}
           >
-            {ENGAGEMENT_PIPELINE_STAGES.find((s) => s.key === request.stage)?.label}
+            {stageLabel(request.stage)}
           </span>
         </>
       }
@@ -381,26 +552,18 @@ function EngagementDetail({
             total={ENGAGEMENT_PIPELINE_STAGES.length}
             doneCount={idx}
             currentIndex={idx}
+            label={stageLabel(request.stage)}
           />
-          {canManage && request.department_id && (
+
+          <SectionLabel>Move to…</SectionLabel>
+          {canMove ? (
             <div>
-              <SectionLabel>Move stage</SectionLabel>
-              <Select
-                value={request.stage}
-                onValueChange={(v) =>
-                  updateStage.mutate(
-                    { id: request.id, stage: v as ClientRequestStage },
-                    {
-                      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed"),
-                    },
-                  )
-                }
-              >
-                <SelectTrigger className="w-full">
+              <Select value={request.stage} onValueChange={onMove} disabled={movePending}>
+                <SelectTrigger className="w-full" aria-label={`Move ${request.title} to`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ENGAGEMENT_PIPELINE_STAGES.filter((s) => s.key !== "new").map((s) => (
+                  {moveTargetsFor(request).map((s) => (
                     <SelectItem key={s.key} value={s.key}>
                       {s.label}
                     </SelectItem>
@@ -412,34 +575,84 @@ function EngagementDetail({
                 isPending={updateStage.isPending}
                 onSubmit={(stage, reason) =>
                   updateStage.mutate(
-                    { id: request.id, stage, lost_reason: reason || undefined },
+                    { id: request.id, stage, lost_reason: reason },
                     {
-                      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed"),
+                      onSuccess: () => toast.success(`Marked as ${stage}`),
+                      onError: (err) =>
+                        toast.error(err instanceof Error ? err.message : "The change didn't save"),
                     },
                   )
                 }
               />
             </div>
+          ) : (
+            <ActionHint>{moveBlockedReason}</ActionHint>
           )}
-          {!request.department_id && (
-            <div className="text-xs" style={{ color: "var(--pipeline-slate)" }}>
-              Route this request to a department from the full record before it can move further.
+
+          <SectionLabel>Start project</SectionLabel>
+          {started ? (
+            <div className="space-y-1 text-xs" style={{ color: "var(--pipeline-teal)" }}>
+              {request.converted_project_id && (
+                <Link
+                  to="/projects/$projectId"
+                  params={{ projectId: request.converted_project_id }}
+                  className="flex items-center gap-1 font-semibold hover:underline"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  Project started: {request.converted_project_name ?? "open project"}
+                </Link>
+              )}
+              {request.converted_contract_id && (
+                <Link
+                  to="/clients/contracts/$id"
+                  params={{ id: request.converted_contract_id }}
+                  className="flex items-center gap-1 font-semibold hover:underline"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  Contract {request.converted_contract_number ?? ""}
+                </Link>
+              )}
             </div>
+          ) : closed ? (
+            <ActionHint>This request didn't go ahead, so there's no project to start.</ActionHint>
+          ) : canStart ? (
+            isWon ? (
+              <ActionHint>This request is Won. Start its project with the button below.</ActionHint>
+            ) : (
+              <div className="space-y-1.5">
+                <Button className="w-full" variant="outline" disabled>
+                  <Rocket className="h-4 w-4 mr-1" /> Start project from request
+                </Button>
+                <ActionHint topic="start project from request">
+                  You can start the project once the request is Won.
+                </ActionHint>
+              </div>
+            )
+          ) : (
+            <ActionHint topic="start project from request">
+              {request.department_name
+                ? `Only the ${request.department_name} team can start the project from this request.`
+                : "Once routed, the department it goes to starts the project."}
+            </ActionHint>
           )}
-          <div className="mt-4">
+
+          <div className="mt-5">
             <Link
               to="/requests/$requestId"
               params={{ requestId: request.id }}
               className="text-xs hover:underline"
               style={{ color: "var(--pipeline-gold)" }}
             >
-              Open full request record (routing, documents) →
+              Open the full client request →
             </Link>
           </div>
         </div>
       }
       activity={
         <ActivityPane
+          record={{ kind: "client_request", id: request.id }}
+          canLog={canManage}
+          readOnlyReason="Only the people working on this request can add activity."
           activities={activitiesQ.data ?? []}
           isLoading={activitiesQ.isLoading}
           isAdding={logActivity.isPending}
@@ -454,136 +667,45 @@ function EngagementDetail({
         />
       }
       docs={
-        <div className="text-xs" style={{ color: "var(--pipeline-slate)" }}>
-          Manage documents from the full request record's Documents tab.
-        </div>
+        <AttachmentsPanel
+          resourceType="client_request"
+          resourceId={request.id}
+          canManage={canManage}
+        />
       }
       footer={
-        isWon && !alreadyOnboarded ? (
-          <Button
-            className="flex-1"
-            onClick={onOnboard}
-            style={{ background: "var(--pipeline-ink)" }}
-          >
-            Onboard as Client Project →
-          </Button>
-        ) : (
-          <Button variant="outline" className="flex-1" onClick={onClose}>
-            Close
-          </Button>
-        )
+        <>
+          {isWon && !started && canStart ? (
+            <Button
+              className="flex-1"
+              onClick={onStart}
+              style={{ background: "var(--pipeline-ink)" }}
+            >
+              <Rocket className="h-4 w-4 mr-1" /> Start project from request
+            </Button>
+          ) : (
+            <Button variant="outline" className="flex-1" onClick={onClose}>
+              Close
+            </Button>
+          )}
+          {canManage && (
+            <Button variant="outline" onClick={onEdit}>
+              <Pencil className="h-4 w-4 mr-1" /> Edit request
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="ghost"
+              className="text-destructive"
+              onClick={handleDelete}
+              disabled={deleteRequest.isPending}
+              aria-label={`Delete client request ${request.title}`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </>
       }
     />
-  );
-}
-
-function OnboardForm({
-  request,
-  onDone,
-  convertToProject,
-  convertToContract,
-}: {
-  request: ClientRequestRow;
-  onDone: () => void;
-  convertToProject: ReturnType<typeof useConvertToProject>;
-  convertToContract: ReturnType<typeof useConvertClientRequestToContract>;
-}) {
-  const [mode, setMode] = useState<"project" | "contract">("project");
-  const [clientId, setClientId] = useState(request.client_id ?? "");
-  const [contractNumber, setContractNumber] = useState("");
-
-  const submit = () => {
-    if (!request.client_id && !clientId) {
-      toast.error("A real client is required to onboard this request");
-      return;
-    }
-    if (mode === "project") {
-      convertToProject.mutate(
-        { requestId: request.id, clientId: clientId || undefined },
-        {
-          onSuccess: () => {
-            toast.success("Onboarded as a project");
-            onDone();
-          },
-          onError: (err) => toast.error(err instanceof Error ? err.message : "Failed"),
-        },
-      );
-    } else {
-      if (!contractNumber.trim()) {
-        toast.error("Contract number is required");
-        return;
-      }
-      convertToContract.mutate(
-        {
-          requestId: request.id,
-          clientId: clientId || undefined,
-          contractNumber: contractNumber.trim(),
-          billingFrequency: "monthly",
-          startDate: new Date().toISOString().slice(0, 10),
-        },
-        {
-          onSuccess: () => {
-            toast.success("Onboarded as a recurring contract");
-            onDone();
-          },
-          onError: (err) => toast.error(err instanceof Error ? err.message : "Failed"),
-        },
-      );
-    }
-  };
-
-  return (
-    <div>
-      <DialogHeader>
-        <DialogTitle className="p-title">Onboard as client</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-3 py-2">
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant={mode === "project" ? "default" : "outline"}
-            onClick={() => setMode("project")}
-          >
-            One-off project
-          </Button>
-          <Button
-            size="sm"
-            variant={mode === "contract" ? "default" : "outline"}
-            onClick={() => setMode("contract")}
-          >
-            Recurring contract
-          </Button>
-        </div>
-        {!request.client_id && (
-          <div>
-            <Label>Client on file</Label>
-            <ClientPicker
-              value={clientId}
-              onChange={setClientId}
-              placeholder="Select the real client record…"
-            />
-          </div>
-        )}
-        {mode === "contract" && (
-          <div>
-            <Label>Contract number</Label>
-            <Input
-              value={contractNumber}
-              onChange={(e) => setContractNumber(e.target.value)}
-              placeholder="e.g. CTR-2026-108"
-            />
-          </div>
-        )}
-      </div>
-      <DialogFooter>
-        <Button
-          onClick={submit}
-          disabled={convertToProject.isPending || convertToContract.isPending}
-          style={{ background: "var(--pipeline-ink)" }}
-        >
-          Confirm onboarding
-        </Button>
-      </DialogFooter>
-    </div>
   );
 }

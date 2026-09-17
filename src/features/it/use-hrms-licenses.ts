@@ -30,6 +30,7 @@ export interface HrmsLicenseRow {
   tier: HrmsLicenseTier;
   status: HrmsLicenseStatus;
   activeUsers: number | null;
+  licensedSeats: number | null;
   renewalDate: string | null;
   notes: string | null;
   client: { id: string; name: string };
@@ -57,6 +58,8 @@ export function useSaveHrmsLicense() {
       tier?: HrmsLicenseTier;
       status?: HrmsLicenseStatus;
       activeUsers?: number;
+      // null clears the value on edit.
+      licensedSeats?: number | null;
       renewalDate?: string;
       notes?: string;
     }) => {
@@ -65,11 +68,15 @@ export function useSaveHrmsLicense() {
         tier: input.tier,
         status: input.status,
         activeUsers: input.activeUsers,
+        licensedSeats: input.licensedSeats,
         renewalDate: input.renewalDate || undefined,
         notes: input.notes || undefined,
       };
       if (input.id) {
-        await apiJson(`/hrms-licenses/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        await apiJson(`/hrms-licenses/${input.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
         return input.id;
       }
       const created = await apiJson<HrmsLicenseRow>("/hrms-licenses", {

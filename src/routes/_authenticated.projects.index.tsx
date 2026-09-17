@@ -1,24 +1,24 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
-import { Loader2, Plus, ArrowRight } from "lucide-react";
-import { toast } from "sonner";
-import { useAuth } from "@/lib/auth";
-import { useDepartments, useEligibleDepartments } from "@/features/clients/use-clients-contracts";
-import { useClients } from "@/features/finance/use-finance-data";
+import { z } from "zod";
+import { Loader2 } from "lucide-react";
+import { useDepartments } from "@/features/clients/use-clients-contracts";
 import {
   useProjects,
-  useCreateProject,
   PROJECT_STATUS_LABELS,
   type ProjectStatus,
-  type ProjectVisibility,
-  type ProjectEngagementType,
 } from "@/features/projects/use-projects";
-import { ProjectVisibilityPicker } from "@/features/projects/project-visibility-picker";
+import { NewProjectDialog } from "@/features/projects/new-project-dialog";
+import { ProjectCardGrid } from "@/features/projects/project-card-grid";
+import {
+  DepartmentProjectTabs,
+  type DepartmentProjectFilters,
+} from "@/features/projects/department-project-tabs";
+import { useAuth } from "@/lib/auth";
+import { matchesQuery } from "@/components/pipeline/board-search";
+import { LoadError } from "@/components/load-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -26,51 +26,80 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 
-const PROJECT_STATUS_STYLES: Record<ProjectStatus, string> = {
-  planning: "bg-secondary text-secondary-foreground",
-  active: "bg-primary/10 text-primary",
-  on_hold: "bg-warning/15 text-warning",
-  completed: "bg-success/15 text-success",
-  cancelled: "bg-destructive/15 text-destructive",
-};
+const STATUSES = ["planning", "active", "on_hold", "completed", "cancelled"] as const;
+
+const searchSchema = z.object({
+  dept: z.string().optional().catch(undefined),
+  status: z.enum(STATUSES).optional().catch(undefined),
+  q: z.string().optional().catch(undefined),
+});
 
 export const Route = createFileRoute("/_authenticated/projects/")({
+  validateSearch: searchSchema,
   component: ProjectsIndex,
 });
 
 function ProjectsIndex() {
-  const [departmentFilter, setDepartmentFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const { isCeo } = useAuth();
+  const filters = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const setFilters = (patch: DepartmentProjectFilters) =>
+    navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
+  return isCeo ? (
+    <DepartmentProjectTabs filters={filters} onFiltersChange={setFilters} />
+  ) : (
+    <AllProjects filters={filters} onFiltersChange={setFilters} />
+  );
+}
+
+function AllProjects({
+  filters,
+  onFiltersChange,
+}: {
+  filters: DepartmentProjectFilters;
+  onFiltersChange: (patch: DepartmentProjectFilters) => void;
+}) {
+  const departmentFilter = filters.dept ?? "all";
+  const statusFilter = filters.status ?? "all";
+  const query = filters.q ?? "";
 
   const departmentsQ = useDepartments();
   const projectsQ = useProjects({
     departmentId: departmentFilter === "all" ? undefined : departmentFilter,
-    status: statusFilter === "all" ? undefined : (statusFilter as ProjectStatus),
+    status: statusFilter === "all" ? undefined : statusFilter,
   });
+
+  const loaded = projectsQ.data ?? [];
+  const visible = loaded.filter((p) =>
+    matchesQuery(query, p.name, p.client_name, p.department_name, p.service_line_name),
+  );
+  const filtered = departmentFilter !== "all" || statusFilter !== "all" || !!query.trim();
 
   return (
     <div className="space-y-4">
-      <div className="text-xs text-muted-foreground">
-        See the delivery-stage board in{" "}
-        <Link to="/pipeline/projects" className="text-primary hover:underline">
-          Pipeline →
-        </Link>
-      </div>
       <div className="flex flex-wrap items-end gap-3 justify-between">
-        <div className="flex flex-wrap gap-3">
-          <div className="w-52">
-            <Label className="text-xs">Department</Label>
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-full sm:w-64">
+            <Label htmlFor="projects-search" className="text-xs">
+              Search
+            </Label>
+            <Input
+              id="projects-search"
+              value={query}
+              onChange={(e) => onFiltersChange({ q: e.target.value || undefined })}
+              placeholder="Project, client or service line"
+            />
+          </div>
+          <div className="w-full sm:w-52">
+            <Label htmlFor="projects-department" className="text-xs">
+              Department
+            </Label>
+            <Select
+              value={departmentFilter}
+              onValueChange={(v) => onFiltersChange({ dept: v === "all" ? undefined : v })}
+            >
+              <SelectTrigger id="projects-department">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -83,10 +112,17 @@ function ProjectsIndex() {
               </SelectContent>
             </Select>
           </div>
-          <div className="w-44">
-            <Label className="text-xs">Status</Label>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
+          <div className="w-full sm:w-44">
+            <Label htmlFor="projects-status" className="text-xs">
+              Status
+            </Label>
+            <Select
+              value={statusFilter}
+              onValueChange={(v) =>
+                onFiltersChange({ status: v === "all" ? undefined : (v as ProjectStatus) })
+              }
+            >
+              <SelectTrigger id="projects-status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -99,6 +135,12 @@ function ProjectsIndex() {
               </SelectContent>
             </Select>
           </div>
+          <Link
+            to="/pipeline/projects"
+            className="pb-2 text-xs font-medium text-primary hover:underline"
+          >
+            Board view
+          </Link>
         </div>
         <NewProjectDialog />
       </div>
@@ -107,192 +149,33 @@ function ProjectsIndex() {
         <div className="py-12 flex justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
-      ) : (projectsQ.data ?? []).length === 0 ? (
-        <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">
-          No projects match these filters.
+      ) : projectsQ.isError ? (
+        <LoadError what="projects" error={projectsQ.error} onRetry={() => projectsQ.refetch()} />
+      ) : visible.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">
+          {filtered ? (
+            <>
+              <p>No matches</p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  onFiltersChange({ dept: undefined, status: undefined, q: undefined })
+                }
+              >
+                Clear filters
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="font-medium text-foreground">No projects yet</p>
+              <NewProjectDialog />
+            </>
+          )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {(projectsQ.data ?? []).map((p) => (
-            <Link
-              key={p.id}
-              to="/projects/$projectId"
-              params={{ projectId: p.id }}
-              className="rounded-lg border bg-card p-4 flex flex-col gap-2 hover:border-primary/50 transition-colors"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="font-semibold text-sm">{p.name}</div>
-                <Badge className={PROJECT_STATUS_STYLES[p.status]} variant="secondary">
-                  {PROJECT_STATUS_LABELS[p.status]}
-                </Badge>
-              </div>
-              <div className="text-xs text-muted-foreground">{p.department_name}</div>
-              {p.client_name && (
-                <div className="text-xs text-muted-foreground">Client: {p.client_name}</div>
-              )}
-              <div className="mt-auto pt-2 border-t flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">{p.task_count ?? 0} tasks</span>
-                <span className="text-primary inline-flex items-center gap-1">
-                  Open <ArrowRight className="h-3 w-3" />
-                </span>
-              </div>
-            </Link>
-          ))}
-        </div>
+        <ProjectCardGrid projects={visible} showDepartment />
       )}
     </div>
-  );
-}
-
-// Exported so a department hub's own Projects & Tasks board (e.g. HR's "Work & Projects") can
-// embed this same dialog with `fixedDepartmentId` pre-selecting (and locking) that department —
-// standalone project creation otherwise only lived on this generic /projects page, meaning a
-// department user had to leave their own workspace to start a project not routed here from a
-// won tender or converted client request.
-export function NewProjectDialog({ fixedDepartmentId }: { fixedDepartmentId?: string } = {}) {
-  const { profile } = useAuth();
-  const eligibleDepartmentsQ = useEligibleDepartments();
-  const clientsQ = useClients();
-  const createProject = useCreateProject();
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [departmentId, setDepartmentId] = useState(fixedDepartmentId ?? "");
-  const [clientId, setClientId] = useState("");
-  const [visibility, setVisibility] = useState<ProjectVisibility>("department");
-  const [memberIds, setMemberIds] = useState<string[]>([]);
-  const [engagementType, setEngagementType] = useState<ProjectEngagementType>("one_off");
-
-  // Default to the user's own department when they only have one obvious choice.
-  const eligibleDepartments = eligibleDepartmentsQ.data ?? [];
-  const departmentName = eligibleDepartments.find((d) => d.id === departmentId)?.name ?? "";
-
-  const submit = () => {
-    if (!name.trim() || !departmentId) {
-      toast.error("Name and department are required");
-      return;
-    }
-    createProject.mutate(
-      {
-        name: name.trim(),
-        description: description || undefined,
-        departmentId,
-        clientId: clientId || undefined,
-        visibility,
-        engagementType,
-        memberIds: visibility === "restricted" ? memberIds : undefined,
-      },
-      {
-        onSuccess: () => {
-          toast.success("Project created");
-          setOpen(false);
-          setName("");
-          setDescription("");
-          setDepartmentId(fixedDepartmentId ?? "");
-          setClientId("");
-          setVisibility("department");
-          setMemberIds([]);
-          setEngagementType("one_off");
-        },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to create"),
-      },
-    );
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus className="h-4 w-4 mr-1" /> New project
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>New project</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div>
-            <Label>Description</Label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {!fixedDepartmentId && (
-              <div>
-                <Label>Department</Label>
-                <Select value={departmentId} onValueChange={setDepartmentId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {eligibleDepartments.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div>
-              <Label>Client (optional)</Label>
-              <Select value={clientId} onValueChange={setClientId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="None" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(clientsQ.data ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          {!eligibleDepartments.length && (
-            <p className="text-xs text-muted-foreground">
-              Your account ({profile?.email}) isn't assigned a department role that can create
-              projects.
-            </p>
-          )}
-          <div>
-            <Label>Engagement type</Label>
-            <Select
-              value={engagementType}
-              onValueChange={(v) => setEngagementType(v as ProjectEngagementType)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="one_off">One-off delivery</SelectItem>
-                <SelectItem value="ongoing">Ongoing / retainer</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <ProjectVisibilityPicker
-            departmentName={departmentName}
-            visibility={visibility}
-            onVisibilityChange={setVisibility}
-            memberIds={memberIds}
-            onMemberIdsChange={setMemberIds}
-          />
-        </div>
-        <DialogFooter>
-          <Button onClick={submit} disabled={createProject.isPending}>
-            {createProject.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Create project
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

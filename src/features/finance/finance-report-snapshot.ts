@@ -1,15 +1,15 @@
 import type { InvoiceRow, PaymentRow } from "./finance";
-import { computeAging, invoiceOutstanding } from "./finance";
+import { computeAging, invoiceOutstanding, invoiceRevenue, isBilledInvoice } from "./finance";
 import type { Client, ServiceLine } from "./use-finance-data";
 
 export type FinanceReportType =
   "monthly_financial" | "debtors_ageing" | "revenue_service_line" | "quarterly_executive";
 
 export const REPORT_TYPE_LABELS: Record<FinanceReportType, string> = {
-  monthly_financial: "Monthly Financial Report",
-  debtors_ageing: "Debtors / AR Ageing Report",
-  revenue_service_line: "Revenue & Service Line Report",
-  quarterly_executive: "Quarterly Executive Summary",
+  monthly_financial: "Monthly finance report",
+  debtors_ageing: "Debtors report (who owes us, by days late)",
+  revenue_service_line: "Revenue by service line report",
+  quarterly_executive: "Quarterly summary for the CEO",
 };
 
 export type FinanceReportStatus = "draft" | "submitted" | "approved" | "changes_requested";
@@ -38,6 +38,10 @@ export interface KpiEntry {
 export interface FinanceReportSnapshot {
   period_start: string;
   period_end: string;
+  /** Currency every amount is in; older reports have none. */
+  currency?: string;
+  /** Invoices in other currencies left out of the figures. */
+  other_currency_invoices?: number;
   kpis: KpiEntry[];
   monthly?: { label: string; revenue: number; cost: number; profit: number }[];
   aging?: { label: string; amount: number; count: number }[];
@@ -60,20 +64,24 @@ export function buildSnapshot({
   payments,
   serviceLines,
   clients,
+  currency,
 }: {
   type: FinanceReportType;
   periodStart: Date;
   periodEnd: Date;
+  /** Company currency; invoices in other currencies are left out, not added in. */
+  currency: string;
   invoices: InvoiceRow[];
   payments: PaymentRow[];
   serviceLines: ServiceLine[];
   clients: Client[];
 }): FinanceReportSnapshot {
+  const otherCurrencyInvoices = invoices.filter(
+    (i) => i.currency_code !== currency && isBilledInvoice(i),
+  ).length;
+  invoices = invoices.filter((i) => i.currency_code === currency);
   const eligible = invoices.filter(
-    (i) =>
-      i.status !== "draft" &&
-      i.status !== "void" &&
-      pctInWindow(i.issue_date, periodStart, periodEnd),
+    (i) => isBilledInvoice(i) && pctInWindow(i.issue_date, periodStart, periodEnd),
   );
 
   const paidMap = new Map<string, number>();
@@ -81,9 +89,13 @@ export function buildSnapshot({
     paidMap.set(p.invoice_id, (paidMap.get(p.invoice_id) ?? 0) + Number(p.amount));
   }
 
-  const revenue = eligible.reduce((s, i) => s + Number(i.total), 0);
+  // Revenue is before VAT; collection rate compares cash to the full billed amount.
+  const revenue = eligible.reduce((s, i) => s + invoiceRevenue(i), 0);
+  const billedTotal = eligible.reduce((s, i) => s + Number(i.total), 0);
   const cost = eligible.reduce((s, i) => s + Number(i.direct_cost), 0);
-  const recurring = eligible.filter((i) => i.is_recurring).reduce((s, i) => s + Number(i.total), 0);
+  const recurring = eligible
+    .filter((i) => i.is_recurring)
+    .reduce((s, i) => s + invoiceRevenue(i), 0);
   const oneOff = revenue - recurring;
   const collected = eligible.reduce((s, i) => s + (paidMap.get(i.id) ?? 0), 0);
   const outstanding = invoices.reduce(
@@ -91,17 +103,17 @@ export function buildSnapshot({
     0,
   );
   const grossMargin = revenue > 0 ? ((revenue - cost) / revenue) * 100 : 0;
-  const collectionRate = revenue > 0 ? (collected / revenue) * 100 : 0;
+  const collectionRate = billedTotal > 0 ? (collected / billedTotal) * 100 : 0;
 
   const kpis: KpiEntry[] = [
-    { label: "Revenue", value: revenue, format: "currency" },
+    { label: "Revenue", value: revenue, format: "currency", hint: "Before VAT" },
     { label: "Direct cost", value: cost, format: "currency" },
     { label: "Gross profit", value: revenue - cost, format: "currency" },
     { label: "Gross margin", value: grossMargin, format: "percent" },
     { label: "Recurring revenue", value: recurring, format: "currency" },
     { label: "One-off revenue", value: oneOff, format: "currency" },
     { label: "Collected", value: collected, format: "currency" },
-    { label: "Outstanding AR", value: outstanding, format: "currency" },
+    { label: "Still owed to us", value: outstanding, format: "currency" },
     { label: "Collection rate", value: collectionRate, format: "percent" },
     { label: "Invoices", value: eligible.length, format: "number" },
   ];
@@ -126,7 +138,7 @@ export function buildSnapshot({
     const k = `${d.getFullYear()}-${d.getMonth()}`;
     const i = idx.get(k);
     if (i === undefined) continue;
-    monthly[i].revenue += Number(inv.total);
+    monthly[i].revenue += invoiceRevenue(inv);
     monthly[i].cost += Number(inv.direct_cost);
   }
   monthly.forEach((m) => (m.profit = m.revenue - m.cost));
@@ -154,7 +166,7 @@ export function buildSnapshot({
       total: 0,
       cost: 0,
     };
-    cur.total += Number(inv.total);
+    cur.total += invoiceRevenue(inv);
     cur.cost += Number(inv.direct_cost);
     byLineMap.set(sl.id, cur);
   }
@@ -186,6 +198,8 @@ export function buildSnapshot({
   const base: FinanceReportSnapshot = {
     period_start: periodStart.toISOString().slice(0, 10),
     period_end: periodEnd.toISOString().slice(0, 10),
+    currency,
+    other_currency_invoices: otherCurrencyInvoices,
     kpis,
     invoice_count: eligible.length,
     generated_at: new Date().toISOString(),

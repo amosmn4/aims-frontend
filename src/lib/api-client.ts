@@ -117,5 +117,7 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await apiFetch(path, init);
   if (!res.ok) throw new ApiError(res.status, await parseError(res));
   if (res.status === 204) return undefined as T;
-  return res.json();
+  // A handler returning bare `null` sends an empty 200 body — res.json() would throw on that.
+  const text = await res.text();
+  return (text ? JSON.parse(text) : null) as T;
 }

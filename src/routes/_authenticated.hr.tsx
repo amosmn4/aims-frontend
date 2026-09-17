@@ -1,20 +1,18 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
-import { DepartmentHubTabs, useShowDepartmentHub } from "@/components/department-hub-tabs";
+import { RequireDepartmentAccess } from "@/components/require-role";
 
-// Thin layout — lets CEO/admin AND HR-role staff (the pilot for regular department staff, see
-// useShowDepartmentHub) get an in-page tab bar across HR's existing routes. Everyone else's
-// experience is untouched: bare Outlet, no RequireRole here (there wasn't one before this file
-// existed either), navigation stays in the global top nav via lib/department-nav.ts.
 export const Route = createFileRoute("/_authenticated/hr")({
+  head: () => ({ meta: [{ title: "HR — AIMS" }, { name: "robots", content: "noindex" }] }),
   component: HrLayout,
 });
 
 function HrLayout() {
-  const showHub = useShowDepartmentHub("hr");
   return (
-    <>
-      {showHub && <DepartmentHubTabs code="hr" />}
+    <RequireDepartmentAccess
+      code="hr"
+      message="The HR workspace is for the HR team, people granted HR access and the CEO."
+    >
       <Outlet />
-    </>
+    </RequireDepartmentAccess>
   );
 }

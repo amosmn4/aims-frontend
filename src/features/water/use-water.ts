@@ -1,6 +1,26 @@
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type Query,
+  type QueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
+import { useAuth } from "@/lib/auth";
 import type { PaginatedResponse } from "@/hooks/use-pagination";
+
+// Same rule as the Water layout guard and the backend's @Roles("water").
+export function useCanManageWater() {
+  const { hasRole, isAdminOrCeo } = useAuth();
+  return isAdminOrCeo || hasRole("water");
+}
+
+// Skips the deleted record's own detail query so it doesn't refetch into a 404.
+function exceptDetailOf(entity: string, id: string) {
+  return (q: Query) => !(q.queryKey[1] === entity && q.queryKey[2] === id);
+}
 
 export type WaterMeterType = "main" | "bulk" | "household";
 
@@ -10,11 +30,14 @@ export const WATER_METER_TYPE_LABELS: Record<WaterMeterType, string> = {
   household: "Household",
 };
 
+// Two stages of one chain, not parallel sources. Must match backend's MAIN_METER_NAMES exactly.
+export const MAIN_METER_NAMES = ["Borehole → Tank", "Tank → Distribution"] as const;
+
 export type WaterVendingSystem = "amsol" | "mpaya";
 
 export const WATER_VENDING_SYSTEM_LABELS: Record<WaterVendingSystem, string> = {
   amsol: "Amsol",
-  mpaya: "MPaya",
+  mpaya: "mPaya",
 };
 
 export interface WaterZoneRow {
@@ -24,13 +47,12 @@ export interface WaterZoneRow {
   parent_zone_name: string | null;
   child_count: number;
   meter_count: number;
+  active_meter_count: number;
   customer_count: number;
   created_at: string;
 }
 
-// Flat, unpaginated — every zone's id/name/parent, used to build the "Zone" then "Sub-zone"
-// cascading pickers on the Meter/Customer forms (top-level = parent_zone_id null, sub-zone =
-// any zone whose parent is the one picked) and the parent-zone picker on the Zones page itself.
+// Flat, unpaginated — builds the "Zone" then "Sub-zone" cascading pickers on forms.
 export interface WaterZoneTreeNode {
   id: string;
   name: string;
@@ -66,6 +88,7 @@ export interface WaterMeterRow {
   last_vend_at: string | null;
   total_vend_count: number;
   last_reading_at: string | null;
+  total_reading_count: number;
   vending_system: WaterVendingSystem;
   replaces_meter_id: string | null;
   replaces_meter: { id: string; meter_number: string; vending_system: WaterVendingSystem } | null;
@@ -94,12 +117,16 @@ export interface WaterUsageUploadRow {
   record_count: number;
   uploaded_by_name: string | null;
   created_at: string;
+  period_start: string | null;
+  period_end: string | null;
 }
 
 export interface WaterMeterReadingRow {
   id: string;
   meter_id: string;
   meter_number: string;
+  meter_name: string | null;
+  zone_name: string | null;
   meter_type: WaterMeterType;
   reading_date: string;
   value: number;
@@ -107,18 +134,23 @@ export interface WaterMeterReadingRow {
   created_at: string;
 }
 
+export type MeterStatusCounts = Record<WaterMeterType, { active: number; inactive: number }>;
+
 export interface WaterDashboard {
   month: string;
   active_households: number;
   active_meters: number;
+  inactive_meters: number;
+  meter_status: MeterStatusCounts;
   units_sold: number;
   units_sold_change_pct: number | null;
   revenue: number;
   main_reading_total: number;
   bulk_reading_total: number;
-  nrw_main_to_bulk_pct: number | null;
-  nrw_bulk_to_household_pct: number | null;
-  nrw_main_to_household_pct: number | null;
+  // Stage 1: borehole -> tank. Stage 2: tank -> distribution. Overall: borehole vs. all households.
+  nrw_borehole_to_tank_pct: number | null;
+  nrw_tank_to_network_pct: number | null;
+  nrw_overall_pct: number | null;
 }
 
 export interface WaterTrendPoint {
@@ -129,23 +161,20 @@ export interface WaterTrendPoint {
 }
 
 export interface WaterZoneComparisonRow {
-  zone_id: string;
+  zone_id: string | null;
   zone_name: string;
+  parent_zone_id: string | null;
   bulk_total: number;
   household_total: number;
+  loss_units: number;
+  loss_pct: number | null;
 }
 
 export interface WaterReportSummary {
   month: string;
   dashboard: WaterDashboard;
   prev_dashboard: WaterDashboard;
-  zone_loss: {
-    zone_id: string;
-    zone_name: string;
-    bulk_total: number;
-    household_total: number;
-    loss_pct: number | null;
-  }[];
+  zone_loss: WaterZoneComparisonRow[];
   insights: string[];
 }
 
@@ -166,6 +195,7 @@ type BackendZone = {
   parentZoneId: string | null;
   parent: { id: string; name: string } | null;
   _count: { children: number; meters: number; customers: number };
+  activeMeterCount?: number;
   createdAt: string;
 };
 
@@ -177,17 +207,22 @@ function mapZone(z: BackendZone): WaterZoneRow {
     parent_zone_name: z.parent?.name ?? null,
     child_count: z._count.children,
     meter_count: z._count.meters,
+    active_meter_count: z.activeMeterCount ?? z._count.meters,
     customer_count: z._count.customers,
     created_at: z.createdAt,
   };
 }
 
-export function useWaterZones(pagination: { page?: number; pageSize?: number } = {}) {
+export function useWaterZones(
+  filters: { q?: string } = {},
+  pagination: { page?: number; pageSize?: number } = {},
+) {
   return useQuery({
-    queryKey: ["water", "zones", pagination],
+    queryKey: ["water", "zones", filters, pagination],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const raw = await apiJson<BackendZone[] | PaginatedResponse<BackendZone>>(
-        `/water/zones${buildQuery(pagination)}`,
+        `/water/zones${buildQuery({ ...filters, ...pagination })}`,
       );
       return Array.isArray(raw) ? raw.map(mapZone) : { ...raw, data: raw.data.map(mapZone) };
     },
@@ -223,9 +258,14 @@ export function useCreateWaterZone() {
 export function useUpdateWaterZone() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...input }: { id: string; name?: string; parentZoneId?: string }) =>
+    // parentZoneId null moves the zone to the top level.
+    mutationFn: ({ id, ...input }: { id: string; name?: string; parentZoneId?: string | null }) =>
       apiJson(`/water/zones/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["water", "zones"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["water", "zones"] });
+      qc.invalidateQueries({ queryKey: ["water", "meters"] });
+      qc.invalidateQueries({ queryKey: ["water", "customers"] });
+    },
   });
 }
 
@@ -265,9 +305,7 @@ function mapCustomer(c: BackendCustomer): WaterCustomerRow {
 
 type WaterCustomerFilters = { zoneId?: string; q?: string };
 
-// Overloaded so a bare call (dropdown pickers, the "apply to meter" list) gets a plain
-// `WaterCustomerRow[]` at the type level, matching what the backend actually returns then; only
-// a call with concrete `{page, pageSize}` sees the paginated-envelope union it has to narrow.
+// Overloaded so a bare call gets a plain array type; only a paginated call sees the envelope union.
 export function useWaterCustomers(
   filters?: WaterCustomerFilters,
 ): UseQueryResult<WaterCustomerRow[]>;
@@ -281,6 +319,7 @@ export function useWaterCustomers(
 ) {
   return useQuery({
     queryKey: ["water", "customers", filters, pagination],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const qs = buildQuery({ ...filters, ...pagination });
       const raw = await apiJson<BackendCustomer[] | PaginatedResponse<BackendCustomer>>(
@@ -305,10 +344,12 @@ export function useSaveWaterCustomer() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: SaveCustomerInput) => {
+      // On edit, blanks are sent as null so the stored value is cleared.
+      const blank = input.id ? null : undefined;
       const body = {
         name: input.name,
-        zoneId: input.zoneId || undefined,
-        phone: input.phone || undefined,
+        zoneId: input.zoneId || blank,
+        phone: input.phone || blank,
         isActive: input.isActive,
       };
       if (input.id) {
@@ -320,7 +361,11 @@ export function useSaveWaterCustomer() {
         await apiJson("/water/customers", { method: "POST", body: JSON.stringify(body) });
       }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["water", "customers"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["water", "customers"] });
+      qc.invalidateQueries({ queryKey: ["water", "meters"] });
+      qc.invalidateQueries({ queryKey: ["water", "zones"] });
+    },
   });
 }
 
@@ -328,7 +373,8 @@ export function useDeleteWaterCustomer() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiJson(`/water/customers/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["water", "customers"] }),
+    onSuccess: (_data, id) =>
+      qc.invalidateQueries({ queryKey: ["water"], predicate: exceptDetailOf("customers", id) }),
   });
 }
 
@@ -350,7 +396,7 @@ type BackendMeter = {
   createdAt: string;
   usageRecords?: { recordedAt: string }[];
   readings?: { readingDate: string }[];
-  _count?: { usageRecords: number };
+  _count?: { usageRecords: number; readings?: number };
   vendingSystem: WaterVendingSystem;
   replacesMeterId: string | null;
   replacesMeter: { id: string; meterNumber: string; vendingSystem: WaterVendingSystem } | null;
@@ -375,6 +421,7 @@ function mapMeter(m: BackendMeter): WaterMeterRow {
     last_vend_at: m.usageRecords?.[0]?.recordedAt ?? null,
     total_vend_count: m._count?.usageRecords ?? 0,
     last_reading_at: m.readings?.[0]?.readingDate ?? null,
+    total_reading_count: m._count?.readings ?? 0,
     vending_system: m.vendingSystem,
     replaces_meter_id: m.replacesMeterId,
     replaces_meter: m.replacesMeter
@@ -394,11 +441,14 @@ function mapMeter(m: BackendMeter): WaterMeterRow {
   };
 }
 
+export type WaterMeterStatus = "active" | "inactive";
+
 type WaterMeterFilters = {
   meterType?: WaterMeterType;
   zoneId?: string;
   q?: string;
   vendingSystem?: WaterVendingSystem;
+  status?: WaterMeterStatus;
 };
 
 // See useWaterCustomers' matching overload comment above — same reasoning.
@@ -413,6 +463,7 @@ export function useWaterMeters(
 ) {
   return useQuery({
     queryKey: ["water", "meters", filters, pagination],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const qs = buildQuery({ ...filters, ...pagination });
       const raw = await apiJson<BackendMeter[] | PaginatedResponse<BackendMeter>>(
@@ -423,38 +474,52 @@ export function useWaterMeters(
   });
 }
 
+/** Every registered meter number, to warn about unknown meters before an upload is saved. */
+export function useWaterMeterNumbers(enabled: boolean) {
+  return useQuery({
+    queryKey: ["water", "meters", "numbers"],
+    enabled,
+    queryFn: async () => {
+      const raw = await apiJson<BackendMeter[] | PaginatedResponse<BackendMeter>>("/water/meters");
+      return new Set((Array.isArray(raw) ? raw : raw.data).map((m) => m.meterNumber));
+    },
+  });
+}
+
 export interface SaveMeterInput {
   id?: string;
   meterNumber: string;
   meterType?: WaterMeterType;
-  name?: string;
-  location?: string;
+  name?: string | null;
+  location?: string | null;
   customerId?: string;
   customerName?: string;
-  plotNo?: string;
-  installedAt?: string;
-  zoneId?: string;
+  plotNo?: string | null;
+  installedAt?: string | null;
+  zoneId?: string | null;
   isActive?: boolean;
   vendingSystem?: WaterVendingSystem;
-  replacesMeterId?: string;
+  replacesMeterId?: string | null;
 }
 
 export function useSaveWaterMeter() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: SaveMeterInput) => {
+      // On edit, blank optional fields are sent as null so the stored value is cleared.
+      const blank = input.id ? null : undefined;
       const body = {
         meterNumber: input.meterNumber,
         meterType: input.meterType,
-        name: input.name || undefined,
-        location: input.location || undefined,
+        name: input.name || blank,
+        location: input.location || blank,
         customerId: input.customerId || undefined,
         customerName: input.customerName || undefined,
         vendingSystem: input.vendingSystem || undefined,
-        replacesMeterId: input.replacesMeterId || undefined,
-        plotNo: input.plotNo || undefined,
-        installedAt: input.installedAt || undefined,
-        zoneId: input.zoneId || undefined,
+        replacesMeterId: input.replacesMeterId || blank,
+        plotNo: input.plotNo || blank,
+        installedAt: input.installedAt || blank,
+        zoneId: input.zoneId || blank,
         isActive: input.isActive,
       };
       if (input.id) {
@@ -466,15 +531,20 @@ export function useSaveWaterMeter() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["water", "meters"] });
       qc.invalidateQueries({ queryKey: ["water", "customers"] });
+      qc.invalidateQueries({ queryKey: ["water", "zones"] });
+      qc.invalidateQueries({ queryKey: ["water", "readings"] });
+      qc.invalidateQueries({ queryKey: ["water", "readings-with-delta"] });
     },
   });
 }
 
+// Readings and usage records cascade with the meter, so every water view may change.
 export function useDeleteWaterMeter() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiJson(`/water/meters/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["water", "meters"] }),
+    onSuccess: (_data, id) =>
+      qc.invalidateQueries({ queryKey: ["water"], predicate: exceptDetailOf("meters", id) }),
   });
 }
 
@@ -483,7 +553,14 @@ export function useDeleteWaterMeter() {
 type BackendReading = {
   id: string;
   meterId: string;
-  meter: { id: string; meterNumber: string; meterType: WaterMeterType; zoneId: string | null };
+  meter: {
+    id: string;
+    meterNumber: string;
+    meterType: WaterMeterType;
+    name?: string | null;
+    zoneId: string | null;
+    zone?: { id: string; name: string } | null;
+  };
   readingDate: string;
   value: number | string;
   notes: string | null;
@@ -495,6 +572,8 @@ function mapReading(r: BackendReading): WaterMeterReadingRow {
     id: r.id,
     meter_id: r.meterId,
     meter_number: r.meter.meterNumber,
+    meter_name: r.meter.name ?? null,
+    zone_name: r.meter.zone?.name ?? null,
     meter_type: r.meter.meterType,
     reading_date: r.readingDate,
     value: Number(r.value),
@@ -503,27 +582,44 @@ function mapReading(r: BackendReading): WaterMeterReadingRow {
   };
 }
 
-// `<input type="datetime-local">` produces a naive string with no UTC offset (e.g.
-// "2026-08-14T07:00"). The backend's `new Date(dto.readingDate)` parses a string like that as
-// the SERVER's local time, not the browser's — in production that's UTC, so a value typed as
-// 07:00 Nairobi time was silently being stored as 07:00Z and displayed back 3 hours later than
-// intended. `new Date(naiveLocalString)` in the BROWSER correctly parses it as browser-local
-// time, so converting to a real ISO instant here (before it ever leaves the client) fixes both
-// the write path and keeps the read path (which already formats in browser-local time) correct.
+// Naive datetime-local strings parse as server-local time on the backend — convert client-side.
 function toUtcInstant(naiveLocalDateTime: string): string {
   return new Date(naiveLocalDateTime).toISOString();
 }
 
-// The inverse — formats a stored UTC instant back into a `datetime-local`-compatible string in
-// the browser's local time, for pre-filling the input (a raw `.slice(0, 16)` of the ISO string
-// would show the UTC wall-clock instead, reintroducing the same offset bug on edit/reopen).
+// Inverse — formats a stored UTC instant into a datetime-local string in browser-local time.
 export function toLocalDateTimeInputValue(value: string | Date): string {
   const d = typeof value === "string" ? new Date(value) : value;
   const localMs = d.getTime() - d.getTimezoneOffset() * 60_000;
   return new Date(localMs).toISOString().slice(0, 16);
 }
 
-type WaterReadingFilters = { meterId?: string; from?: string; to?: string };
+type WaterReadingFilters = {
+  meterId?: string;
+  meterType?: WaterMeterType;
+  zoneId?: string;
+  q?: string;
+  from?: string;
+  to?: string;
+};
+
+// Readings feed meter pages, charts and every loss/NRW figure.
+const READING_DEPENDENT_KEYS = [
+  "readings",
+  "readings-with-delta",
+  "reading-series",
+  "meters",
+  "dashboard",
+  "trend",
+  "zone-comparison",
+  "report-summary",
+];
+
+function invalidateReadingViews(qc: QueryClient) {
+  return Promise.all(
+    READING_DEPENDENT_KEYS.map((key) => qc.invalidateQueries({ queryKey: ["water", key] })),
+  );
+}
 
 export function useWaterReadings(
   filters?: WaterReadingFilters,
@@ -538,6 +634,7 @@ export function useWaterReadings(
 ) {
   return useQuery({
     queryKey: ["water", "readings", filters, pagination],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const qs = buildQuery({ ...filters, ...pagination });
       const raw = await apiJson<BackendReading[] | PaginatedResponse<BackendReading>>(
@@ -557,10 +654,7 @@ export function useLogWaterReading() {
         body: JSON.stringify({ ...input, readingDate: toUtcInstant(input.readingDate) }),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["water", "readings"] });
-      qc.invalidateQueries({ queryKey: ["water", "dashboard"] });
-      qc.invalidateQueries({ queryKey: ["water", "trend"] });
-      qc.invalidateQueries({ queryKey: ["water", "zone-comparison"] });
+      invalidateReadingViews(qc);
     },
   });
 }
@@ -576,7 +670,8 @@ export function useUpdateWaterReading() {
       meterId?: string;
       readingDate?: string;
       value?: number;
-      notes?: string;
+      // null clears the notes.
+      notes?: string | null;
     }) =>
       apiJson(`/water/readings/${id}`, {
         method: "PATCH",
@@ -586,10 +681,7 @@ export function useUpdateWaterReading() {
         }),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["water", "readings"] });
-      qc.invalidateQueries({ queryKey: ["water", "dashboard"] });
-      qc.invalidateQueries({ queryKey: ["water", "trend"] });
-      qc.invalidateQueries({ queryKey: ["water", "zone-comparison"] });
+      invalidateReadingViews(qc);
     },
   });
 }
@@ -599,10 +691,7 @@ export function useDeleteWaterReading() {
   return useMutation({
     mutationFn: (id: string) => apiJson(`/water/readings/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["water", "readings"] });
-      qc.invalidateQueries({ queryKey: ["water", "dashboard"] });
-      qc.invalidateQueries({ queryKey: ["water", "trend"] });
-      qc.invalidateQueries({ queryKey: ["water", "zone-comparison"] });
+      invalidateReadingViews(qc);
     },
   });
 }
@@ -615,27 +704,49 @@ type BackendUpload = {
   recordCount: number;
   uploader: { id: string; fullName: string | null; email: string } | null;
   createdAt: string;
+  _count?: { records: number };
+  periodStart?: string | null;
+  periodEnd?: string | null;
 };
 
 function mapUpload(u: BackendUpload): WaterUsageUploadRow {
   return {
     id: u.id,
     file_name: u.fileName,
-    record_count: u.recordCount,
+    // Live count — records also disappear when their meter is deleted.
+    record_count: u._count?.records ?? u.recordCount,
     uploaded_by_name: u.uploader?.fullName ?? u.uploader?.email ?? null,
     created_at: u.createdAt,
+    period_start: u.periodStart ?? null,
+    period_end: u.periodEnd ?? null,
   };
 }
 
-export function useWaterUploads(pagination: { page?: number; pageSize?: number } = {}) {
+export function useWaterUploads(
+  filters: { q?: string; month?: string } = {},
+  pagination: { page?: number; pageSize?: number } = {},
+) {
   return useQuery({
-    queryKey: ["water", "uploads", pagination],
+    queryKey: ["water", "uploads", filters, pagination],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const raw = await apiJson<BackendUpload[] | PaginatedResponse<BackendUpload>>(
-        `/water/usage-uploads${buildQuery(pagination)}`,
+        `/water/usage-uploads${buildQuery({ ...filters, ...pagination })}`,
       );
       return Array.isArray(raw) ? raw.map(mapUpload) : { ...raw, data: raw.data.map(mapUpload) };
     },
+  });
+}
+
+// Removes the upload and its usage records, so any water analytic may change.
+export function useDeleteWaterUpload() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiJson<{ id: string; recordsDeleted: number }>(`/water/usage-uploads/${id}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["water"] }),
   });
 }
 
@@ -651,12 +762,17 @@ export interface UsageUploadResult {
   id: string;
   recordCount: number;
   duplicatesSkipped: number;
+  inactiveMeterNumbers?: string[];
 }
 
 export function useCreateWaterUpload() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { fileName: string; rows: UsageUploadRowInput[] }) =>
+    mutationFn: (input: {
+      fileName: string;
+      rows: UsageUploadRowInput[];
+      vendingSystem?: "amsol" | "mpaya";
+    }) =>
       apiJson<UsageUploadResult>("/water/usage-uploads", {
         method: "POST",
         body: JSON.stringify(input),
@@ -723,14 +839,16 @@ type BackendDashboard = {
   month: string;
   activeHouseholds: number;
   activeMeters: number;
+  inactiveMeters?: number;
+  meterStatus?: MeterStatusCounts;
   unitsSold: number;
   unitsSoldChangePct: number | null;
   revenue: number;
   mainReadingTotal: number;
   bulkReadingTotal: number;
-  nrwMainToBulkPct: number | null;
-  nrwBulkToHouseholdPct: number | null;
-  nrwMainToHouseholdPct: number | null;
+  nrwBoreholeToTankPct: number | null;
+  nrwTankToNetworkPct: number | null;
+  nrwOverallPct: number | null;
 };
 
 function mapDashboard(raw: BackendDashboard): WaterDashboard {
@@ -738,14 +856,20 @@ function mapDashboard(raw: BackendDashboard): WaterDashboard {
     month: raw.month,
     active_households: raw.activeHouseholds,
     active_meters: raw.activeMeters,
+    inactive_meters: raw.inactiveMeters ?? 0,
+    meter_status: raw.meterStatus ?? {
+      main: { active: 0, inactive: 0 },
+      bulk: { active: 0, inactive: 0 },
+      household: { active: 0, inactive: 0 },
+    },
     units_sold: raw.unitsSold,
     units_sold_change_pct: raw.unitsSoldChangePct,
     revenue: raw.revenue,
     main_reading_total: raw.mainReadingTotal,
     bulk_reading_total: raw.bulkReadingTotal,
-    nrw_main_to_bulk_pct: raw.nrwMainToBulkPct,
-    nrw_bulk_to_household_pct: raw.nrwBulkToHouseholdPct,
-    nrw_main_to_household_pct: raw.nrwMainToHouseholdPct,
+    nrw_borehole_to_tank_pct: raw.nrwBoreholeToTankPct,
+    nrw_tank_to_network_pct: raw.nrwTankToNetworkPct,
+    nrw_overall_pct: raw.nrwOverallPct,
   };
 }
 
@@ -776,19 +900,36 @@ export function useWaterTrend(filters: { zoneId?: string; months?: number } = {}
   });
 }
 
+type BackendZoneComparisonRow = {
+  zoneId: string | null;
+  zoneName: string;
+  parentZoneId: string | null;
+  bulkTotal: number;
+  householdTotal: number;
+  lossUnits: number;
+  lossPct: number | null;
+};
+
+function mapZoneComparisonRow(r: BackendZoneComparisonRow): WaterZoneComparisonRow {
+  return {
+    zone_id: r.zoneId,
+    zone_name: r.zoneName,
+    parent_zone_id: r.parentZoneId,
+    bulk_total: r.bulkTotal,
+    household_total: r.householdTotal,
+    loss_units: r.lossUnits,
+    loss_pct: r.lossPct,
+  };
+}
+
 export function useWaterZoneComparison(filters: { month?: string } = {}) {
   return useQuery({
     queryKey: ["water", "zone-comparison", filters],
     queryFn: async () => {
-      const raw = await apiJson<
-        { zoneId: string; zoneName: string; bulkTotal: number; householdTotal: number }[]
-      >(`/water/zone-comparison${buildQuery(filters)}`);
-      return raw.map((r): WaterZoneComparisonRow => ({
-        zone_id: r.zoneId,
-        zone_name: r.zoneName,
-        bulk_total: r.bulkTotal,
-        household_total: r.householdTotal,
-      }));
+      const raw = await apiJson<BackendZoneComparisonRow[]>(
+        `/water/zone-comparison${buildQuery(filters)}`,
+      );
+      return raw.map(mapZoneComparisonRow);
     },
   });
 }
@@ -801,26 +942,14 @@ export function useWaterReportSummary(filters: { month?: string } = {}) {
         month: string;
         dashboard: BackendDashboard;
         prevDashboard: BackendDashboard;
-        zoneLoss: {
-          zoneId: string;
-          zoneName: string;
-          bulkTotal: number;
-          householdTotal: number;
-          lossPct: number | null;
-        }[];
+        zoneLoss: BackendZoneComparisonRow[];
         insights: string[];
       }>(`/water/reports/summary${buildQuery(filters)}`);
       return {
         month: raw.month,
         dashboard: mapDashboard(raw.dashboard),
         prev_dashboard: mapDashboard(raw.prevDashboard),
-        zone_loss: raw.zoneLoss.map((z) => ({
-          zone_id: z.zoneId,
-          zone_name: z.zoneName,
-          bulk_total: z.bulkTotal,
-          household_total: z.householdTotal,
-          loss_pct: z.lossPct,
-        })),
+        zone_loss: raw.zoneLoss.map(mapZoneComparisonRow),
         insights: raw.insights,
       } satisfies WaterReportSummary;
     },
@@ -919,8 +1048,7 @@ export function useWaterReadingsWithDelta(filters: {
 
 export type VendingHealth = "active" | "slowing" | "inactive" | "never";
 
-// Recency-based read on how a meter is vending: recent purchases = healthy, a long silence is
-// the strongest signal something needs attention (broken meter, inactive customer, a data gap).
+// Recency-based read: recent purchases = healthy, a long silence signals something's wrong.
 export function vendingHealth(lastVendAt: string | null): VendingHealth {
   if (!lastVendAt) return "never";
   const days = (Date.now() - new Date(lastVendAt).getTime()) / 86_400_000;
@@ -936,8 +1064,7 @@ export const VENDING_HEALTH_LABELS: Record<VendingHealth, string> = {
   never: "No vends yet",
 };
 
-// Light theme-color row tints — deliberately subtle, same convention as Inventory's condition
-// row colors, so the table stays scannable rather than looking like a stoplight.
+// Subtle row tints, same convention as Inventory — scannable, not a stoplight.
 export const VENDING_HEALTH_ROW_STYLES: Record<VendingHealth, string> = {
   active: "bg-success/5",
   slowing: "bg-warning/8",

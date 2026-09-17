@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SetPasswordRouteImport } from './routes/set-password'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
@@ -20,7 +21,9 @@ import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated.projects'
 import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated.pipeline'
 import { Route as AuthenticatedOperationsRouteImport } from './routes/_authenticated.operations'
+import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated.notifications'
 import { Route as AuthenticatedMarketingRouteImport } from './routes/_authenticated.marketing'
+import { Route as AuthenticatedItHelpRouteImport } from './routes/_authenticated.it-help'
 import { Route as AuthenticatedItRouteImport } from './routes/_authenticated.it'
 import { Route as AuthenticatedHrRouteImport } from './routes/_authenticated.hr'
 import { Route as AuthenticatedGuideRouteImport } from './routes/_authenticated.guide'
@@ -49,6 +52,7 @@ import { Route as AuthenticatedWaterReportsRouteImport } from './routes/_authent
 import { Route as AuthenticatedWaterReadingsRouteImport } from './routes/_authenticated.water.readings'
 import { Route as AuthenticatedWaterMetersRouteImport } from './routes/_authenticated.water.meters'
 import { Route as AuthenticatedWaterCustomersRouteImport } from './routes/_authenticated.water.customers'
+import { Route as AuthenticatedWaterAiRouteImport } from './routes/_authenticated.water.ai'
 import { Route as AuthenticatedTenderWorkspaceRouteImport } from './routes/_authenticated.tender.workspace'
 import { Route as AuthenticatedTenderTasksRouteImport } from './routes/_authenticated.tender.tasks'
 import { Route as AuthenticatedTenderSharedProjectsRouteImport } from './routes/_authenticated.tender.shared-projects'
@@ -58,6 +62,7 @@ import { Route as AuthenticatedTenderDocumentsRouteImport } from './routes/_auth
 import { Route as AuthenticatedTenderCalendarRouteImport } from './routes/_authenticated.tender.calendar'
 import { Route as AuthenticatedTenderBidPipelineRouteImport } from './routes/_authenticated.tender.bid-pipeline'
 import { Route as AuthenticatedTenderTenderIdRouteImport } from './routes/_authenticated.tender.$tenderId'
+import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated.settings.profile'
 import { Route as AuthenticatedSettingsNotificationsRouteImport } from './routes/_authenticated.settings.notifications'
 import { Route as AuthenticatedRequestsRequestIdRouteImport } from './routes/_authenticated.requests.$requestId'
 import { Route as AuthenticatedReportsProjectsRouteImport } from './routes/_authenticated.reports.projects'
@@ -115,14 +120,18 @@ import { Route as AuthenticatedFinanceReportsRouteImport } from './routes/_authe
 import { Route as AuthenticatedFinancePipelineRouteImport } from './routes/_authenticated.finance.pipeline'
 import { Route as AuthenticatedFinancePayrollComplianceRouteImport } from './routes/_authenticated.finance.payroll-compliance'
 import { Route as AuthenticatedFinanceInvoicesRouteImport } from './routes/_authenticated.finance.invoices'
+import { Route as AuthenticatedFinanceExpensesRouteImport } from './routes/_authenticated.finance.expenses'
 import { Route as AuthenticatedFinanceDocumentsRouteImport } from './routes/_authenticated.finance.documents'
 import { Route as AuthenticatedFinanceDebtorsRouteImport } from './routes/_authenticated.finance.debtors'
 import { Route as AuthenticatedFinanceCalendarRouteImport } from './routes/_authenticated.finance.calendar'
 import { Route as AuthenticatedFinanceBudgetsRouteImport } from './routes/_authenticated.finance.budgets'
 import { Route as AuthenticatedDepartmentsDeptIdRouteImport } from './routes/_authenticated.departments.$deptId'
+import { Route as AuthenticatedDepartmentReportsReportIdRouteImport } from './routes/_authenticated.department-reports.$reportId'
 import { Route as AuthenticatedClientsContractsRouteImport } from './routes/_authenticated.clients.contracts'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated.admin.users'
+import { Route as AuthenticatedAdminPermissionsRouteImport } from './routes/_authenticated.admin.permissions'
 import { Route as AuthenticatedAdminDepartmentsRouteImport } from './routes/_authenticated.admin.departments'
+import { Route as AuthenticatedAdminCompanyRouteImport } from './routes/_authenticated.admin.company'
 import { Route as AuthenticatedAdminAuditRouteImport } from './routes/_authenticated.admin.audit'
 import { Route as AuthenticatedMarketingBlogIndexRouteImport } from './routes/_authenticated.marketing.blog.index'
 import { Route as AuthenticatedFinanceReportsIndexRouteImport } from './routes/_authenticated.finance.reports.index'
@@ -139,10 +148,16 @@ import { Route as AuthenticatedMarketingBlogPostIdRouteImport } from './routes/_
 import { Route as AuthenticatedFinanceReportsIdRouteImport } from './routes/_authenticated.finance.reports.$id'
 import { Route as AuthenticatedEngagementsAnchorTypeAnchorIdRouteImport } from './routes/_authenticated.engagements.$anchorType.$anchorId'
 import { Route as AuthenticatedClientsContractsIdRouteImport } from './routes/_authenticated.clients.contracts.$id'
+import { Route as AuthenticatedMarketingBlogPostIdPreviewRouteImport } from './routes/_authenticated.marketing.blog.$postId_.preview'
 
 const SetPasswordRoute = SetPasswordRouteImport.update({
   id: '/set-password',
   path: '/set-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthRoute = AuthRouteImport.update({
@@ -194,9 +209,20 @@ const AuthenticatedOperationsRoute = AuthenticatedOperationsRouteImport.update({
   path: '/operations',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedNotificationsRoute =
+  AuthenticatedNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMarketingRoute = AuthenticatedMarketingRouteImport.update({
   id: '/marketing',
   path: '/marketing',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedItHelpRoute = AuthenticatedItHelpRouteImport.update({
+  id: '/it-help',
+  path: '/it-help',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedItRoute = AuthenticatedItRouteImport.update({
@@ -355,6 +381,11 @@ const AuthenticatedWaterCustomersRoute =
     path: '/customers',
     getParentRoute: () => AuthenticatedWaterRoute,
   } as any)
+const AuthenticatedWaterAiRoute = AuthenticatedWaterAiRouteImport.update({
+  id: '/ai',
+  path: '/ai',
+  getParentRoute: () => AuthenticatedWaterRoute,
+} as any)
 const AuthenticatedTenderWorkspaceRoute =
   AuthenticatedTenderWorkspaceRouteImport.update({
     id: '/workspace',
@@ -408,6 +439,12 @@ const AuthenticatedTenderTenderIdRoute =
     id: '/$tenderId',
     path: '/$tenderId',
     getParentRoute: () => AuthenticatedTenderRoute,
+  } as any)
+const AuthenticatedSettingsProfileRoute =
+  AuthenticatedSettingsProfileRouteImport.update({
+    id: '/settings/profile',
+    path: '/settings/profile',
+    getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedSettingsNotificationsRoute =
   AuthenticatedSettingsNotificationsRouteImport.update({
@@ -741,6 +778,12 @@ const AuthenticatedFinanceInvoicesRoute =
     path: '/invoices',
     getParentRoute: () => AuthenticatedFinanceRoute,
   } as any)
+const AuthenticatedFinanceExpensesRoute =
+  AuthenticatedFinanceExpensesRouteImport.update({
+    id: '/expenses',
+    path: '/expenses',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
 const AuthenticatedFinanceDocumentsRoute =
   AuthenticatedFinanceDocumentsRouteImport.update({
     id: '/documents',
@@ -771,6 +814,12 @@ const AuthenticatedDepartmentsDeptIdRoute =
     path: '/$deptId',
     getParentRoute: () => AuthenticatedDepartmentsRoute,
   } as any)
+const AuthenticatedDepartmentReportsReportIdRoute =
+  AuthenticatedDepartmentReportsReportIdRouteImport.update({
+    id: '/department-reports/$reportId',
+    path: '/department-reports/$reportId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedClientsContractsRoute =
   AuthenticatedClientsContractsRouteImport.update({
     id: '/contracts',
@@ -782,10 +831,22 @@ const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   path: '/admin/users',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedAdminPermissionsRoute =
+  AuthenticatedAdminPermissionsRouteImport.update({
+    id: '/admin/permissions',
+    path: '/admin/permissions',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAdminDepartmentsRoute =
   AuthenticatedAdminDepartmentsRouteImport.update({
     id: '/admin/departments',
     path: '/admin/departments',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAdminCompanyRoute =
+  AuthenticatedAdminCompanyRouteImport.update({
+    id: '/admin/company',
+    path: '/admin/company',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedAdminAuditRoute = AuthenticatedAdminAuditRouteImport.update({
@@ -883,10 +944,17 @@ const AuthenticatedClientsContractsIdRoute =
     path: '/$id',
     getParentRoute: () => AuthenticatedClientsContractsRoute,
   } as any)
+const AuthenticatedMarketingBlogPostIdPreviewRoute =
+  AuthenticatedMarketingBlogPostIdPreviewRouteImport.update({
+    id: '/$postId_/preview',
+    path: '/$postId/preview',
+    getParentRoute: () => AuthenticatedMarketingBlogRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/set-password': typeof SetPasswordRoute
   '/calendar': typeof AuthenticatedCalendarRoute
   '/clients': typeof AuthenticatedClientsRouteWithChildren
@@ -897,7 +965,9 @@ export interface FileRoutesByFullPath {
   '/guide': typeof AuthenticatedGuideRoute
   '/hr': typeof AuthenticatedHrRouteWithChildren
   '/it': typeof AuthenticatedItRouteWithChildren
+  '/it-help': typeof AuthenticatedItHelpRoute
   '/marketing': typeof AuthenticatedMarketingRouteWithChildren
+  '/notifications': typeof AuthenticatedNotificationsRoute
   '/operations': typeof AuthenticatedOperationsRouteWithChildren
   '/pipeline': typeof AuthenticatedPipelineRouteWithChildren
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
@@ -906,14 +976,18 @@ export interface FileRoutesByFullPath {
   '/tender': typeof AuthenticatedTenderRouteWithChildren
   '/water': typeof AuthenticatedWaterRouteWithChildren
   '/admin/audit': typeof AuthenticatedAdminAuditRoute
+  '/admin/company': typeof AuthenticatedAdminCompanyRoute
   '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
+  '/admin/permissions': typeof AuthenticatedAdminPermissionsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/clients/contracts': typeof AuthenticatedClientsContractsRouteWithChildren
+  '/department-reports/$reportId': typeof AuthenticatedDepartmentReportsReportIdRoute
   '/departments/$deptId': typeof AuthenticatedDepartmentsDeptIdRoute
   '/finance/budgets': typeof AuthenticatedFinanceBudgetsRoute
   '/finance/calendar': typeof AuthenticatedFinanceCalendarRoute
   '/finance/debtors': typeof AuthenticatedFinanceDebtorsRoute
   '/finance/documents': typeof AuthenticatedFinanceDocumentsRoute
+  '/finance/expenses': typeof AuthenticatedFinanceExpensesRoute
   '/finance/invoices': typeof AuthenticatedFinanceInvoicesRoute
   '/finance/payroll-compliance': typeof AuthenticatedFinancePayrollComplianceRoute
   '/finance/pipeline': typeof AuthenticatedFinancePipelineRoute
@@ -971,6 +1045,7 @@ export interface FileRoutesByFullPath {
   '/reports/projects': typeof AuthenticatedReportsProjectsRoute
   '/requests/$requestId': typeof AuthenticatedRequestsRequestIdRoute
   '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
+  '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/tender/$tenderId': typeof AuthenticatedTenderTenderIdRoute
   '/tender/bid-pipeline': typeof AuthenticatedTenderBidPipelineRoute
   '/tender/calendar': typeof AuthenticatedTenderCalendarRoute
@@ -980,6 +1055,7 @@ export interface FileRoutesByFullPath {
   '/tender/shared-projects': typeof AuthenticatedTenderSharedProjectsRoute
   '/tender/tasks': typeof AuthenticatedTenderTasksRoute
   '/tender/workspace': typeof AuthenticatedTenderWorkspaceRoute
+  '/water/ai': typeof AuthenticatedWaterAiRoute
   '/water/customers': typeof AuthenticatedWaterCustomersRouteWithChildren
   '/water/meters': typeof AuthenticatedWaterMetersRouteWithChildren
   '/water/readings': typeof AuthenticatedWaterReadingsRoute
@@ -1014,23 +1090,31 @@ export interface FileRoutesByFullPath {
   '/clients/contracts/': typeof AuthenticatedClientsContractsIndexRoute
   '/finance/reports/': typeof AuthenticatedFinanceReportsIndexRoute
   '/marketing/blog/': typeof AuthenticatedMarketingBlogIndexRoute
+  '/marketing/blog/$postId/preview': typeof AuthenticatedMarketingBlogPostIdPreviewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/set-password': typeof SetPasswordRoute
   '/calendar': typeof AuthenticatedCalendarRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/documents': typeof AuthenticatedDocumentsRoute
   '/guide': typeof AuthenticatedGuideRoute
+  '/it-help': typeof AuthenticatedItHelpRoute
+  '/notifications': typeof AuthenticatedNotificationsRoute
   '/admin/audit': typeof AuthenticatedAdminAuditRoute
+  '/admin/company': typeof AuthenticatedAdminCompanyRoute
   '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
+  '/admin/permissions': typeof AuthenticatedAdminPermissionsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/department-reports/$reportId': typeof AuthenticatedDepartmentReportsReportIdRoute
   '/departments/$deptId': typeof AuthenticatedDepartmentsDeptIdRoute
   '/finance/budgets': typeof AuthenticatedFinanceBudgetsRoute
   '/finance/calendar': typeof AuthenticatedFinanceCalendarRoute
   '/finance/debtors': typeof AuthenticatedFinanceDebtorsRoute
   '/finance/documents': typeof AuthenticatedFinanceDocumentsRoute
+  '/finance/expenses': typeof AuthenticatedFinanceExpensesRoute
   '/finance/invoices': typeof AuthenticatedFinanceInvoicesRoute
   '/finance/payroll-compliance': typeof AuthenticatedFinancePayrollComplianceRoute
   '/finance/pipeline': typeof AuthenticatedFinancePipelineRoute
@@ -1086,6 +1170,7 @@ export interface FileRoutesByTo {
   '/reports/projects': typeof AuthenticatedReportsProjectsRoute
   '/requests/$requestId': typeof AuthenticatedRequestsRequestIdRoute
   '/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
+  '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/tender/$tenderId': typeof AuthenticatedTenderTenderIdRoute
   '/tender/bid-pipeline': typeof AuthenticatedTenderBidPipelineRoute
   '/tender/calendar': typeof AuthenticatedTenderCalendarRoute
@@ -1095,6 +1180,7 @@ export interface FileRoutesByTo {
   '/tender/shared-projects': typeof AuthenticatedTenderSharedProjectsRoute
   '/tender/tasks': typeof AuthenticatedTenderTasksRoute
   '/tender/workspace': typeof AuthenticatedTenderWorkspaceRoute
+  '/water/ai': typeof AuthenticatedWaterAiRoute
   '/water/customers': typeof AuthenticatedWaterCustomersRouteWithChildren
   '/water/meters': typeof AuthenticatedWaterMetersRouteWithChildren
   '/water/readings': typeof AuthenticatedWaterReadingsRoute
@@ -1129,12 +1215,14 @@ export interface FileRoutesByTo {
   '/clients/contracts': typeof AuthenticatedClientsContractsIndexRoute
   '/finance/reports': typeof AuthenticatedFinanceReportsIndexRoute
   '/marketing/blog': typeof AuthenticatedMarketingBlogIndexRoute
+  '/marketing/blog/$postId/preview': typeof AuthenticatedMarketingBlogPostIdPreviewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/auth': typeof AuthRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/set-password': typeof SetPasswordRoute
   '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
   '/_authenticated/clients': typeof AuthenticatedClientsRouteWithChildren
@@ -1145,7 +1233,9 @@ export interface FileRoutesById {
   '/_authenticated/guide': typeof AuthenticatedGuideRoute
   '/_authenticated/hr': typeof AuthenticatedHrRouteWithChildren
   '/_authenticated/it': typeof AuthenticatedItRouteWithChildren
+  '/_authenticated/it-help': typeof AuthenticatedItHelpRoute
   '/_authenticated/marketing': typeof AuthenticatedMarketingRouteWithChildren
+  '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/operations': typeof AuthenticatedOperationsRouteWithChildren
   '/_authenticated/pipeline': typeof AuthenticatedPipelineRouteWithChildren
   '/_authenticated/projects': typeof AuthenticatedProjectsRouteWithChildren
@@ -1154,14 +1244,18 @@ export interface FileRoutesById {
   '/_authenticated/tender': typeof AuthenticatedTenderRouteWithChildren
   '/_authenticated/water': typeof AuthenticatedWaterRouteWithChildren
   '/_authenticated/admin/audit': typeof AuthenticatedAdminAuditRoute
+  '/_authenticated/admin/company': typeof AuthenticatedAdminCompanyRoute
   '/_authenticated/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
+  '/_authenticated/admin/permissions': typeof AuthenticatedAdminPermissionsRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/clients/contracts': typeof AuthenticatedClientsContractsRouteWithChildren
+  '/_authenticated/department-reports/$reportId': typeof AuthenticatedDepartmentReportsReportIdRoute
   '/_authenticated/departments/$deptId': typeof AuthenticatedDepartmentsDeptIdRoute
   '/_authenticated/finance/budgets': typeof AuthenticatedFinanceBudgetsRoute
   '/_authenticated/finance/calendar': typeof AuthenticatedFinanceCalendarRoute
   '/_authenticated/finance/debtors': typeof AuthenticatedFinanceDebtorsRoute
   '/_authenticated/finance/documents': typeof AuthenticatedFinanceDocumentsRoute
+  '/_authenticated/finance/expenses': typeof AuthenticatedFinanceExpensesRoute
   '/_authenticated/finance/invoices': typeof AuthenticatedFinanceInvoicesRoute
   '/_authenticated/finance/payroll-compliance': typeof AuthenticatedFinancePayrollComplianceRoute
   '/_authenticated/finance/pipeline': typeof AuthenticatedFinancePipelineRoute
@@ -1219,6 +1313,7 @@ export interface FileRoutesById {
   '/_authenticated/reports/projects': typeof AuthenticatedReportsProjectsRoute
   '/_authenticated/requests/$requestId': typeof AuthenticatedRequestsRequestIdRoute
   '/_authenticated/settings/notifications': typeof AuthenticatedSettingsNotificationsRoute
+  '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/_authenticated/tender/$tenderId': typeof AuthenticatedTenderTenderIdRoute
   '/_authenticated/tender/bid-pipeline': typeof AuthenticatedTenderBidPipelineRoute
   '/_authenticated/tender/calendar': typeof AuthenticatedTenderCalendarRoute
@@ -1228,6 +1323,7 @@ export interface FileRoutesById {
   '/_authenticated/tender/shared-projects': typeof AuthenticatedTenderSharedProjectsRoute
   '/_authenticated/tender/tasks': typeof AuthenticatedTenderTasksRoute
   '/_authenticated/tender/workspace': typeof AuthenticatedTenderWorkspaceRoute
+  '/_authenticated/water/ai': typeof AuthenticatedWaterAiRoute
   '/_authenticated/water/customers': typeof AuthenticatedWaterCustomersRouteWithChildren
   '/_authenticated/water/meters': typeof AuthenticatedWaterMetersRouteWithChildren
   '/_authenticated/water/readings': typeof AuthenticatedWaterReadingsRoute
@@ -1262,12 +1358,14 @@ export interface FileRoutesById {
   '/_authenticated/clients/contracts/': typeof AuthenticatedClientsContractsIndexRoute
   '/_authenticated/finance/reports/': typeof AuthenticatedFinanceReportsIndexRoute
   '/_authenticated/marketing/blog/': typeof AuthenticatedMarketingBlogIndexRoute
+  '/_authenticated/marketing/blog/$postId_/preview': typeof AuthenticatedMarketingBlogPostIdPreviewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/auth'
+    | '/forgot-password'
     | '/set-password'
     | '/calendar'
     | '/clients'
@@ -1278,7 +1376,9 @@ export interface FileRouteTypes {
     | '/guide'
     | '/hr'
     | '/it'
+    | '/it-help'
     | '/marketing'
+    | '/notifications'
     | '/operations'
     | '/pipeline'
     | '/projects'
@@ -1287,14 +1387,18 @@ export interface FileRouteTypes {
     | '/tender'
     | '/water'
     | '/admin/audit'
+    | '/admin/company'
     | '/admin/departments'
+    | '/admin/permissions'
     | '/admin/users'
     | '/clients/contracts'
+    | '/department-reports/$reportId'
     | '/departments/$deptId'
     | '/finance/budgets'
     | '/finance/calendar'
     | '/finance/debtors'
     | '/finance/documents'
+    | '/finance/expenses'
     | '/finance/invoices'
     | '/finance/payroll-compliance'
     | '/finance/pipeline'
@@ -1352,6 +1456,7 @@ export interface FileRouteTypes {
     | '/reports/projects'
     | '/requests/$requestId'
     | '/settings/notifications'
+    | '/settings/profile'
     | '/tender/$tenderId'
     | '/tender/bid-pipeline'
     | '/tender/calendar'
@@ -1361,6 +1466,7 @@ export interface FileRouteTypes {
     | '/tender/shared-projects'
     | '/tender/tasks'
     | '/tender/workspace'
+    | '/water/ai'
     | '/water/customers'
     | '/water/meters'
     | '/water/readings'
@@ -1395,23 +1501,31 @@ export interface FileRouteTypes {
     | '/clients/contracts/'
     | '/finance/reports/'
     | '/marketing/blog/'
+    | '/marketing/blog/$postId/preview'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
+    | '/forgot-password'
     | '/set-password'
     | '/calendar'
     | '/dashboard'
     | '/documents'
     | '/guide'
+    | '/it-help'
+    | '/notifications'
     | '/admin/audit'
+    | '/admin/company'
     | '/admin/departments'
+    | '/admin/permissions'
     | '/admin/users'
+    | '/department-reports/$reportId'
     | '/departments/$deptId'
     | '/finance/budgets'
     | '/finance/calendar'
     | '/finance/debtors'
     | '/finance/documents'
+    | '/finance/expenses'
     | '/finance/invoices'
     | '/finance/payroll-compliance'
     | '/finance/pipeline'
@@ -1467,6 +1581,7 @@ export interface FileRouteTypes {
     | '/reports/projects'
     | '/requests/$requestId'
     | '/settings/notifications'
+    | '/settings/profile'
     | '/tender/$tenderId'
     | '/tender/bid-pipeline'
     | '/tender/calendar'
@@ -1476,6 +1591,7 @@ export interface FileRouteTypes {
     | '/tender/shared-projects'
     | '/tender/tasks'
     | '/tender/workspace'
+    | '/water/ai'
     | '/water/customers'
     | '/water/meters'
     | '/water/readings'
@@ -1510,11 +1626,13 @@ export interface FileRouteTypes {
     | '/clients/contracts'
     | '/finance/reports'
     | '/marketing/blog'
+    | '/marketing/blog/$postId/preview'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/forgot-password'
     | '/set-password'
     | '/_authenticated/calendar'
     | '/_authenticated/clients'
@@ -1525,7 +1643,9 @@ export interface FileRouteTypes {
     | '/_authenticated/guide'
     | '/_authenticated/hr'
     | '/_authenticated/it'
+    | '/_authenticated/it-help'
     | '/_authenticated/marketing'
+    | '/_authenticated/notifications'
     | '/_authenticated/operations'
     | '/_authenticated/pipeline'
     | '/_authenticated/projects'
@@ -1534,14 +1654,18 @@ export interface FileRouteTypes {
     | '/_authenticated/tender'
     | '/_authenticated/water'
     | '/_authenticated/admin/audit'
+    | '/_authenticated/admin/company'
     | '/_authenticated/admin/departments'
+    | '/_authenticated/admin/permissions'
     | '/_authenticated/admin/users'
     | '/_authenticated/clients/contracts'
+    | '/_authenticated/department-reports/$reportId'
     | '/_authenticated/departments/$deptId'
     | '/_authenticated/finance/budgets'
     | '/_authenticated/finance/calendar'
     | '/_authenticated/finance/debtors'
     | '/_authenticated/finance/documents'
+    | '/_authenticated/finance/expenses'
     | '/_authenticated/finance/invoices'
     | '/_authenticated/finance/payroll-compliance'
     | '/_authenticated/finance/pipeline'
@@ -1599,6 +1723,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports/projects'
     | '/_authenticated/requests/$requestId'
     | '/_authenticated/settings/notifications'
+    | '/_authenticated/settings/profile'
     | '/_authenticated/tender/$tenderId'
     | '/_authenticated/tender/bid-pipeline'
     | '/_authenticated/tender/calendar'
@@ -1608,6 +1733,7 @@ export interface FileRouteTypes {
     | '/_authenticated/tender/shared-projects'
     | '/_authenticated/tender/tasks'
     | '/_authenticated/tender/workspace'
+    | '/_authenticated/water/ai'
     | '/_authenticated/water/customers'
     | '/_authenticated/water/meters'
     | '/_authenticated/water/readings'
@@ -1642,12 +1768,14 @@ export interface FileRouteTypes {
     | '/_authenticated/clients/contracts/'
     | '/_authenticated/finance/reports/'
     | '/_authenticated/marketing/blog/'
+    | '/_authenticated/marketing/blog/$postId_/preview'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   SetPasswordRoute: typeof SetPasswordRoute
 }
 
@@ -1658,6 +1786,13 @@ declare module '@tanstack/react-router' {
       path: '/set-password'
       fullPath: '/set-password'
       preLoaderRoute: typeof SetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth': {
@@ -1730,11 +1865,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOperationsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/notifications': {
+      id: '/_authenticated/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof AuthenticatedNotificationsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/marketing': {
       id: '/_authenticated/marketing'
       path: '/marketing'
       fullPath: '/marketing'
       preLoaderRoute: typeof AuthenticatedMarketingRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/it-help': {
+      id: '/_authenticated/it-help'
+      path: '/it-help'
+      fullPath: '/it-help'
+      preLoaderRoute: typeof AuthenticatedItHelpRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/it': {
@@ -1933,6 +2082,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWaterCustomersRouteImport
       parentRoute: typeof AuthenticatedWaterRoute
     }
+    '/_authenticated/water/ai': {
+      id: '/_authenticated/water/ai'
+      path: '/ai'
+      fullPath: '/water/ai'
+      preLoaderRoute: typeof AuthenticatedWaterAiRouteImport
+      parentRoute: typeof AuthenticatedWaterRoute
+    }
     '/_authenticated/tender/workspace': {
       id: '/_authenticated/tender/workspace'
       path: '/workspace'
@@ -1995,6 +2151,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/tender/$tenderId'
       preLoaderRoute: typeof AuthenticatedTenderTenderIdRouteImport
       parentRoute: typeof AuthenticatedTenderRoute
+    }
+    '/_authenticated/settings/profile': {
+      id: '/_authenticated/settings/profile'
+      path: '/settings/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof AuthenticatedSettingsProfileRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/settings/notifications': {
       id: '/_authenticated/settings/notifications'
@@ -2395,6 +2558,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFinanceInvoicesRouteImport
       parentRoute: typeof AuthenticatedFinanceRoute
     }
+    '/_authenticated/finance/expenses': {
+      id: '/_authenticated/finance/expenses'
+      path: '/expenses'
+      fullPath: '/finance/expenses'
+      preLoaderRoute: typeof AuthenticatedFinanceExpensesRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
     '/_authenticated/finance/documents': {
       id: '/_authenticated/finance/documents'
       path: '/documents'
@@ -2430,6 +2600,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDepartmentsDeptIdRouteImport
       parentRoute: typeof AuthenticatedDepartmentsRoute
     }
+    '/_authenticated/department-reports/$reportId': {
+      id: '/_authenticated/department-reports/$reportId'
+      path: '/department-reports/$reportId'
+      fullPath: '/department-reports/$reportId'
+      preLoaderRoute: typeof AuthenticatedDepartmentReportsReportIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/clients/contracts': {
       id: '/_authenticated/clients/contracts'
       path: '/contracts'
@@ -2444,11 +2621,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/admin/permissions': {
+      id: '/_authenticated/admin/permissions'
+      path: '/admin/permissions'
+      fullPath: '/admin/permissions'
+      preLoaderRoute: typeof AuthenticatedAdminPermissionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/admin/departments': {
       id: '/_authenticated/admin/departments'
       path: '/admin/departments'
       fullPath: '/admin/departments'
       preLoaderRoute: typeof AuthenticatedAdminDepartmentsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/company': {
+      id: '/_authenticated/admin/company'
+      path: '/admin/company'
+      fullPath: '/admin/company'
+      preLoaderRoute: typeof AuthenticatedAdminCompanyRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/admin/audit': {
@@ -2563,6 +2754,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsContractsIdRouteImport
       parentRoute: typeof AuthenticatedClientsContractsRoute
     }
+    '/_authenticated/marketing/blog/$postId_/preview': {
+      id: '/_authenticated/marketing/blog/$postId_/preview'
+      path: '/$postId/preview'
+      fullPath: '/marketing/blog/$postId/preview'
+      preLoaderRoute: typeof AuthenticatedMarketingBlogPostIdPreviewRouteImport
+      parentRoute: typeof AuthenticatedMarketingBlogRoute
+    }
   }
 }
 
@@ -2635,6 +2833,7 @@ interface AuthenticatedFinanceRouteChildren {
   AuthenticatedFinanceCalendarRoute: typeof AuthenticatedFinanceCalendarRoute
   AuthenticatedFinanceDebtorsRoute: typeof AuthenticatedFinanceDebtorsRoute
   AuthenticatedFinanceDocumentsRoute: typeof AuthenticatedFinanceDocumentsRoute
+  AuthenticatedFinanceExpensesRoute: typeof AuthenticatedFinanceExpensesRoute
   AuthenticatedFinanceInvoicesRoute: typeof AuthenticatedFinanceInvoicesRoute
   AuthenticatedFinancePayrollComplianceRoute: typeof AuthenticatedFinancePayrollComplianceRoute
   AuthenticatedFinancePipelineRoute: typeof AuthenticatedFinancePipelineRoute
@@ -2652,6 +2851,7 @@ const AuthenticatedFinanceRouteChildren: AuthenticatedFinanceRouteChildren = {
   AuthenticatedFinanceCalendarRoute: AuthenticatedFinanceCalendarRoute,
   AuthenticatedFinanceDebtorsRoute: AuthenticatedFinanceDebtorsRoute,
   AuthenticatedFinanceDocumentsRoute: AuthenticatedFinanceDocumentsRoute,
+  AuthenticatedFinanceExpensesRoute: AuthenticatedFinanceExpensesRoute,
   AuthenticatedFinanceInvoicesRoute: AuthenticatedFinanceInvoicesRoute,
   AuthenticatedFinancePayrollComplianceRoute:
     AuthenticatedFinancePayrollComplianceRoute,
@@ -2737,6 +2937,7 @@ const AuthenticatedItRouteWithChildren = AuthenticatedItRoute._addFileChildren(
 interface AuthenticatedMarketingBlogRouteChildren {
   AuthenticatedMarketingBlogPostIdRoute: typeof AuthenticatedMarketingBlogPostIdRoute
   AuthenticatedMarketingBlogIndexRoute: typeof AuthenticatedMarketingBlogIndexRoute
+  AuthenticatedMarketingBlogPostIdPreviewRoute: typeof AuthenticatedMarketingBlogPostIdPreviewRoute
 }
 
 const AuthenticatedMarketingBlogRouteChildren: AuthenticatedMarketingBlogRouteChildren =
@@ -2744,6 +2945,8 @@ const AuthenticatedMarketingBlogRouteChildren: AuthenticatedMarketingBlogRouteCh
     AuthenticatedMarketingBlogPostIdRoute:
       AuthenticatedMarketingBlogPostIdRoute,
     AuthenticatedMarketingBlogIndexRoute: AuthenticatedMarketingBlogIndexRoute,
+    AuthenticatedMarketingBlogPostIdPreviewRoute:
+      AuthenticatedMarketingBlogPostIdPreviewRoute,
   }
 
 const AuthenticatedMarketingBlogRouteWithChildren =
@@ -2980,6 +3183,7 @@ const AuthenticatedWaterMetersRouteWithChildren =
   )
 
 interface AuthenticatedWaterRouteChildren {
+  AuthenticatedWaterAiRoute: typeof AuthenticatedWaterAiRoute
   AuthenticatedWaterCustomersRoute: typeof AuthenticatedWaterCustomersRouteWithChildren
   AuthenticatedWaterMetersRoute: typeof AuthenticatedWaterMetersRouteWithChildren
   AuthenticatedWaterReadingsRoute: typeof AuthenticatedWaterReadingsRoute
@@ -2990,6 +3194,7 @@ interface AuthenticatedWaterRouteChildren {
 }
 
 const AuthenticatedWaterRouteChildren: AuthenticatedWaterRouteChildren = {
+  AuthenticatedWaterAiRoute: AuthenticatedWaterAiRoute,
   AuthenticatedWaterCustomersRoute:
     AuthenticatedWaterCustomersRouteWithChildren,
   AuthenticatedWaterMetersRoute: AuthenticatedWaterMetersRouteWithChildren,
@@ -3013,7 +3218,9 @@ interface AuthenticatedRouteChildren {
   AuthenticatedGuideRoute: typeof AuthenticatedGuideRoute
   AuthenticatedHrRoute: typeof AuthenticatedHrRouteWithChildren
   AuthenticatedItRoute: typeof AuthenticatedItRouteWithChildren
+  AuthenticatedItHelpRoute: typeof AuthenticatedItHelpRoute
   AuthenticatedMarketingRoute: typeof AuthenticatedMarketingRouteWithChildren
+  AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedOperationsRoute: typeof AuthenticatedOperationsRouteWithChildren
   AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRouteWithChildren
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRouteWithChildren
@@ -3022,9 +3229,13 @@ interface AuthenticatedRouteChildren {
   AuthenticatedTenderRoute: typeof AuthenticatedTenderRouteWithChildren
   AuthenticatedWaterRoute: typeof AuthenticatedWaterRouteWithChildren
   AuthenticatedAdminAuditRoute: typeof AuthenticatedAdminAuditRoute
+  AuthenticatedAdminCompanyRoute: typeof AuthenticatedAdminCompanyRoute
   AuthenticatedAdminDepartmentsRoute: typeof AuthenticatedAdminDepartmentsRoute
+  AuthenticatedAdminPermissionsRoute: typeof AuthenticatedAdminPermissionsRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
+  AuthenticatedDepartmentReportsReportIdRoute: typeof AuthenticatedDepartmentReportsReportIdRoute
   AuthenticatedSettingsNotificationsRoute: typeof AuthenticatedSettingsNotificationsRoute
+  AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute
   AuthenticatedEngagementsAnchorTypeAnchorIdRoute: typeof AuthenticatedEngagementsAnchorTypeAnchorIdRoute
 }
 
@@ -3038,7 +3249,9 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedGuideRoute: AuthenticatedGuideRoute,
   AuthenticatedHrRoute: AuthenticatedHrRouteWithChildren,
   AuthenticatedItRoute: AuthenticatedItRouteWithChildren,
+  AuthenticatedItHelpRoute: AuthenticatedItHelpRoute,
   AuthenticatedMarketingRoute: AuthenticatedMarketingRouteWithChildren,
+  AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedOperationsRoute: AuthenticatedOperationsRouteWithChildren,
   AuthenticatedPipelineRoute: AuthenticatedPipelineRouteWithChildren,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRouteWithChildren,
@@ -3047,10 +3260,15 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedTenderRoute: AuthenticatedTenderRouteWithChildren,
   AuthenticatedWaterRoute: AuthenticatedWaterRouteWithChildren,
   AuthenticatedAdminAuditRoute: AuthenticatedAdminAuditRoute,
+  AuthenticatedAdminCompanyRoute: AuthenticatedAdminCompanyRoute,
   AuthenticatedAdminDepartmentsRoute: AuthenticatedAdminDepartmentsRoute,
+  AuthenticatedAdminPermissionsRoute: AuthenticatedAdminPermissionsRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
+  AuthenticatedDepartmentReportsReportIdRoute:
+    AuthenticatedDepartmentReportsReportIdRoute,
   AuthenticatedSettingsNotificationsRoute:
     AuthenticatedSettingsNotificationsRoute,
+  AuthenticatedSettingsProfileRoute: AuthenticatedSettingsProfileRoute,
   AuthenticatedEngagementsAnchorTypeAnchorIdRoute:
     AuthenticatedEngagementsAnchorTypeAnchorIdRoute,
 }
@@ -3063,6 +3281,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   AuthRoute: AuthRoute,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   SetPasswordRoute: SetPasswordRoute,
 }
 export const routeTree = rootRouteImport

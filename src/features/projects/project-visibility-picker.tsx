@@ -1,15 +1,15 @@
+import { useId, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { useProfilesLite } from "@/features/clients/use-clients-contracts";
 import type { ProjectVisibility } from "@/features/projects/use-projects";
+import { LoadError } from "@/components/load-error";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-// Mirrors DocumentAccessDialog's two-mode structure (frontend/src/features/documents/
-// document-access-picker.tsx) but for Projects: "department" (today's default — everyone in the
-// owning department sees it) vs "restricted" (only the creator + explicitly picked people).
-// Additive only — picking people here grants access; it never revokes anyone already on the
-// Team tab, so removing someone's access stays a deliberate action there.
+// Department-wide vs only selected people. Picking people only adds access; removal happens on the Team tab.
 export function ProjectVisibilityPicker({
   departmentName,
   visibility,
@@ -24,6 +24,8 @@ export function ProjectVisibilityPicker({
   onMemberIdsChange: (ids: string[]) => void;
 }) {
   const profilesQ = useProfilesLite();
+  const [search, setSearch] = useState("");
+  const headingId = useId();
 
   const toggle = (id: string) => {
     onMemberIdsChange(
@@ -31,10 +33,23 @@ export function ProjectVisibilityPicker({
     );
   };
 
+  const people = profilesQ.data ?? [];
+  const needle = search.trim().toLowerCase();
+  const shown = needle
+    ? people.filter(
+        (p) =>
+          (p.full_name ?? "").toLowerCase().includes(needle) ||
+          p.email.toLowerCase().includes(needle),
+      )
+    : people;
+
   return (
     <div className="space-y-2">
-      <Label>Who can see this project</Label>
+      <p id={headingId} className="text-sm font-medium">
+        Who can view this project
+      </p>
       <RadioGroup
+        aria-labelledby={headingId}
         value={visibility}
         onValueChange={(v) => onVisibilityChange(v as ProjectVisibility)}
       >
@@ -52,24 +67,65 @@ export function ProjectVisibilityPicker({
         </div>
       </RadioGroup>
 
-      {visibility === "restricted" && (
-        <ScrollArea className="max-h-40 rounded border p-2">
+      {visibility === "restricted" &&
+        (profilesQ.isLoading ? (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading staff…
+          </p>
+        ) : profilesQ.isError ? (
+          <LoadError
+            what="staff"
+            error={profilesQ.error}
+            onRetry={() => profilesQ.refetch()}
+            className="p-3"
+          />
+        ) : (
           <div className="space-y-2">
-            {(profilesQ.data ?? []).map((p) => (
-              <div key={p.id} className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  id={`vis-member-${p.id}`}
-                  checked={memberIds.includes(p.id)}
-                  onCheckedChange={() => toggle(p.id)}
-                />
-                <Label htmlFor={`vis-member-${p.id}`} className="font-normal cursor-pointer">
-                  {p.full_name ?? p.email}
-                </Label>
+            <p className="text-xs text-muted-foreground">
+              Whoever created the project always has access. {memberIds.length} selected.
+            </p>
+            {people.length > 8 && (
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search staff"
+                aria-label="Search staff"
+                className="h-8"
+              />
+            )}
+            <ScrollArea className="max-h-40 rounded border p-2">
+              <div className="space-y-2">
+                {people.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No staff found.</p>
+                ) : shown.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No staff match "{search.trim()}".{" "}
+                    <button
+                      type="button"
+                      className="text-primary underline"
+                      onClick={() => setSearch("")}
+                    >
+                      Clear search
+                    </button>
+                  </p>
+                ) : (
+                  shown.map((p) => (
+                    <div key={p.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        id={`vis-member-${p.id}`}
+                        checked={memberIds.includes(p.id)}
+                        onCheckedChange={() => toggle(p.id)}
+                      />
+                      <Label htmlFor={`vis-member-${p.id}`} className="font-normal cursor-pointer">
+                        {p.full_name ?? p.email}
+                      </Label>
+                    </div>
+                  ))
+                )}
               </div>
-            ))}
+            </ScrollArea>
           </div>
-        </ScrollArea>
-      )}
+        ))}
     </div>
   );
 }

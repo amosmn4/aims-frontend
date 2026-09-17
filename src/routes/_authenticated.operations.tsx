@@ -1,20 +1,18 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
-import { DepartmentHubTabs, useShowDepartmentHub } from "@/components/department-hub-tabs";
+import { RequireDepartmentAccess } from "@/components/require-role";
 
-// Thin layout — lets CEO/admin get an in-page tab bar across Operations' existing routes (see
-// DepartmentHubTabs). A regular Operations-scoped user's experience is untouched: bare Outlet,
-// no RequireRole here (there wasn't one before this file existed either), navigation stays in
-// the global top nav via lib/department-nav.ts.
 export const Route = createFileRoute("/_authenticated/operations")({
+  head: () => ({ meta: [{ title: "Operations — AIMS" }, { name: "robots", content: "noindex" }] }),
   component: OperationsLayout,
 });
 
 function OperationsLayout() {
-  const showHub = useShowDepartmentHub("operations");
   return (
-    <>
-      {showHub && <DepartmentHubTabs code="operations" />}
+    <RequireDepartmentAccess
+      code="operations"
+      message="You don't have access to Operations. Ask the CEO if you need it."
+    >
       <Outlet />
-    </>
+    </RequireDepartmentAccess>
   );
 }

@@ -58,6 +58,7 @@ export interface TenderRow {
   won_at: string | null;
   lost_at: string | null;
   lost_reason: string | null;
+  won_reason: string | null;
   notes: string | null;
   created_by: string | null;
   created_at: string;
@@ -147,6 +148,7 @@ type BackendTender = {
   wonAt: string | null;
   lostAt: string | null;
   lostReason: string | null;
+  wonReason?: string | null;
   notes: string | null;
   createdBy: string | null;
   createdAt: string;
@@ -186,6 +188,7 @@ function mapTender(t: BackendTender): TenderRow {
     won_at: t.wonAt,
     lost_at: t.lostAt,
     lost_reason: t.lostReason,
+    won_reason: t.wonReason ?? null,
     notes: t.notes,
     created_by: t.createdBy,
     created_at: t.createdAt,
@@ -306,6 +309,9 @@ export function useTender(id: string | undefined) {
     queryKey: ["tenders", id],
     enabled: !!id,
     queryFn: async () => mapTender(await apiJson<BackendTender>(`/tenders/${id}`)),
+    // A missing or forbidden record won't appear on retry.
+    retry: (count, err) =>
+      ![403, 404].includes((err as { status?: number }).status ?? 0) && count < 3,
   });
 }
 
@@ -429,19 +435,25 @@ export function useSaveTender() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: Partial<TenderRow> & { title: string; department_id: string }) => {
+      // On edit, a field passed as empty is sent as null so it clears; omitted fields stay untouched.
+      const field = <K extends keyof TenderRow>(key: K) => {
+        const v = input[key];
+        if (v !== undefined && v !== null && v !== "") return v;
+        return input.id && key in input ? null : undefined;
+      };
       const body = {
-        referenceNumber: input.reference_number || undefined,
+        referenceNumber: field("reference_number"),
         title: input.title,
-        description: input.description || undefined,
-        clientId: input.client_id || undefined,
-        prospectClientName: input.prospect_client_name || undefined,
+        description: field("description"),
+        clientId: field("client_id"),
+        prospectClientName: field("prospect_client_name"),
         departmentId: input.department_id,
-        serviceLineId: input.service_line_id || undefined,
-        accountManagerId: input.account_manager_id || undefined,
-        estimatedValue: input.estimated_value ?? undefined,
+        serviceLineId: field("service_line_id"),
+        accountManagerId: field("account_manager_id"),
+        estimatedValue: field("estimated_value"),
         currency: input.currency || undefined,
-        submissionDeadline: input.submission_deadline || undefined,
-        notes: input.notes || undefined,
+        submissionDeadline: field("submission_deadline"),
+        notes: field("notes"),
       };
       if (input.id) {
         await apiJson(`/tenders/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -465,6 +477,7 @@ export function useUpdateTenderStage() {
       stage: TenderStage;
       lost_reason?: string;
       won_at?: string;
+      won_reason?: string;
     }) => {
       return mapTender(
         await apiJson<BackendTender>(`/tenders/${input.id}/stage`, {
@@ -473,6 +486,7 @@ export function useUpdateTenderStage() {
             stage: input.stage,
             lostReason: input.lost_reason,
             wonAt: input.won_at,
+            wonReason: input.won_reason,
           }),
         }),
       );
@@ -521,7 +535,10 @@ export function useConvertTenderToProject() {
     mutationFn: async (input: {
       tenderId: string;
       name?: string;
+      departmentId?: string;
       clientId?: string;
+      startDate?: string;
+      createContract?: boolean;
       contractNumber?: string;
       billingFrequency?: "one_off" | "monthly" | "quarterly" | "annual";
     }) => {
@@ -531,9 +548,10 @@ export function useConvertTenderToProject() {
         body: JSON.stringify(body),
       });
     },
-    onSuccess: (_d, vars) => {
-      qc.invalidateQueries({ queryKey: ["tenders", vars.tenderId] });
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenders"] });
       qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["contracts"] });
     },
   });
 }

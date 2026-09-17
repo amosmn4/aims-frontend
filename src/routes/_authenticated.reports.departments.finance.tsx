@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { FileText, Loader2 } from "lucide-react";
 import { RequireRole } from "@/components/require-role";
+import { LoadError } from "@/components/load-error";
 import { FinancialManagementDashboard } from "@/features/finance/financial-management-dashboard";
 import { useFinanceReports } from "@/features/finance/use-finance-reports";
 import {
@@ -7,10 +9,11 @@ import {
   STATUS_LABELS,
   STATUS_STYLES,
 } from "@/features/finance/finance-report-snapshot";
-import { FileText } from "lucide-react";
+import { ReportHeader } from "@/features/reports/report-header";
+import { formatDate } from "@/lib/format-date";
 
 export const Route = createFileRoute("/_authenticated/reports/departments/finance")({
-  head: () => ({ meta: [{ title: "Finance Report — AIMS" }] }),
+  head: () => ({ meta: [{ title: "Finance report — AIMS" }] }),
   component: FinanceReport,
 });
 
@@ -18,15 +21,18 @@ function FinanceReport() {
   return (
     <RequireRole
       roles={["finance"]}
-      message="The Financial Management report is restricted to the Finance team, CEO and System Administrator."
+      message="The Finance report is for the Finance team and the CEO."
     >
       <div className="space-y-4">
-        <div>
-          <div className="text-base font-semibold">Financial Management</div>
-          <div className="text-xs text-muted-foreground">
-            Detailed finance dashboard · receivables, payables, ratios, P&L.
-          </div>
-        </div>
+        <ReportHeader
+          title="Finance report"
+          description="Who owes us and whom we owe, days to get paid, and profit and loss."
+          actions={
+            <Link to="/finance/reports" className="text-xs text-primary hover:underline">
+              Finance reports to the CEO
+            </Link>
+          }
+        />
         <SubmittedReports />
         <FinancialManagementDashboard />
       </div>
@@ -38,39 +44,50 @@ function SubmittedReports() {
   const q = useFinanceReports();
   const rows = (q.data ?? []).filter((r) => r.status !== "draft").slice(0, 5);
   return (
-    <div className="rounded-lg border bg-card p-3">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-semibold flex items-center gap-2">
-          <FileText className="h-4 w-4" /> Reports submitted by Finance
-        </div>
+    <section className="rounded-lg border bg-card p-3" aria-labelledby="finance-submitted-heading">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3
+          id="finance-submitted-heading"
+          className="flex items-center gap-2 text-sm font-semibold"
+        >
+          <FileText className="h-4 w-4" aria-hidden="true" /> Reports sent by Finance
+        </h3>
         <Link to="/finance/reports" className="text-xs text-primary hover:underline">
-          View all
+          See all Finance reports
         </Link>
       </div>
-      {rows.length === 0 ? (
-        <div className="text-xs text-muted-foreground py-2">No submitted reports yet.</div>
-      ) : (
-        <div className="divide-y">
-          {rows.map((r) => (
-            <Link
-              key={r.id}
-              to="/finance/reports/$id"
-              params={{ id: r.id }}
-              className="flex items-center gap-2 py-2 hover:bg-secondary/50 rounded px-1"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{r.title}</div>
-                <div className="text-[0.6875rem] text-muted-foreground">
-                  {REPORT_TYPE_LABELS[r.report_type]} · {r.period_start} → {r.period_end}
-                </div>
-              </div>
-              <span className={`text-[0.625rem] px-1.5 py-0.5 rounded ${STATUS_STYLES[r.status]}`}>
-                {STATUS_LABELS[r.status]}
-              </span>
-            </Link>
-          ))}
+      {q.isError ? (
+        <LoadError what="Finance reports" error={q.error} onRetry={() => q.refetch()} />
+      ) : q.isLoading ? (
+        <div className="flex justify-center py-4">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
         </div>
+      ) : rows.length === 0 ? (
+        <p className="py-2 text-xs text-muted-foreground">Finance hasn't sent any reports yet.</p>
+      ) : (
+        <ul className="divide-y">
+          {rows.map((r) => (
+            <li key={r.id}>
+              <Link
+                to="/finance/reports/$id"
+                params={{ id: r.id }}
+                className="flex items-center gap-2 rounded px-1 py-2 hover:bg-secondary/50"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{r.title}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {REPORT_TYPE_LABELS[r.report_type]} · {formatDate(r.period_start)} to{" "}
+                    {formatDate(r.period_end)}
+                  </div>
+                </div>
+                <span className={`rounded px-1.5 py-0.5 text-xs ${STATUS_STYLES[r.status]}`}>
+                  {STATUS_LABELS[r.status]}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

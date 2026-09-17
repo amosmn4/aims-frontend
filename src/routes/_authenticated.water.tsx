@@ -2,22 +2,19 @@ import { createFileRoute, Outlet, Link, useLocation } from "@tanstack/react-rout
 import { RequireRole } from "@/components/require-role";
 import { cn } from "@/lib/utils";
 
-// All Water Project pages are real routes (deep-linkable, bookmarkable), but presented as
-// in-page tabs on a single "Water Project" section rather than exposed as a nav dropdown — the
-// global nav item is a flat link (see app-shell.tsx). Overview (this layout's index route) is
-// the current dashboard; the rest are the pages that already existed.
+// Each Water Project page is a real route, shown as in-page tabs under one nav link.
 const TABS = [
   { to: "/water", label: "Overview" },
   { to: "/water/zones", label: "Zones" },
   { to: "/water/meters", label: "Meters Registry" },
   { to: "/water/customers", label: "Customers" },
   { to: "/water/readings", label: "Bulk & Main Readings" },
-  { to: "/water/upload", label: "Upload & Analytics" },
+  { to: "/water/upload", label: "Upload usage file" },
   { to: "/water/reports", label: "Reports" },
+  { to: "/water/ai", label: "AI Insights" },
 ] as const;
 
-// Not tied to any of the six core departments — access is the "water" role, assigned per user in
-// Admin > Users & Roles, on top of the usual admin/CEO bypass.
+// Access is the "water" role, plus the CEO.
 export const Route = createFileRoute("/_authenticated/water")({
   head: () => ({
     meta: [{ title: "Water Project — AIMS" }, { name: "robots", content: "noindex" }],
@@ -31,7 +28,7 @@ function WaterLayout() {
   return (
     <RequireRole
       roles={["water"]}
-      message="The Water Project is restricted to System Administrator, CEO, and users granted the Water Project role."
+      message="The Water Project is restricted to the CEO and users granted the Water Project role."
     >
       <div className="space-y-4">
         <div className="border-b overflow-x-auto">

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type KeyboardEvent, type ReactNode, type SyntheticEvent } from "react";
 import type { PipelineStageDef } from "@/features/pipeline/pipeline-theme";
 
 interface PipelineBoardProps<T> {
@@ -8,19 +8,25 @@ interface PipelineBoardProps<T> {
   getId: (item: T) => string;
   renderCard: (item: T) => ReactNode;
   onMove: (id: string, newStage: string) => void;
-  /** When set, each column shows at most this many cards by default (oldest-first order is
-   * preserved — `items` isn't re-sorted), with a "Show N more / Show all" control underneath to
-   * reveal the rest. Omit to keep a column fully unbounded (e.g. a single project's task board,
-   * which rarely has enough cards to need this). */
+  /** Whether this person may move the card to another column; defaults to true. */
+  canDrag?: (item: T) => boolean;
+  /** When set, each column shows at most this many cards, with a "Show all" control. */
   defaultVisiblePerColumn?: number;
+  /** Opens a card; makes every card a keyboard-reachable button (Enter or Space). */
+  onOpen?: (item: T) => void;
+  /** Plain name of a card for screen readers and the "Move to…" label, e.g. its title. */
+  getLabel?: (item: T) => string;
+  /** Stages offered in a card's "Move to…" select; defaults to every stage. */
+  moveTargets?: (item: T) => PipelineStageDef[];
+  /** Hides the per-card "Move to…" select (it's shown to people who can move the card). */
+  hideMoveControl?: boolean;
 }
 
 const COUNT_OPTIONS = [5, 10, 15, 25];
 
-// Native HTML5 drag-and-drop, matching the prototype's own approach exactly (dragstart on the
-// card, dragover/drop on the column) rather than pulling in a DnD library for this one module —
-// the mechanics here are simple enough (single list, single axis) that the library wouldn't
-// buy much.
+const stop = (e: SyntheticEvent) => e.stopPropagation();
+
+// Native drag-and-drop, plus a "Move to…" select on each card so moving never needs a mouse.
 export function PipelineBoard<T>({
   stages,
   items,
@@ -28,12 +34,16 @@ export function PipelineBoard<T>({
   getId,
   renderCard,
   onMove,
+  canDrag,
   defaultVisiblePerColumn,
+  onOpen,
+  getLabel,
+  moveTargets,
+  hideMoveControl,
 }: PipelineBoardProps<T>) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
-  // Per-column visible-count override — "all" means unbounded for that one column. Keyed by
-  // stage so expanding one column (e.g. after moving a card in) never affects the others.
+  // Per-column visible count; "all" means unbounded for that column only.
   const [visibleByStage, setVisibleByStage] = useState<Record<string, number | "all">>({});
 
   return (
@@ -44,8 +54,9 @@ export function PipelineBoard<T>({
         const shown = visible === "all" ? columnItems : columnItems.slice(0, visible);
         const hiddenCount = columnItems.length - shown.length;
         return (
-          <div
+          <section
             key={s.key}
+            aria-label={`${s.label}: ${columnItems.length}`}
             className={`column ${dragOverStage === s.key ? "dragover" : ""}`}
             onDragOver={(e) => {
               e.preventDefault();
@@ -60,32 +71,89 @@ export function PipelineBoard<T>({
             }}
           >
             <div className="flex items-center justify-between px-1.5 pb-2.5 pt-1">
-              <div className="flex items-center gap-1.5 text-[12.5px] font-semibold">
-                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.color }} />
+              <h2 className="flex items-center gap-1.5 text-[13px] font-semibold">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ background: s.color }}
+                  aria-hidden="true"
+                />
                 {s.label}
-              </div>
+              </h2>
               <div
-                className="p-mono rounded-full bg-[var(--pipeline-paper-2)] px-2 py-px text-[11px]"
+                className="p-mono rounded-full bg-[var(--pipeline-paper-2)] px-2 py-px text-xs"
                 style={{ color: "var(--pipeline-slate)" }}
+                aria-hidden="true"
               >
                 {columnItems.length}
               </div>
             </div>
             <div className="cardstack">
               {columnItems.length === 0 ? (
-                <div className="empty-col">No cards</div>
+                <div className="empty-col" style={{ fontSize: 12 }}>
+                  Nothing here
+                </div>
               ) : (
                 shown.map((it) => {
                   const id = getId(it);
+                  const movable = canDrag ? canDrag(it) : true;
+                  const label = getLabel?.(it) ?? "this card";
+                  const targets = (moveTargets ? moveTargets(it) : stages).filter(
+                    (t) => t.key !== s.key,
+                  );
                   return (
                     <div
                       key={id}
                       className={`p-card ${dragId === id ? "dragging" : ""}`}
-                      draggable
-                      onDragStart={() => setDragId(id)}
+                      style={movable ? undefined : { cursor: onOpen ? "pointer" : "default" }}
+                      draggable={movable}
+                      onDragStart={() => movable && setDragId(id)}
                       onDragEnd={() => setDragId(null)}
+                      {...(onOpen && {
+                        role: "button",
+                        tabIndex: 0,
+                        "aria-label": `Open ${label}`,
+                        onClick: () => onOpen(it),
+                        onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
+                          if (e.target !== e.currentTarget) return;
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onOpen(it);
+                          }
+                        },
+                      })}
                     >
                       {renderCard(it)}
+                      {movable && !hideMoveControl && targets.length > 0 && (
+                        <div
+                          className="mt-2.5 border-t pt-2"
+                          style={{ borderColor: "var(--pipeline-line-soft, #E8E9E2)" }}
+                          onClick={stop}
+                          onKeyDown={stop}
+                          onMouseDown={stop}
+                        >
+                          <select
+                            aria-label={`Move ${label} to another stage`}
+                            value=""
+                            draggable={false}
+                            onDragStart={(e) => e.preventDefault()}
+                            onChange={(e) => {
+                              if (e.target.value) onMove(id, e.target.value);
+                            }}
+                            className="w-full cursor-pointer rounded-md border bg-white px-2 py-1.5 text-xs"
+                            style={{
+                              borderColor: "var(--pipeline-line, #DBDED2)",
+                              color: "var(--pipeline-slate, #5B6470)",
+                            }}
+                          >
+                            <option value="">Move to…</option>
+                            {targets.map((t) => (
+                              <option key={t.key} value={t.key}>
+                                {t.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -94,7 +162,7 @@ export function PipelineBoard<T>({
             {defaultVisiblePerColumn != null &&
               (columnItems.length > defaultVisiblePerColumn ||
                 visible !== defaultVisiblePerColumn) && (
-                <div className="flex items-center justify-between gap-1.5 px-1.5 pt-2 text-[11px]">
+                <div className="flex items-center justify-between gap-1.5 px-1.5 pt-2 text-xs">
                   {hiddenCount > 0 ? (
                     <button
                       type="button"
@@ -108,7 +176,8 @@ export function PipelineBoard<T>({
                     <span />
                   )}
                   <select
-                    className="p-mono rounded-full bg-[var(--pipeline-paper-2)] px-2 py-1 text-[11px]"
+                    aria-label={`How many ${s.label} cards to show`}
+                    className="p-mono rounded-full bg-[var(--pipeline-paper-2)] px-2 py-1 text-xs"
                     style={{ color: "var(--pipeline-slate)" }}
                     value={visible === "all" ? "all" : String(visible)}
                     onChange={(e) =>
@@ -127,7 +196,7 @@ export function PipelineBoard<T>({
                   </select>
                 </div>
               )}
-          </div>
+          </section>
         );
       })}
     </div>

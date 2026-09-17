@@ -24,7 +24,11 @@ import {
 } from "@/features/clients/contract-form-dialog";
 import { formatCurrency } from "@/features/finance/finance";
 import { usePagination } from "@/hooks/use-pagination";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { PaginationBar } from "@/components/pagination-bar";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
+import { formatDate } from "@/lib/format-date";
 import { useAuth, type AppRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,7 +45,15 @@ export const Route = createFileRoute("/_authenticated/clients/contracts/")({
 });
 
 // Mirrors the backend's exact @Roles() list on POST/PATCH/DELETE /contracts.
-const CONTRACT_WRITE_ROLES: AppRole[] = ["finance", "hr", "it", "marketing", "tender"];
+const CONTRACT_WRITE_ROLES: AppRole[] = [
+  "finance",
+  "hr",
+  "it",
+  "marketing",
+  "tender",
+  "department_head",
+  "account_manager",
+];
 
 function ContractsList() {
   const { isAdminOrCeo, hasRole } = useAuth();
@@ -53,11 +65,19 @@ function ContractsList() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const { page, pageSize, setPage, setPageSize } = usePagination(25);
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
 
   const filters = {
     departmentId: deptFilter === "all" ? null : deptFilter,
     status: statusFilter === "all" ? undefined : (statusFilter as ContractStatus),
-    q: search.trim() || undefined,
+    q: debouncedSearch || undefined,
+  };
+  const isFiltered = !!search.trim() || deptFilter !== "all" || statusFilter !== "all";
+  const clearFilters = () => {
+    setSearch("");
+    setDeptFilter("all");
+    setStatusFilter("all");
+    setPage(1);
   };
   const contractsQ = useContracts(filters, { page, pageSize });
   const summaryQ = useContractsSummary(filters);
@@ -113,13 +133,13 @@ function ContractsList() {
     const ok = await confirmDialog({
       title: `Delete contract "${title}"?`,
       description: "Attached documents will also be removed.",
-      confirmLabel: "Delete",
+      confirmLabel: "Delete contract",
       destructive: true,
     });
     if (!ok) return;
     try {
       await del.mutateAsync(id);
-      toast.success("Deleted");
+      toast.success("Contract deleted");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     }
@@ -129,27 +149,19 @@ function ContractsList() {
     <div className="space-y-3">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="rounded-lg border bg-card p-3">
-          <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">
-            Contracts
-          </div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Contracts</div>
           <div className="text-base font-semibold tabular-nums">{totals.count}</div>
         </div>
         <div className="rounded-lg border bg-card p-3">
-          <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">
-            Active
-          </div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Active</div>
           <div className="text-base font-semibold tabular-nums">{totals.active}</div>
         </div>
         <div className="rounded-lg border bg-card p-3">
-          <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">
-            Total value
-          </div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Total value</div>
           <div className="text-base font-semibold tabular-nums">{formatCurrency(totals.total)}</div>
         </div>
         <div className="rounded-lg border bg-card p-3">
-          <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">
-            Active value
-          </div>
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">Active value</div>
           <div className="text-base font-semibold tabular-nums">
             {formatCurrency(totals.activeVal)}
           </div>
@@ -158,7 +170,8 @@ function ContractsList() {
 
       <div className="rounded-lg border bg-card p-3 flex gap-2 flex-wrap items-center">
         <Input
-          placeholder="Search title, number, client…"
+          placeholder="Search title, number or client"
+          aria-label="Search contracts"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -211,12 +224,20 @@ function ContractsList() {
           </Button>
         )}
       </div>
+      {!canCreate && <ViewOnlyBanner area="contracts" action="add or edit contracts" />}
 
       <div className="rounded-lg border bg-card overflow-hidden">
         {contractsQ.isLoading ? (
           <div className="p-8 flex justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           </div>
+        ) : contractsQ.isError ? (
+          <LoadError
+            what="contracts"
+            error={contractsQ.error}
+            onRetry={() => contractsQ.refetch()}
+            className="m-3"
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -230,6 +251,8 @@ function ContractsList() {
                   <th className="px-3 py-2 text-left font-medium">Manager</th>
                   <th className="px-3 py-2 text-left font-medium">Billing</th>
                   <th className="px-3 py-2 text-right font-medium">Value</th>
+                  <th className="px-3 py-2 text-right font-medium">Invoiced</th>
+                  <th className="px-3 py-2 text-right font-medium">Outstanding</th>
                   <th className="px-3 py-2 text-left font-medium">Period</th>
                   <th className="px-3 py-2 text-left font-medium">Status</th>
                   <th className="px-3 py-2 text-right font-medium">Actions</th>
@@ -239,10 +262,26 @@ function ContractsList() {
                 {filtered.length === 0 && (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={13}
                       className="px-3 py-8 text-center text-muted-foreground text-xs"
                     >
-                      No contracts match your filters.
+                      {isFiltered ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <span>No contracts match your search or filters</span>
+                          <Button size="sm" variant="outline" onClick={clearFilters}>
+                            Clear filters
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <span>No contracts yet</span>
+                          {canCreate && (
+                            <Button size="sm" onClick={() => setDraft(emptyContractDraft())}>
+                              <Plus className="h-4 w-4 mr-1" /> New contract
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -272,10 +311,18 @@ function ContractsList() {
                     <td className="px-3 py-2 text-right tabular-nums">
                       {formatCurrency(Number(c.value))}
                     </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {formatCurrency(c.invoiced_total)}
+                    </td>
+                    <td
+                      className={`px-3 py-2 text-right tabular-nums ${c.outstanding_total > 0 ? "text-warning font-medium" : "text-muted-foreground"}`}
+                    >
+                      {formatCurrency(c.outstanding_total)}
+                    </td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">
-                      <div>
-                        {c.start_date}
-                        {c.end_date ? ` → ${c.end_date}` : ""}
+                      <div className="whitespace-nowrap">
+                        {formatDate(c.start_date)}
+                        {c.end_date ? ` → ${formatDate(c.end_date)}` : ""}
                       </div>
                       {(() => {
                         const r = getRenewalInfo(c.end_date);
@@ -323,10 +370,18 @@ function ContractsList() {
                                 notes: c.notes ?? "",
                               })
                             }
+                            title={`Edit contract ${c.title}`}
+                            aria-label={`Edit contract ${c.title}`}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => remove(c.id, c.title)}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => remove(c.id, c.title)}
+                            title={`Delete contract ${c.title}`}
+                            aria-label={`Delete contract ${c.title}`}
+                          >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </>

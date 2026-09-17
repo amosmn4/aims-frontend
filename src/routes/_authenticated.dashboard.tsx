@@ -12,17 +12,38 @@ import {
   useServiceLines,
   paymentsByInvoice,
 } from "@/features/finance/use-finance-data";
-import { computeAging, formatCurrency, invoiceOutstanding } from "@/features/finance/finance";
+import {
+  computeAging,
+  formatCurrency,
+  invoiceOutstanding,
+  invoiceRevenue,
+  isBilledInvoice,
+  monthlyRecurringRevenue,
+} from "@/features/finance/finance";
 import {
   useProjects,
   useTasks,
   PROJECT_STATUS_LABELS,
   TASK_STATUS_LABELS,
   TASK_STATUS_COLUMNS,
+  isTaskOverdue,
   type ProjectStatus,
 } from "@/features/projects/use-projects";
-import { useDepartments, useOffices } from "@/features/clients/use-clients-contracts";
+import { useContracts, useDepartments, useOffices } from "@/features/clients/use-clients-contracts";
 import { useTenderPipelineSummary, TENDER_STAGE_LABELS } from "@/features/tender/use-tender";
+import { useHrmsLicenses } from "@/features/it/use-hrms-licenses";
+import { useReportsInbox } from "@/features/reports/use-department-reports";
+import { useMyWork } from "@/features/my-work/use-my-work";
+import { useCompanySettings } from "@/features/settings/use-company-settings";
+import { LoadError } from "@/components/load-error";
+import { formatDate } from "@/lib/format-date";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   useClientRequestPipelineSummary,
   useLostBreakdown,
@@ -48,6 +69,9 @@ import {
   Info,
   CheckCircle,
   Zap,
+  FolderArchive,
+  CalendarClock,
+  FileText,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -83,10 +107,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   }),
   validateSearch: dashSearchSchema,
   component: () => (
-    <RequireRole
-      roles={[]}
-      message="The CEO Executive Dashboard is restricted to the CEO and System Administrator."
-    >
+    <RequireRole roles={[]} message="The Executive Dashboard is restricted to the CEO.">
       <Dashboard />
     </RequireRole>
   ),
@@ -98,12 +119,18 @@ function KpiCell({
   hint,
   icon: Icon,
   tone = "default",
+  onClick,
+  to,
+  ariaLabel,
 }: {
   label: string;
   value: string;
   hint?: string;
   icon: React.ComponentType<{ className?: string }>;
   tone?: "default" | "positive" | "warning" | "danger";
+  onClick?: () => void;
+  to?: "/clients" | "/finance/debtors";
+  ariaLabel?: string;
 }) {
   const toneCls =
     tone === "positive"
@@ -113,30 +140,101 @@ function KpiCell({
         : tone === "danger"
           ? "text-destructive"
           : "text-primary";
-  return (
-    <div className="min-w-0 px-2.5 py-2 rounded-md bg-secondary/60 border border-border/40 flex flex-col justify-center">
-      <div className="flex items-center gap-1">
-        <Icon className={`h-3 w-3 shrink-0 ${toneCls}`} />
-        <span className="text-[0.5625rem] uppercase tracking-wide text-muted-foreground font-medium truncate">
-          {label}
-        </span>
+  const body = (
+    <>
+      <div className="flex items-start gap-1.5">
+        <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${toneCls}`} />
+        <span className="text-xs leading-tight text-muted-foreground font-medium">{label}</span>
       </div>
-      <div className={`mt-0.5 text-sm font-bold tabular-nums truncate ${toneCls}`}>{value}</div>
-      {hint && <div className="text-[0.5625rem] text-muted-foreground truncate">{hint}</div>}
-    </div>
+      <div className={`mt-1 text-base font-bold tabular-nums truncate ${toneCls}`}>{value}</div>
+      {hint && <div className="text-xs leading-tight text-muted-foreground">{hint}</div>}
+    </>
+  );
+  const cls =
+    "min-w-0 px-3 py-2 rounded-md bg-secondary/60 border border-border/40 flex flex-col justify-start";
+  const interactiveCls =
+    "text-left hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  if (to) {
+    return (
+      <Link to={to} aria-label={ariaLabel} className={`${cls} ${interactiveCls}`}>
+        {body}
+      </Link>
+    );
+  }
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={ariaLabel}
+        className={`${cls} ${interactiveCls}`}
+      >
+        {body}
+      </button>
+    );
+  }
+  return <div className={cls}>{body}</div>;
+}
+
+type DashboardAlert = {
+  key: string;
+  title: string;
+  detail: string;
+  to: "/finance/invoices" | "/finance/debtors" | "/reports/departments/finance" | "/reports";
+  search?: { status: "overdue" };
+};
+
+const plural = (n: number, one: string, many = `${one}s`) =>
+  `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+function AlertsSheet({
+  open,
+  onOpenChange,
+  alerts,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  alerts: DashboardAlert[];
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle>Alerts</SheetTitle>
+          <SheetDescription className="sr-only">
+            Things that need your attention, with a link to where each is handled.
+          </SheetDescription>
+        </SheetHeader>
+        {alerts.length === 0 ? (
+          <p className="mt-6 text-sm text-muted-foreground">No alerts right now.</p>
+        ) : (
+          <ul className="mt-4 divide-y rounded-lg border">
+            {alerts.map((a) => (
+              <li key={a.key} className="flex items-center gap-3 px-3 py-2.5">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">{a.title}</div>
+                  <div className="text-xs text-muted-foreground tabular-nums">{a.detail}</div>
+                </div>
+                <Link
+                  to={a.to}
+                  search={a.search}
+                  onClick={() => onOpenChange(false)}
+                  aria-label={`Open ${a.title.toLowerCase()}`}
+                  className="shrink-0 inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-medium text-primary hover:bg-secondary"
+                >
+                  Open <ArrowRight className="h-3 w-3" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
 
 const DEPT_COLORS = ["#085599", "#F5821F", "#22c55e", "#eab308", "#a855f7", "#06b6d4"];
-
-const DEPT_OPTIONS = [
-  { value: "all", label: "All departments" },
-  { value: "finance", label: "Finance" },
-  { value: "hr", label: "HR" },
-  { value: "it", label: "IT" },
-  { value: "marketing", label: "Marketing" },
-  { value: "tender", label: "Tender" },
-];
 
 const PROJECT_STATUS_ORDER: ProjectStatus[] = [
   "planning",
@@ -145,6 +243,8 @@ const PROJECT_STATUS_ORDER: ProjectStatus[] = [
   "completed",
   "cancelled",
 ];
+
+const REPORTING_DEPARTMENTS = new Set(["finance", "hr", "it", "marketing", "tender", "operations"]);
 
 const RANGE_OPTIONS = [
   { value: 3, label: "3 months" },
@@ -155,7 +255,7 @@ const RANGE_OPTIONS = [
 type View = DashSearch["view"];
 
 function Dashboard() {
-  const { profile, roles } = useAuth();
+  const { profile, roles, isAdminOrCeo } = useAuth();
 
   // ---- filters (URL-persisted) ----
   const search = Route.useSearch();
@@ -169,19 +269,31 @@ function Dashboard() {
   // The filter select's value is a department *code* (matches AppRole names, e.g. "finance"),
   // but every backend endpoint filters by department *id* — resolve one to the other here so
   // there's a single source of truth instead of repeating the lookup at each call site.
-  const departmentFilter =
-    department === "all" ? undefined : departmentsQ.data?.find((d) => d.code === department)?.id;
+  const deptValue = (d: { id: string; code: string | null }) => d.code ?? d.id;
+  const departmentOptions = [
+    { value: "all", label: "All departments" },
+    ...(departmentsQ.data ?? []).map((d) => ({ value: deptValue(d), label: d.name })),
+  ];
+  const selectedDepartment =
+    department === "all" ? undefined : departmentsQ.data?.find((d) => deptValue(d) === department);
+  const departmentFilter = selectedDepartment?.id;
 
   const invoicesQ = useInvoices({ departmentId: departmentFilter });
   const paymentsQ = usePayments();
   const clientsQ = useClients();
   const slQ = useServiceLines();
+  const contractsQ = useContracts({ departmentId: departmentFilter });
   const projectsQ = useProjects({ departmentId: departmentFilter });
   const tasksQ = useTasks({ departmentId: departmentFilter });
   const officesQ = useOffices();
   const tenderPipelineQ = useTenderPipelineSummary({ departmentId: departmentFilter });
   const requestPipelineQ = useClientRequestPipelineSummary({ departmentId: departmentFilter });
   const requestLostBreakdownQ = useLostBreakdown({ departmentId: departmentFilter });
+  const hrmsLicensesQ = useHrmsLicenses();
+  const reportsInboxQ = useReportsInbox(isAdminOrCeo);
+  const myWorkQ = useMyWork();
+  const companyQ = useCompanySettings();
+  const [alertsOpen, setAlertsOpen] = useState(false);
 
   const updateSearch = useCallback(
     (patch: Partial<DashSearch>) => {
@@ -196,6 +308,27 @@ function Dashboard() {
   const setView = (v: View) => updateSearch({ view: v });
 
   const loading = invoicesQ.isLoading || paymentsQ.isLoading;
+  const moneyFailed = invoicesQ.isError || paymentsQ.isError;
+  const reviewsWaiting = myWorkQ.data?.reviews?.waiting ?? 0;
+
+  // Live HRMS usage across licences that are still in force.
+  const hrms = useMemo(() => {
+    const live = (hrmsLicensesQ.data ?? []).filter((l) => l.status !== "cancelled");
+    return {
+      users: live.reduce((s, l) => s + (l.activeUsers ?? 0), 0),
+      seats: live.reduce((s, l) => s + (l.licensedSeats ?? 0), 0),
+    };
+  }, [hrmsLicensesQ.data]);
+  const hrmsValue = hrmsLicensesQ.isLoading
+    ? "…"
+    : hrmsLicensesQ.isError
+      ? "—"
+      : hrms.users.toLocaleString();
+  const hrmsHint = hrmsLicensesQ.isError
+    ? "Couldn't load licences"
+    : hrms.seats > 0
+      ? `of ${hrms.seats.toLocaleString()} seats`
+      : "No seat limits set";
 
   const kpis = useMemo(() => {
     const invoicesAll = invoicesQ.data ?? [];
@@ -207,59 +340,63 @@ function Dashboard() {
     const now = new Date();
     const rangeStart = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
 
-    // Apply filters (service line, date range)
-    const invoices = invoicesAll.filter((i) => {
-      if (serviceLineId !== "all" && i.service_line_id !== serviceLineId) return false;
-      if (new Date(i.issue_date) < rangeStart) return false;
-      return true;
-    });
+    // Money owed uses every open invoice; the date range applies to revenue figures only.
+    const inLine = invoicesAll.filter(
+      (i) => serviceLineId === "all" || i.service_line_id === serviceLineId,
+    );
+    const openInvoices = inLine.filter(isBilledInvoice);
+    const invoices = inLine.filter((i) => new Date(i.issue_date) >= rangeStart);
 
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const thisMonth = invoices.filter(
-      (i) => new Date(i.issue_date) >= monthStart && i.status !== "draft" && i.status !== "void",
+      (i) => new Date(i.issue_date) >= monthStart && isBilledInvoice(i),
     );
     const lastMonth = invoices.filter(
       (i) =>
         new Date(i.issue_date) >= lastMonthStart &&
         new Date(i.issue_date) < monthStart &&
-        i.status !== "draft" &&
-        i.status !== "void",
+        isBilledInvoice(i),
     );
-    const monthRevenue = thisMonth.reduce((s, i) => s + Number(i.total), 0);
-    const lastMonthRevenue = lastMonth.reduce((s, i) => s + Number(i.total), 0);
+    // Revenue is before VAT throughout.
+    const monthRevenue = thisMonth.reduce((s, i) => s + invoiceRevenue(i), 0);
+    const lastMonthRevenue = lastMonth.reduce((s, i) => s + invoiceRevenue(i), 0);
     const mom =
       lastMonthRevenue > 0
         ? ((monthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
         : monthRevenue > 0
           ? 100
           : 0;
-    const mrr = thisMonth.filter((i) => i.is_recurring).reduce((s, i) => s + Number(i.total), 0);
+    const mrr = monthlyRecurringRevenue(
+      (contractsQ.data ?? []).filter(
+        (c) => serviceLineId === "all" || c.service_line_id === serviceLineId,
+      ),
+    );
 
-    const outstanding = invoices.reduce(
+    const outstanding = openInvoices.reduce(
       (s, i) => s + invoiceOutstanding(i, paidMap.get(i.id) ?? 0),
       0,
     );
-    const aging = computeAging(invoices, paidMap);
+    const aging = computeAging(openInvoices, paidMap);
     const overdue = aging.slice(1).reduce((s, b) => s + b.amount, 0);
     const critical = aging[4].amount;
     const overdueCount = aging.slice(1).reduce((s, b) => s + b.count, 0);
 
-    const eligible = invoices.filter((i) => i.status !== "draft" && i.status !== "void");
-    const totalRevenue = eligible.reduce((s, i) => s + Number(i.total), 0);
+    const eligible = invoices.filter(isBilledInvoice);
+    const totalRevenue = eligible.reduce((s, i) => s + invoiceRevenue(i), 0);
     const totalCost = eligible.reduce((s, i) => s + Number(i.direct_cost), 0);
     const grossMargin = totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0;
 
-    const pipeline = invoices
+    const pipeline = inLine
       .filter((i) => i.status === "draft")
-      .reduce((s, i) => s + Number(i.total), 0);
+      .reduce((s, i) => s + invoiceRevenue(i), 0);
 
     const monthly: {
       key: string;
       label: string;
       recurring: number;
       oneOff: number;
-      target: number;
+      target: number | null;
       cumulative: number;
     }[] = [];
     for (let i = months - 1; i >= 0; i--) {
@@ -279,14 +416,22 @@ function Dashboard() {
       const k = `${d.getFullYear()}-${d.getMonth()}`;
       const i = idx.get(k);
       if (i === undefined) continue;
-      if (inv.is_recurring) monthly[i].recurring += Number(inv.total);
-      else monthly[i].oneOff += Number(inv.total);
+      if (inv.is_recurring) monthly[i].recurring += invoiceRevenue(inv);
+      else monthly[i].oneOff += invoiceRevenue(inv);
     }
-    const avg =
-      monthly.reduce((s, m) => s + m.recurring + m.oneOff, 0) / Math.max(1, monthly.length);
+    // Target = monthly targets of the service lines in view (same filters as the chart).
+    const targetLines = serviceLines.filter(
+      (sl) =>
+        sl.is_active &&
+        sl.monthly_target != null &&
+        (serviceLineId === "all" || sl.id === serviceLineId) &&
+        (!departmentFilter || sl.department_id === departmentFilter),
+    );
+    const monthlyTarget = targetLines.reduce((s, sl) => s + (sl.monthly_target ?? 0), 0);
+    const hasTarget = targetLines.length > 0 && monthlyTarget > 0;
     let running = 0;
     monthly.forEach((m) => {
-      m.target = Math.round(avg * 1.1);
+      m.target = hasTarget ? monthlyTarget : null;
       running += m.recurring + m.oneOff;
       m.cumulative = running;
     });
@@ -298,7 +443,7 @@ function Dashboard() {
       const sl = slMap.get(inv.service_line_id);
       if (!sl) continue;
       const cur = byLine.get(sl.id) ?? { name: sl.name, recurring: sl.is_recurring, total: 0 };
-      cur.total += Number(inv.total);
+      cur.total += invoiceRevenue(inv);
       byLine.set(sl.id, cur);
     }
     const lines = Array.from(byLine.values()).sort((a, b) => b.total - a.total);
@@ -313,14 +458,26 @@ function Dashboard() {
       critical,
       grossMargin,
       pipeline,
-      activeClients: clients.filter((c) => c.is_active).length,
+      activeClients: clients.filter(
+        (c) => c.is_active && (!departmentFilter || c.department_id === departmentFilter),
+      ).length,
       totalRevenue,
       monthly,
+      hasTarget,
       aging,
       lines,
       serviceLines,
     };
-  }, [invoicesQ.data, paymentsQ.data, clientsQ.data, slQ.data, months, serviceLineId]);
+  }, [
+    invoicesQ.data,
+    paymentsQ.data,
+    clientsQ.data,
+    slQ.data,
+    contractsQ.data,
+    months,
+    serviceLineId,
+    departmentFilter,
+  ]);
 
   const agingChart = kpis.aging.map((b) => ({ label: b.label, amount: b.amount, count: b.count }));
   const linesPie = kpis.lines.map((l) => ({ name: l.name, value: l.total }));
@@ -433,24 +590,27 @@ function Dashboard() {
   if (kpis.critical > 0)
     insights.push({
       type: "warn",
-      text: `Debtor: 90+ days bucket ${formatCurrency(kpis.critical)} — recover this month.`,
+      text: `${formatCurrency(kpis.critical)} owed for more than 90 days — recover this month.`,
     });
   if (kpis.overdueCount > 0)
     insights.push({
       type: "warn",
       text: `${kpis.overdueCount} invoice(s) overdue totalling ${formatCurrency(kpis.overdue)}.`,
     });
-  if (kpis.mom >= 0)
-    insights.push({ type: "positive", text: `Revenue trend: ${kpis.mom.toFixed(1)}% MoM growth.` });
-  else
+  if (kpis.mom > 0)
+    insights.push({
+      type: "positive",
+      text: `Revenue this month is up ${kpis.mom.toFixed(1)}% vs last month.`,
+    });
+  else if (kpis.mom < 0)
     insights.push({
       type: "warn",
-      text: `Revenue declined ${Math.abs(kpis.mom).toFixed(1)}% MoM.`,
+      text: `Revenue this month is down ${Math.abs(kpis.mom).toFixed(1)}% vs last month.`,
     });
   if (kpis.grossMargin < 30 && kpis.totalRevenue > 0)
     insights.push({
       type: "warn",
-      text: `Gross margin ${kpis.grossMargin.toFixed(1)}% — below 30% target.`,
+      text: `Gross margin (revenue left after direct costs) is ${kpis.grossMargin.toFixed(1)}% — below the 30% target.`,
     });
   else if (kpis.totalRevenue > 0)
     insights.push({
@@ -465,31 +625,127 @@ function Dashboard() {
     });
   }
 
-  // Completion % per department, computed live from real Project/Task data — no fabricated
-  // percentages. A department with no tasks yet reports "No data" rather than a made-up number.
-  const deptStatus = (departmentsQ.data ?? []).map((d) => {
-    const deptProjectIds = new Set(
-      allProjects.filter((p) => p.department_id === d.id).map((p) => p.id),
-    );
-    const deptTasks = allTasks.filter((t) => deptProjectIds.has(t.project_id));
-    const total = deptTasks.length;
-    const completed = deptTasks.filter((t) => t.status === "completed").length;
-    const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
-    const status =
-      total === 0 ? "No data" : progress >= 70 ? "On track" : progress >= 40 ? "At risk" : "Behind";
-    return { name: d.name, progress, status, hasData: total > 0 };
-  });
+  const alerts: DashboardAlert[] = [];
+  if (kpis.overdueCount > 0)
+    alerts.push({
+      key: "overdue",
+      title: "Overdue invoices",
+      detail: `${plural(kpis.overdueCount, "invoice")} · ${formatCurrency(kpis.overdue)} unpaid`,
+      to: "/finance/invoices",
+      search: { status: "overdue" },
+    });
+  if (kpis.critical > 0)
+    alerts.push({
+      key: "critical",
+      title: "Money owed for more than 90 days",
+      detail: formatCurrency(kpis.critical),
+      to: "/finance/debtors",
+    });
+  if (kpis.grossMargin < 30 && kpis.totalRevenue > 0)
+    alerts.push({
+      key: "margin",
+      title: "Gross margin below 30%",
+      detail: `${kpis.grossMargin.toFixed(1)}% for the selected period`,
+      to: "/reports/departments/finance",
+    });
+  const reportsWaiting = (reportsInboxQ.data ?? []).filter((r) => r.status === "submitted").length;
+  if (reportsWaiting > 0)
+    alerts.push({
+      key: "reports",
+      title: "Reports waiting for your review",
+      detail:
+        department === "all"
+          ? plural(reportsWaiting, "report")
+          : `${plural(reportsWaiting, "report")} · all departments`,
+      to: "/reports",
+    });
+
+  // Department status combines overdue tasks, late or off-track projects, and last month's report.
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthKey = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, "0")}`;
+  const lastMonthName = lastMonth.toLocaleDateString("en-GB", { month: "long" });
+  const reportDueDay = companyQ.data?.reportDueDay ?? 5;
+  const reportDueDate = new Date(now.getFullYear(), now.getMonth(), reportDueDay);
+  const reportsSent = new Set(
+    (reportsInboxQ.data ?? [])
+      .filter((r) => r.periodStart.slice(0, 7) === lastMonthKey)
+      .map((r) => r.department.code),
+  );
+
+  const deptStatus = (departmentsQ.data ?? [])
+    .filter((d) => !departmentFilter || d.id === departmentFilter)
+    .map((d) => {
+      const deptProjects = allProjects.filter((p) => p.department_id === d.id);
+      const projectIds = new Set(deptProjects.map((p) => p.id));
+      const deptTasks = allTasks.filter((t) => projectIds.has(t.project_id));
+      const completed = deptTasks.filter((t) => t.status === "completed").length;
+      const openTasks = deptTasks.length - completed;
+      const overdue = deptTasks.filter((t) => isTaskOverdue(t)).length;
+      const openProjects = deptProjects.filter(
+        (p) => p.status !== "completed" && p.status !== "cancelled",
+      );
+      const troubled = openProjects.filter(
+        (p) => p.health === "red" || (!!p.end_date && p.end_date < todayKey),
+      ).length;
+      const report = !REPORTING_DEPARTMENTS.has(d.code ?? "")
+        ? "none"
+        : !reportsInboxQ.isSuccess
+          ? "unknown"
+          : reportsSent.has(d.code ?? "")
+            ? "sent"
+            : now.getDate() > reportDueDay
+              ? "missing"
+              : "not_due";
+
+      const overdueShare = openTasks > 0 ? overdue / openTasks : 0;
+      let score = 0;
+      if (overdue >= 3 || overdueShare >= 0.1)
+        score += overdue >= 3 && overdueShare >= 0.25 ? 2 : 1;
+      if (troubled > 0) score += troubled >= 2 || troubled / openProjects.length >= 0.5 ? 2 : 1;
+      if (report === "missing") score += 1;
+
+      const hasData =
+        deptTasks.length > 0 ||
+        openProjects.length > 0 ||
+        report === "sent" ||
+        report === "missing";
+      const status = !hasData
+        ? "No data"
+        : score === 0
+          ? "On track"
+          : score === 1
+            ? "At risk"
+            : "Behind";
+      const detail = [
+        deptTasks.length > 0 &&
+          (overdue > 0 ? plural(overdue, "overdue task") : "No overdue tasks"),
+        troubled > 0 && plural(troubled, "late or off-track project"),
+        report === "sent" && `${lastMonthName} report sent`,
+        report === "missing" && `${lastMonthName} report not sent`,
+        report === "not_due" && `${lastMonthName} report due ${formatDate(reportDueDate)}`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const progress = deptTasks.length > 0 ? Math.round((completed / deptTasks.length) * 100) : 0;
+      return {
+        id: d.id,
+        name: d.name,
+        progress,
+        status,
+        hasTasks: deptTasks.length > 0,
+        detail: detail || "Nothing recorded yet",
+      };
+    });
 
   const quarter = `Q${Math.floor(new Date().getMonth() / 3) + 1} ${new Date().getFullYear()}`;
   const office = officesQ.data?.find((o) => o.id === profile?.officeId)?.name ?? "—";
-  const roleLabel = roles.includes("ceo")
-    ? "CEO"
-    : roles.includes("system_admin")
-      ? "System Admin"
-      : (roles[0] ?? "Staff");
+  const roleLabel = isAdminOrCeo ? "CEO" : (roles[0] ?? "Staff");
 
   return (
     <div>
+      <AlertsSheet open={alertsOpen} onOpenChange={setAlertsOpen} alerts={alerts} />
       {/* Executive banner strip */}
       <div className="rounded-lg bg-primary text-primary-foreground mb-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2.5 text-sm">
@@ -498,7 +754,19 @@ function Dashboard() {
             <span className="opacity-40">|</span>
             <span>CEO Executive Dashboard</span>
           </div>
-          <div className="ml-auto flex items-center gap-4 text-xs">
+          <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            <Link
+              to="/documents"
+              className="flex items-center gap-1 rounded bg-white/15 px-2 py-1 font-medium hover:bg-white/25"
+            >
+              <FolderArchive className="h-3.5 w-3.5" /> Documents
+            </Link>
+            <Link
+              to="/calendar"
+              className="flex items-center gap-1 rounded bg-white/15 px-2 py-1 font-medium hover:bg-white/25"
+            >
+              <CalendarClock className="h-3.5 w-3.5" /> Calendar
+            </Link>
             <span className="hidden sm:inline font-medium">{quarter}</span>
             <span className="opacity-40 hidden sm:inline">|</span>
             <span className="hidden sm:flex items-center gap-1">
@@ -506,11 +774,16 @@ function Dashboard() {
               {office}
             </span>
             <span className="opacity-40 hidden sm:inline">|</span>
-            <button className="flex items-center gap-1 hover:opacity-80">
+            <button
+              type="button"
+              onClick={() => setAlertsOpen(true)}
+              aria-label={`Alerts, ${alerts.length}`}
+              className="flex items-center gap-1 hover:opacity-80"
+            >
               <Bell className="h-3.5 w-3.5" />
               Alerts{" "}
-              <span className="ml-1 px-1.5 rounded-full bg-accent text-accent-foreground text-[0.625rem] font-bold">
-                {kpis.overdueCount + (kpis.critical > 0 ? 1 : 0)}
+              <span className="ml-1 px-1.5 rounded-full bg-accent text-accent-foreground text-xs font-bold">
+                {alerts.length}
               </span>
             </button>
             <span className="opacity-40">|</span>
@@ -522,12 +795,28 @@ function Dashboard() {
         </div>
       </div>
 
+      {reviewsWaiting > 0 && (
+        <Link
+          to="/reports"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2.5 hover:bg-accent/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold">
+            <FileText className="h-4 w-4 text-accent" aria-hidden="true" />
+            Waiting for your review ({reviewsWaiting})
+          </span>
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+            Open reports <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </span>
+        </Link>
+      )}
+
       {/* Filter bar */}
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2">
         <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-[0.6875rem] text-muted-foreground font-medium">Filters:</span>
+        <span className="text-xs text-muted-foreground font-medium">Filters:</span>
         <select
           value={months}
+          aria-label="Date range"
           onChange={(e) => setMonths(Number(e.target.value))}
           className="text-xs rounded border bg-background px-2 py-1"
         >
@@ -539,6 +828,7 @@ function Dashboard() {
         </select>
         <select
           value={serviceLineId}
+          aria-label="Service line"
           onChange={(e) => setServiceLineId(e.target.value)}
           className="text-xs rounded border bg-background px-2 py-1 max-w-[180px]"
         >
@@ -551,10 +841,11 @@ function Dashboard() {
         </select>
         <select
           value={department}
+          aria-label="Department"
           onChange={(e) => setDepartment(e.target.value)}
           className="text-xs rounded border bg-background px-2 py-1"
         >
-          {DEPT_OPTIONS.map((o) => (
+          {departmentOptions.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
@@ -562,14 +853,18 @@ function Dashboard() {
         </select>
         <div className="ml-auto inline-flex rounded-md border overflow-hidden">
           <button
+            type="button"
+            aria-pressed={view === "revenue"}
             onClick={() => setView("revenue")}
-            className={`px-3 py-1 text-[0.6875rem] ${view === "revenue" ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-secondary"}`}
+            className={`px-3 py-1 text-xs ${view === "revenue" ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-secondary"}`}
           >
             Revenue vs Target
           </button>
           <button
+            type="button"
+            aria-pressed={view === "projects"}
             onClick={() => setView("projects")}
-            className={`px-3 py-1 text-[0.6875rem] ${view === "projects" ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-secondary"}`}
+            className={`px-3 py-1 text-xs ${view === "projects" ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-secondary"}`}
           >
             Project analytics
           </button>
@@ -580,6 +875,15 @@ function Dashboard() {
         <div className="py-12 flex justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
+      ) : moneyFailed ? (
+        <LoadError
+          what="invoices and payments"
+          error={invoicesQ.error ?? paymentsQ.error}
+          onRetry={() => {
+            if (invoicesQ.isError) invoicesQ.refetch();
+            if (paymentsQ.isError) paymentsQ.refetch();
+          }}
+        />
       ) : (
         <>
           {/* Executive Decision Support — moved here, right under the filters, so it's the first
@@ -588,7 +892,7 @@ function Dashboard() {
           <div className="rounded-lg border bg-card p-3">
             <div className="flex items-center justify-between">
               <div className="text-xs font-semibold text-primary">Executive Decision Support</div>
-              <span className="text-[0.625rem] text-muted-foreground">Insights & Actions</span>
+              <span className="text-xs text-muted-foreground">Insights & Actions</span>
             </div>
             <ul className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
               {insights.slice(0, 6).map((it, i) => {
@@ -609,7 +913,7 @@ function Dashboard() {
                         ? "text-accent"
                         : "text-primary";
                 return (
-                  <li key={i} className="flex items-start gap-2 text-[0.6875rem] leading-snug">
+                  <li key={i} className="flex items-start gap-2 text-xs leading-snug">
                     <Icon className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${cls}`} />
                     <span className="min-w-0">{it.text}</span>
                   </li>
@@ -618,26 +922,25 @@ function Dashboard() {
             </ul>
           </div>
 
-          {/* 10 KPIs single row from md+ */}
-          <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-1.5">
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             <KpiCell
-              label="Revenue MTD"
+              label="Revenue this month so far"
               value={formatCurrency(kpis.monthRevenue)}
-              hint={`${kpis.mom >= 0 ? "+" : ""}${kpis.mom.toFixed(1)}% MoM`}
+              hint={`${kpis.mom >= 0 ? "+" : ""}${kpis.mom.toFixed(1)}% vs last month`}
               icon={DollarSign}
               tone={kpis.mom >= 0 ? "positive" : "warning"}
             />
             <KpiCell
-              label="MRR"
+              label="Monthly recurring revenue"
               value={formatCurrency(kpis.mrr)}
-              hint="Recurring"
+              hint="From active recurring contracts"
               icon={Repeat}
               tone="positive"
             />
             <KpiCell
-              label="Pipeline"
+              label="Draft invoices"
               value={formatCurrency(kpis.pipeline)}
-              hint="Draft"
+              hint="Not yet sent to clients"
               icon={TrendingUp}
               tone="warning"
             />
@@ -646,39 +949,54 @@ function Dashboard() {
               value={String(kpis.activeClients)}
               hint="Active"
               icon={Users}
+              to="/clients"
+              ariaLabel={`Clients, ${kpis.activeClients} active. Open clients`}
             />
             <KpiCell
               label="Outstanding"
               value={formatCurrency(kpis.outstanding)}
-              hint={`${kpis.overdueCount} overdue`}
+              hint={`Unpaid invoices · ${kpis.overdueCount} overdue`}
               icon={FileWarning}
               tone={kpis.overdue > 0 ? "danger" : "default"}
+              to="/finance/debtors"
+              ariaLabel={`Outstanding, ${formatCurrency(kpis.outstanding)}. Open debtors`}
             />
             <KpiCell
-              label="90+ Debtors"
+              label="Owed over 90 days"
               value={formatCurrency(kpis.critical)}
-              hint="Critical"
+              hint="Chase these first"
               icon={AlertTriangle}
               tone="danger"
+              to="/finance/debtors"
+              ariaLabel={`Owed for more than 90 days, ${formatCurrency(kpis.critical)}. Open debtors`}
             />
             <KpiCell
-              label="Gross Margin"
+              label="Gross margin"
               value={`${kpis.grossMargin.toFixed(1)}%`}
+              hint="Revenue left after direct costs"
               icon={Percent}
               tone="positive"
             />
             <KpiCell
-              label="Revenue (Range)"
+              label={`Revenue, last ${months} months`}
               value={formatCurrency(kpis.totalRevenue)}
+              hint="Before VAT"
               icon={Activity}
             />
-            <KpiCell label="HRMS Users" value="—" hint="Licenses" icon={Briefcase} />
+            <KpiCell
+              label="HRMS users"
+              value={hrmsValue}
+              hint={department === "all" ? hrmsHint : `All departments · ${hrmsHint}`}
+              icon={Briefcase}
+            />
             <KpiCell
               label="Alerts"
-              value={String(kpis.overdueCount + (kpis.critical > 0 ? 1 : 0))}
-              hint="Debtor + margin"
+              value={String(alerts.length)}
+              hint="Debts, margin, reports"
               icon={CheckCircle2}
-              tone="warning"
+              tone={alerts.length > 0 ? "warning" : "positive"}
+              onClick={() => setAlertsOpen(true)}
+              ariaLabel={`Alerts, ${alerts.length}`}
             />
           </div>
 
@@ -693,15 +1011,17 @@ function Dashboard() {
                       <div className="text-xs font-semibold text-primary">
                         Revenue vs Target — Trend ({months} months)
                       </div>
-                      <div className="text-[0.625rem] text-muted-foreground">
-                        Actual (solid) vs Target (dashed)
+                      <div className="text-xs text-muted-foreground">
+                        {kpis.hasTarget
+                          ? "Actual (solid) vs Target (dashed) · before VAT"
+                          : "Actual revenue · before VAT"}
                       </div>
                     </div>
                     <Link
                       to="/reports/departments/finance"
-                      className="text-[0.625rem] text-primary hover:underline"
+                      className="text-xs text-primary hover:underline"
                     >
-                      View report →
+                      Open financial report
                     </Link>
                   </div>
                   <div className="h-56">
@@ -711,10 +1031,10 @@ function Dashboard() {
                         margin={{ top: 5, right: 8, bottom: 0, left: 0 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                        <XAxis dataKey="label" fontSize={10} />
-                        <YAxis fontSize={10} tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} />
+                        <XAxis dataKey="label" fontSize={12} />
+                        <YAxis fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} />
                         <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                        <Legend wrapperStyle={{ fontSize: 10 }} />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
                         <Line
                           type="monotone"
                           dataKey={(d) => d.recurring + d.oneOff}
@@ -723,32 +1043,42 @@ function Dashboard() {
                           strokeWidth={2.5}
                           dot={{ r: 3 }}
                         />
-                        <Line
-                          type="monotone"
-                          dataKey="target"
-                          name="Target"
-                          stroke="#F5821F"
-                          strokeWidth={2}
-                          strokeDasharray="6 4"
-                          dot={false}
-                        />
+                        {kpis.hasTarget && (
+                          <Line
+                            type="monotone"
+                            dataKey="target"
+                            name="Target"
+                            stroke="#F5821F"
+                            strokeWidth={2}
+                            strokeDasharray="6 4"
+                            dot={false}
+                          />
+                        )}
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
+                  {!kpis.hasTarget && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      No targets set — add monthly targets in{" "}
+                      <Link to="/admin/departments" className="text-primary hover:underline">
+                        Admin → Departments &amp; Offices
+                      </Link>
+                    </p>
+                  )}
                 </div>
 
-                {/* Tender Pipeline Funnel */}
+                {/* Tenders by stage */}
                 <div className="lg:col-span-3 rounded-lg border bg-card p-3 min-w-0 overflow-hidden">
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs font-semibold text-primary">Tender Pipeline Funnel</div>
+                    <div className="text-xs font-semibold text-primary">Tenders by stage</div>
                     <div className="flex items-center gap-2">
                       {tenderWinRate != null && (
-                        <span className="text-[0.625rem] text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           Win rate {(tenderWinRate * 100).toFixed(0)}%
                         </span>
                       )}
-                      <Link to="/tender" className="text-[0.625rem] text-primary hover:underline">
-                        View →
+                      <Link to="/tender" className="text-xs text-primary hover:underline">
+                        Open tenders
                       </Link>
                     </div>
                   </div>
@@ -763,11 +1093,9 @@ function Dashboard() {
 
                 {/* Gross Margin by product/service line */}
                 <div className="lg:col-span-3 rounded-lg border bg-card p-3">
-                  <div className="text-xs font-semibold text-primary mb-1">
-                    Gross Margin by Product
-                  </div>
-                  <div className="text-[0.625rem] text-muted-foreground mb-1">
-                    Revenue per service line
+                  <div className="text-xs font-semibold text-primary mb-1">Top service lines</div>
+                  <div className="text-xs text-muted-foreground mb-1">
+                    Revenue per service line · before VAT
                   </div>
                   <div className="h-48">
                     {kpis.lines.length === 0 ? (
@@ -783,8 +1111,8 @@ function Dashboard() {
                           }))}
                         >
                           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                          <XAxis dataKey="name" fontSize={9} />
-                          <YAxis fontSize={9} tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} />
+                          <XAxis dataKey="name" fontSize={12} />
+                          <YAxis fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} />
                           <Tooltip formatter={(v: number) => formatCurrency(v)} />
                           <Bar dataKey="total">
                             {kpis.lines.slice(0, 6).map((_, i) => (
@@ -804,11 +1132,11 @@ function Dashboard() {
                   <div className="text-xs font-semibold text-primary mb-1">
                     Completion by department
                   </div>
-                  <div className="text-[0.625rem] text-muted-foreground mb-1">
-                    Rolling progress across active departments
+                  <div className="text-xs text-muted-foreground mb-1">
+                    Share of each department's tasks that are done
                   </div>
                   <div className="h-56">
-                    {deptStatus.every((d) => !d.hasData) ? (
+                    {deptStatus.every((d) => !d.hasTasks) ? (
                       <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
                         No tasks recorded yet.
                       </div>
@@ -822,10 +1150,10 @@ function Dashboard() {
                           }))}
                         >
                           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                          <XAxis dataKey="name" fontSize={10} />
-                          <YAxis fontSize={10} />
+                          <XAxis dataKey="name" fontSize={12} />
+                          <YAxis fontSize={12} />
                           <Tooltip />
-                          <Legend wrapperStyle={{ fontSize: 10 }} />
+                          <Legend wrapperStyle={{ fontSize: 12 }} />
                           <Bar dataKey="progress" stackId="a" fill="#085599" name="Progress %" />
                           <Bar dataKey="gap" stackId="a" fill="#e2e8f0" name="Remaining %" />
                         </BarChart>
@@ -836,7 +1164,7 @@ function Dashboard() {
 
                 <div className="lg:col-span-4 rounded-lg border bg-card p-3 min-w-0 overflow-hidden">
                   <div className="text-xs font-semibold text-primary mb-1">
-                    Task Pipeline — all departments
+                    Tasks by status — {selectedDepartment?.name ?? "all departments"}
                   </div>
                   <FunnelChart stages={taskFunnel} formatValue={(v) => `${v} tasks`} />
                 </div>
@@ -845,7 +1173,7 @@ function Dashboard() {
                   <div className="text-xs font-semibold text-primary mb-1">
                     Project status (all projects)
                   </div>
-                  <div className="text-[0.625rem] text-muted-foreground mb-1">
+                  <div className="text-xs text-muted-foreground mb-1">
                     {allProjects.length} projects tracked
                   </div>
                   <div className="h-48">
@@ -869,7 +1197,7 @@ function Dashboard() {
                             ))}
                           </Pie>
                           <Tooltip />
-                          <Legend wrapperStyle={{ fontSize: 9 }} />
+                          <Legend wrapperStyle={{ fontSize: 12 }} />
                         </PieChart>
                       </ResponsiveContainer>
                     )}
@@ -884,15 +1212,15 @@ function Dashboard() {
             <div className="mt-3 grid grid-cols-1 lg:grid-cols-12 gap-3">
               <div className="lg:col-span-7 rounded-lg border bg-card p-3 min-w-0 overflow-hidden">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-xs font-semibold text-primary">Client Request Pipeline</div>
+                  <div className="text-xs font-semibold text-primary">Client requests by stage</div>
                   <div className="flex items-center gap-2">
                     {requestConversionRate != null && (
-                      <span className="text-[0.625rem] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         Conversion rate {(requestConversionRate * 100).toFixed(0)}%
                       </span>
                     )}
-                    <Link to="/requests" className="text-[0.625rem] text-primary hover:underline">
-                      View →
+                    <Link to="/requests" className="text-xs text-primary hover:underline">
+                      Open client requests
                     </Link>
                   </div>
                 </div>
@@ -907,7 +1235,7 @@ function Dashboard() {
 
               <div className="lg:col-span-5 rounded-lg border bg-card p-3">
                 <div className="text-xs font-semibold text-primary mb-1">Where requests fail</div>
-                <div className="text-[0.625rem] text-muted-foreground mb-1">
+                <div className="text-xs text-muted-foreground mb-1">
                   Stage reached before being marked lost or withdrawn
                 </div>
                 {requestLostBreakdownTotal === 0 ? (
@@ -922,7 +1250,7 @@ function Dashboard() {
                       .map((r) => {
                         const pct = (r.count / requestLostBreakdownTotal) * 100;
                         return (
-                          <li key={r.stage} className="text-[0.6875rem]">
+                          <li key={r.stage} className="text-xs">
                             <div className="flex items-center justify-between mb-0.5">
                               <span>{CLIENT_REQUEST_STAGE_LABELS[r.stage]}</span>
                               <span className="text-muted-foreground tabular-nums">{r.count}</span>
@@ -952,8 +1280,9 @@ function Dashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-xs font-semibold text-primary">Debtor ageing</div>
-                    <div className="text-[0.625rem] text-muted-foreground mb-1">
-                      {formatCurrency(kpis.aging.reduce((s, b) => s + b.amount, 0))} outstanding
+                    <div className="text-xs text-muted-foreground mb-1">
+                      {formatCurrency(kpis.aging.reduce((s, b) => s + b.amount, 0))} outstanding ·
+                      all open invoices, any date
                     </div>
                   </div>
                 </div>
@@ -975,7 +1304,7 @@ function Dashboard() {
                         ))}
                       </Pie>
                       <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                      <Legend wrapperStyle={{ fontSize: 9 }} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -989,7 +1318,8 @@ function Dashboard() {
                     <select
                       value={chartProject?.id ?? ""}
                       onChange={(e) => setSelectedProjectIdForChart(e.target.value)}
-                      className="text-[0.625rem] rounded border bg-background px-1.5 py-0.5 max-w-32.5"
+                      aria-label="Project"
+                      className="text-xs rounded border bg-background px-1.5 py-0.5 max-w-40"
                     >
                       {allProjects.map((p) => (
                         <option key={p.id} value={p.id}>
@@ -1021,7 +1351,7 @@ function Dashboard() {
                           ))}
                         </Pie>
                         <Tooltip />
-                        <Legend wrapperStyle={{ fontSize: 9 }} />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
                       </PieChart>
                     </ResponsiveContainer>
                   )}
@@ -1039,11 +1369,8 @@ function Dashboard() {
                     <div className="text-xs font-semibold text-primary">
                       Revenue by service line
                     </div>
-                    <Link
-                      to="/finance/revenue"
-                      className="text-[0.625rem] text-primary hover:underline"
-                    >
-                      Details →
+                    <Link to="/finance/revenue" className="text-xs text-primary hover:underline">
+                      Revenue details
                     </Link>
                   </div>
                   <div className="h-48">
@@ -1067,7 +1394,7 @@ function Dashboard() {
                             ))}
                           </Pie>
                           <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                          <Legend wrapperStyle={{ fontSize: 10 }} />
+                          <Legend wrapperStyle={{ fontSize: 12 }} />
                         </PieChart>
                       </ResponsiveContainer>
                     )}
@@ -1076,15 +1403,13 @@ function Dashboard() {
 
                 <div className="lg:col-span-4 rounded-lg border bg-card p-3">
                   <div className="text-xs font-semibold text-primary">Cumulative revenue</div>
-                  <div className="text-[0.625rem] text-muted-foreground mb-1">
-                    Trailing {months} months
-                  </div>
+                  <div className="text-xs text-muted-foreground mb-1">Last {months} months</div>
                   <div className="h-48">
                     <ResponsiveContainer>
                       <LineChart data={kpis.monthly}>
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                        <XAxis dataKey="label" fontSize={10} />
-                        <YAxis fontSize={10} tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} />
+                        <XAxis dataKey="label" fontSize={12} />
+                        <YAxis fontSize={12} tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`} />
                         <Tooltip formatter={(v: number) => formatCurrency(v)} />
                         <Line
                           type="monotone"
@@ -1113,8 +1438,8 @@ function Dashboard() {
                       <ResponsiveContainer>
                         <BarChart data={projectsByDepartmentChart}>
                           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                          <XAxis dataKey="name" fontSize={10} />
-                          <YAxis fontSize={10} allowDecimals={false} />
+                          <XAxis dataKey="name" fontSize={12} />
+                          <YAxis fontSize={12} allowDecimals={false} />
                           <Tooltip />
                           <Bar dataKey="count" name="Projects">
                             {projectsByDepartmentChart.map((_, i) => (
@@ -1138,8 +1463,8 @@ function Dashboard() {
                       <ResponsiveContainer>
                         <BarChart data={projectStatusChart} layout="vertical">
                           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                          <XAxis type="number" fontSize={10} allowDecimals={false} />
-                          <YAxis type="category" dataKey="name" fontSize={10} width={70} />
+                          <XAxis type="number" fontSize={12} allowDecimals={false} />
+                          <YAxis type="category" dataKey="name" fontSize={12} width={70} />
                           <Tooltip />
                           <Bar dataKey="value" name="Projects">
                             {projectStatusChart.map((_, i) => (
@@ -1155,52 +1480,42 @@ function Dashboard() {
             )}
 
             <div className="lg:col-span-3 rounded-lg border bg-card p-3">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between">
                 <div className="text-xs font-semibold text-primary">Departments</div>
-                <Link to="/departments" className="text-[0.625rem] text-primary hover:underline">
-                  All →
+                <Link to="/departments" className="text-xs text-primary hover:underline">
+                  All departments
                 </Link>
               </div>
-              <div className="space-y-2">
-                {deptStatus.length === 0 ? (
-                  <div className="text-xs text-muted-foreground py-2">No departments yet.</div>
-                ) : (
-                  deptStatus.map((d) => (
-                    <div key={d.name}>
-                      <div className="flex justify-between text-[0.6875rem] mb-0.5">
+              <p className="mb-2 text-xs text-muted-foreground">
+                Based on overdue tasks, late projects and reports
+              </p>
+              {deptStatus.length === 0 ? (
+                <div className="text-xs text-muted-foreground py-2">No departments yet.</div>
+              ) : (
+                <ul className="space-y-2">
+                  {deptStatus.map((d) => (
+                    <li key={d.id}>
+                      <div className="flex justify-between gap-2 text-xs">
                         <span className="font-medium">{d.name}</span>
                         <span
                           className={
-                            !d.hasData
-                              ? "text-muted-foreground"
-                              : d.status === "On track"
-                                ? "text-success"
-                                : d.status === "At risk"
-                                  ? "text-warning"
-                                  : "text-destructive"
+                            d.status === "On track"
+                              ? "font-medium text-success"
+                              : d.status === "At risk"
+                                ? "font-medium text-warning"
+                                : d.status === "Behind"
+                                  ? "font-medium text-destructive"
+                                  : "text-muted-foreground"
                           }
                         >
-                          {d.hasData ? `${d.progress}%` : "No data"}
+                          {d.status}
                         </span>
                       </div>
-                      <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-                        <div
-                          className={
-                            !d.hasData
-                              ? "h-full bg-muted-foreground/30"
-                              : d.progress >= 70
-                                ? "h-full bg-success"
-                                : d.progress >= 40
-                                  ? "h-full bg-warning"
-                                  : "h-full bg-destructive"
-                          }
-                          style={{ width: d.hasData ? `${d.progress}%` : "100%" }}
-                        />
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+                      <div className="text-xs leading-snug text-muted-foreground">{d.detail}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
 

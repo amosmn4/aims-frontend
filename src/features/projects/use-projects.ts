@@ -21,6 +21,14 @@ export type SdlcStage =
 
 export const SYSTEM_DEVELOPMENT_METHODOLOGY = "system_development";
 
+/** Plain name for a project's methodology value. */
+export const methodologyLabel = (m: string | null) =>
+  m === SYSTEM_DEVELOPMENT_METHODOLOGY ? "System development" : m;
+
+/** IT projects track hours, phases and schedule/cost health; other departments don't. */
+export const tracksDeliveryMetrics = (departmentCode: string | null | undefined) =>
+  departmentCode === "it";
+
 export const SDLC_STAGES: SdlcStage[] = [
   "requirements",
   "design",
@@ -48,15 +56,15 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
 };
 
 export const PROJECT_HEALTH_LABELS: Record<ProjectHealth, string> = {
-  green: "On Track",
-  amber: "At Risk",
-  red: "Off Track",
+  green: "On track",
+  amber: "At risk",
+  red: "Late / off track",
 };
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  not_started: "Not Started",
-  in_progress: "In Progress",
-  review: "In Review",
+  not_started: "Not started",
+  in_progress: "In progress",
+  review: "In review",
   blocked: "Blocked",
   completed: "Completed",
 };
@@ -91,12 +99,21 @@ export type Project = {
   client_name: string | null;
   contract_id: string | null;
   contract_number: string | null;
+  contract_status: string | null;
+  contract_value: number | null;
+  contract_currency: string | null;
+  contract_billing: string | null;
+  contract_end_date: string | null;
+  service_line_id: string | null;
+  service_line_code: string | null;
+  service_line_name: string | null;
   tender_id: string | null;
   tender_title: string | null;
   client_request_id: string | null;
   client_request_title: string | null;
   department_id: string;
   department_name: string;
+  department_code: string | null;
   status: ProjectStatus;
   methodology: string | null;
   sdlc_stage: SdlcStage | null;
@@ -150,6 +167,8 @@ export type TaskComment = {
   body: string;
   created_at: string;
   updated_at: string;
+  /** The thread's first comment when this is a reply. */
+  parent_id: string | null;
 };
 
 export type ProjectFinancials =
@@ -192,13 +211,23 @@ type BackendProject = {
   clientId: string | null;
   client?: { name: string } | null;
   contractId: string | null;
-  contract?: { id: string; contractNumber: string } | null;
+  contract?: {
+    id: string;
+    contractNumber: string;
+    status?: string;
+    value?: string | number;
+    currency?: string;
+    billingFrequency?: string;
+    endDate?: string | null;
+  } | null;
+  serviceLineId?: string | null;
+  serviceLine?: { id: string; code: string; name: string; isRecurring: boolean } | null;
   tenderId?: string | null;
   tender?: { id: string; referenceNumber: string | null; title: string } | null;
   clientRequestId?: string | null;
   clientRequest?: { id: string; referenceNumber: string | null; title: string } | null;
   departmentId: string;
-  department?: { name: string } | null;
+  department?: { name: string; code?: string } | null;
   status: ProjectStatus;
   methodology: string | null;
   sdlcStage: SdlcStage | null;
@@ -252,6 +281,7 @@ type BackendTaskComment = {
   body: string;
   createdAt: string;
   updatedAt: string;
+  parentId?: string | null;
 };
 
 function mapProject(p: BackendProject): Project {
@@ -263,6 +293,14 @@ function mapProject(p: BackendProject): Project {
     client_name: p.client?.name ?? null,
     contract_id: p.contractId,
     contract_number: p.contract?.contractNumber ?? null,
+    contract_status: p.contract?.status ?? null,
+    contract_value: p.contract?.value != null ? Number(p.contract.value) : null,
+    contract_currency: p.contract?.currency ?? null,
+    contract_billing: p.contract?.billingFrequency ?? null,
+    contract_end_date: p.contract?.endDate ? p.contract.endDate.slice(0, 10) : null,
+    service_line_id: p.serviceLineId ?? null,
+    service_line_code: p.serviceLine?.code ?? null,
+    service_line_name: p.serviceLine?.name ?? null,
     tender_id: p.tender?.id ?? null,
     tender_title: p.tender ? (p.tender.referenceNumber ?? p.tender.title) : null,
     client_request_id: p.clientRequest?.id ?? null,
@@ -271,6 +309,7 @@ function mapProject(p: BackendProject): Project {
       : null,
     department_id: p.departmentId,
     department_name: p.department?.name ?? "—",
+    department_code: p.department?.code ?? null,
     status: p.status,
     methodology: p.methodology,
     sdlc_stage: p.sdlcStage,
@@ -328,6 +367,7 @@ function mapComment(c: BackendTaskComment): TaskComment {
     body: c.body,
     created_at: c.createdAt,
     updated_at: c.updatedAt,
+    parent_id: c.parentId ?? null,
   };
 }
 
@@ -344,6 +384,7 @@ export function useProjects(filters?: {
   departmentId?: string;
   status?: ProjectStatus;
   clientId?: string;
+  serviceLineId?: string;
   sharedWithMe?: boolean;
   enabled?: boolean;
 }) {
@@ -351,6 +392,7 @@ export function useProjects(filters?: {
     departmentId: filters?.departmentId,
     status: filters?.status,
     clientId: filters?.clientId,
+    serviceLineId: filters?.serviceLineId,
     sharedWithMe: filters?.sharedWithMe ? "true" : undefined,
   });
   return useQuery({
@@ -361,6 +403,7 @@ export function useProjects(filters?: {
       filters?.status,
       filters?.clientId,
       filters?.sharedWithMe,
+      filters?.serviceLineId,
     ],
     queryFn: async () => (await apiJson<BackendProject[]>(`/projects${qs}`)).map(mapProject),
   });
@@ -383,6 +426,7 @@ export function useCreateProject() {
       clientId?: string;
       contractId?: string;
       departmentId: string;
+      serviceLineId?: string;
       status?: ProjectStatus;
       methodology?: string;
       health?: ProjectHealth;
@@ -392,8 +436,15 @@ export function useCreateProject() {
       budget?: number;
       startDate?: string;
       endDate?: string;
-    }) => apiJson("/projects", { method: "POST", body: JSON.stringify(input) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
+    }) =>
+      apiJson<{ id: string; name: string }>("/projects", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["pipeline-projects"] });
+    },
   });
 }
 
@@ -414,7 +465,11 @@ export function useDeleteProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiJson(`/projects/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["pipeline-projects"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
   });
 }
 
@@ -425,6 +480,7 @@ export function useTasks(filters?: {
   departmentId?: string;
   assigneeId?: string;
   status?: TaskStatus;
+  enabled?: boolean;
 }) {
   const qs = toQuery({
     projectId: filters?.projectId,
@@ -433,6 +489,7 @@ export function useTasks(filters?: {
     status: filters?.status,
   });
   return useQuery({
+    enabled: filters?.enabled ?? true,
     queryKey: [
       "tasks",
       filters?.projectId,
@@ -551,8 +608,11 @@ export function useTaskComments(taskId: string | undefined) {
 export function useCreateComment(taskId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: string) =>
-      apiJson(`/tasks/${taskId}/comments`, { method: "POST", body: JSON.stringify({ body }) }),
+    mutationFn: (input: string | { body: string; parentId?: string }) =>
+      apiJson(`/tasks/${taskId}/comments`, {
+        method: "POST",
+        body: JSON.stringify(typeof input === "string" ? { body: input } : input),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["task-comments", taskId] }),
   });
 }
@@ -620,4 +680,18 @@ export function useTimelineExtensions(
       }));
     },
   });
+}
+
+/** Share of tasks completed — a plain progress measure that needs no hour estimates. */
+export function taskCompletion(tasks: Pick<Task, "status">[]): number {
+  if (tasks.length === 0) return 0;
+  return Math.round((tasks.filter((t) => t.status === "completed").length / tasks.length) * 100);
+}
+
+export function isTaskOverdue(
+  task: Pick<Task, "status" | "due_date">,
+  today = new Date(),
+): boolean {
+  if (!task.due_date || task.status === "completed") return false;
+  return task.due_date < today.toISOString().slice(0, 10);
 }

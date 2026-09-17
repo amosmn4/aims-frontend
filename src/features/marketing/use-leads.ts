@@ -69,9 +69,11 @@ export interface LeadRow {
 export interface LeadActivityRow {
   id: string;
   lead_id: string;
+  parent_id: string | null;
   type: LeadActivityType;
   summary: string;
   occurred_at: string;
+  created_by: string | null;
   created_by_name: string | null;
   created_at: string;
 }
@@ -116,6 +118,8 @@ type BackendLeadActivity = {
   type: LeadActivityType;
   summary: string;
   occurredAt: string;
+  createdBy?: string | null;
+  parentId?: string | null;
   creator?: { id: string; fullName: string | null; email: string } | null;
   createdAt: string;
 };
@@ -124,9 +128,11 @@ function mapActivity(a: BackendLeadActivity): LeadActivityRow {
   return {
     id: a.id,
     lead_id: a.leadId,
+    parent_id: a.parentId ?? null,
     type: a.type,
     summary: a.summary,
     occurred_at: a.occurredAt,
+    created_by: a.createdBy ?? a.creator?.id ?? null,
     created_by_name: a.creator?.fullName ?? a.creator?.email ?? null,
     created_at: a.createdAt,
   };
@@ -234,16 +240,19 @@ export function useLogLeadActivity(leadId: string) {
       type?: LeadActivityType;
       summary: string;
       occurred_at?: string;
-    }) => {
-      await apiJson(`/leads/${leadId}/activities`, {
-        method: "POST",
-        body: JSON.stringify({
-          type: input.type,
-          summary: input.summary,
-          occurredAt: input.occurred_at,
+      parent_id?: string;
+    }) =>
+      mapActivity(
+        await apiJson<BackendLeadActivity>(`/leads/${leadId}/activities`, {
+          method: "POST",
+          body: JSON.stringify({
+            type: input.type,
+            summary: input.summary,
+            occurredAt: input.occurred_at,
+            parentId: input.parent_id,
+          }),
         }),
-      });
-    },
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leads", leadId, "activities"] }),
   });
 }

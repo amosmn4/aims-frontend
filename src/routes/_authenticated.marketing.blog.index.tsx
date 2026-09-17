@@ -9,10 +9,15 @@ import {
   BLOG_POST_STATUS_STYLES,
 } from "@/features/marketing/use-blog";
 import { RichTextEditor } from "@/features/marketing/rich-text-editor";
+import { PageHeader } from "@/components/app-shell";
+import { FormField, RequiredNote } from "@/components/form-field";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { useAuth } from "@/lib/auth";
+import { formatDate, formatRelative } from "@/lib/format-date";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -26,10 +31,10 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_authenticated/marketing/blog/")({
@@ -43,39 +48,37 @@ function BlogList() {
   const [newOpen, setNewOpen] = useState(false);
   const posts = postsQ.data ?? [];
 
+  const newButton = (
+    <Button size="sm" onClick={() => setNewOpen(true)}>
+      <Plus className="mr-1 h-4 w-4" /> New post
+    </Button>
+  );
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Blog</h1>
-          <p className="text-xs text-muted-foreground">
-            Posts published here are served to the company website through the public blog API.
-          </p>
-        </div>
-        {canManage && (
-          <Dialog open={newOpen} onOpenChange={setNewOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="h-4 w-4 mr-1" /> New post
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-              <NewPostForm onDone={() => setNewOpen(false)} />
-            </DialogContent>
-          </Dialog>
-        )}
-      </div>
+      <PageHeader
+        title="Blog"
+        description="Write posts for the company website. A post shows on the website once you publish it."
+        actions={canManage ? newButton : undefined}
+      />
+      {!canManage && <ViewOnlyBanner area="blog posts" action="write or publish them" />}
 
-      {postsQ.isLoading ? (
-        <div className="py-12 flex justify-center">
+      {postsQ.isError ? (
+        <LoadError what="blog posts" error={postsQ.error} onRetry={() => postsQ.refetch()} />
+      ) : postsQ.isLoading ? (
+        <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
       ) : posts.length === 0 ? (
-        <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">
-          No posts yet.
+        <div className="rounded-lg border bg-card px-4 py-12 text-center">
+          <p className="text-sm font-medium">No posts yet</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Start a draft. Nothing goes on the website until you publish it.
+          </p>
+          {canManage && <div className="mt-3">{newButton}</div>}
         </div>
       ) : (
-        <div className="rounded-lg border bg-card overflow-hidden">
+        <div className="overflow-hidden rounded-lg border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -94,10 +97,13 @@ function BlogList() {
                     <Link
                       to="/marketing/blog/$postId"
                       params={{ postId: p.id }}
-                      className="font-medium hover:underline"
+                      className="font-medium text-foreground hover:text-primary hover:underline"
                     >
                       {p.title}
                     </Link>
+                    <div className="text-xs text-muted-foreground">
+                      Last saved {formatRelative(p.updated_at)}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge className={BLOG_POST_STATUS_STYLES[p.status]} variant="secondary">
@@ -107,8 +113,8 @@ function BlogList() {
                   <TableCell className="text-right tabular-nums">{p.views}</TableCell>
                   <TableCell className="text-right tabular-nums">{p.likes}</TableCell>
                   <TableCell className="text-right tabular-nums">{p.shares}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {p.published_at ? new Date(p.published_at).toLocaleDateString() : "—"}
+                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                    {formatDate(p.published_at, "Not yet")}
                   </TableCell>
                 </TableRow>
               ))}
@@ -116,101 +122,128 @@ function BlogList() {
           </Table>
         </div>
       )}
+
+      {newOpen && <NewPostDialog onClose={() => setNewOpen(false)} />}
     </div>
   );
 }
 
-function NewPostForm({ onDone }: { onDone: () => void }) {
-  const [title, setTitle] = useState("");
-  const [excerpt, setExcerpt] = useState("");
-  const [content, setContent] = useState("");
-  const [tags, setTags] = useState("");
-  const [authorName, setAuthorName] = useState("");
+const blank = { title: "", excerpt: "", content: "", tags: "", authorName: "" };
+
+function NewPostDialog({ onClose }: { onClose: () => void }) {
+  const [form, setForm] = useState(blank);
+  const [titleError, setTitleError] = useState("");
   const save = useSaveBlogPost();
   const navigate = useNavigate();
+  const dirty = (Object.keys(blank) as (keyof typeof blank)[]).some((k) => form[k] !== blank[k]);
+  const { guardClose } = useUnsavedChanges(dirty);
+
+  const set = (key: keyof typeof blank, value: string) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    if (key === "title") setTitleError("");
+  };
 
   const submit = () => {
-    if (!title.trim()) {
-      toast.error("Title is required");
+    if (!form.title.trim()) {
+      setTitleError("Enter a title for the post");
       return;
     }
     save.mutate(
       {
-        title: title.trim(),
-        excerpt,
-        content,
-        author_name: authorName,
-        tags: tags
+        title: form.title.trim(),
+        excerpt: form.excerpt,
+        content: form.content,
+        author_name: form.authorName,
+        tags: form.tags
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean),
       },
       {
         onSuccess: (post) => {
-          toast.success("Draft created");
-          onDone();
+          toast.success("Draft saved");
+          onClose();
           navigate({ to: "/marketing/blog/$postId", params: { postId: post.id } });
         },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to create post"),
+        onError: (err) =>
+          toast.error(err instanceof Error ? err.message : "Couldn't create the post"),
       },
     );
   };
 
   return (
-    <div>
-      <DialogHeader>
-        <DialogTitle>New post</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-3 py-2">
-        <div>
-          <Label>Title</Label>
-          <Input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. 5 Payroll Compliance Pitfalls"
-          />
-        </div>
-        <div>
-          <Label>Excerpt</Label>
-          <Textarea
-            value={excerpt}
-            onChange={(e) => setExcerpt(e.target.value)}
-            rows={2}
-            placeholder="A short summary shown in the blog list"
-          />
-        </div>
-        <div>
-          <Label>Content</Label>
-          <RichTextEditor value={content} onChange={setContent} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Tags (comma-separated)</Label>
+    <Dialog open onOpenChange={(o) => !o && guardClose(onClose)}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>New post</DialogTitle>
+          <DialogDescription>
+            Saved as a draft. Add a cover image next, then publish when it's ready.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-3"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <RequiredNote />
+          <FormField id="new-post-title" label="Title" required error={titleError}>
             <Input
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="payroll, compliance, kenya"
+              id="new-post-title"
+              value={form.title}
+              aria-invalid={!!titleError}
+              onChange={(e) => set("title", e.target.value)}
+              placeholder="e.g. 5 payroll compliance pitfalls"
+              autoFocus
             />
-          </div>
-          <div>
-            <Label>Author name (optional)</Label>
-            <Input
-              value={authorName}
-              onChange={(e) => setAuthorName(e.target.value)}
-              placeholder="AMSOL Marketing Team"
+          </FormField>
+          <FormField
+            id="new-post-excerpt"
+            label="Excerpt"
+            hint="A short summary shown in the blog list."
+          >
+            <Textarea
+              id="new-post-excerpt"
+              value={form.excerpt}
+              onChange={(e) => set("excerpt", e.target.value)}
+              rows={2}
             />
+          </FormField>
+          <div className="space-y-1">
+            <span className="text-sm font-medium">Content</span>
+            <RichTextEditor value={form.content} onChange={(html) => set("content", html)} />
           </div>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Saved as a draft — add a cover image or video next, then publish when ready.
-        </p>
-      </div>
-      <DialogFooter>
-        <Button onClick={submit} disabled={save.isPending}>
-          {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Create draft
-        </Button>
-      </DialogFooter>
-    </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FormField id="new-post-tags" label="Tags" hint="Separate tags with commas.">
+              <Input
+                id="new-post-tags"
+                value={form.tags}
+                onChange={(e) => set("tags", e.target.value)}
+                placeholder="payroll, compliance, kenya"
+              />
+            </FormField>
+            <FormField id="new-post-author" label="Author name">
+              <Input
+                id="new-post-author"
+                value={form.authorName}
+                onChange={(e) => set("authorName", e.target.value)}
+                placeholder="AMSOL Marketing Team"
+              />
+            </FormField>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" onClick={() => guardClose(onClose)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+              Save draft
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

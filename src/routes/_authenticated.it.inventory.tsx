@@ -1,9 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
-import { Download, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Banknote,
+  Download,
+  Loader2,
+  Package,
+  Pencil,
+  Plus,
+  Save,
+  Search,
+  Trash2,
+  TrendingDown,
+  X,
+} from "lucide-react";
 import {
   useInventoryItems,
   useSaveInventoryItem,
@@ -20,13 +33,20 @@ import {
   type InventoryCondition,
 } from "@/features/it/use-inventory";
 import { exportInventoryPdf } from "@/features/it/inventory-pdf";
+import { useDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
+import { formatCurrency } from "@/features/finance/finance";
+import { PageHeader } from "@/components/app-shell";
+import { FormField, RequiredNote } from "@/components/form-field";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { apiJson } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
 import { usePagination } from "@/hooks/use-pagination";
+import { cn } from "@/lib/utils";
 import { PaginationBar } from "@/components/pagination-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -47,6 +67,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -59,16 +80,24 @@ export const Route = createFileRoute("/_authenticated/it/inventory")({
 
 type Office = { id: string; name: string };
 
-const NONE_OFFICE = "__none__";
+const NONE = "__none__";
 const ALL = "__all__";
+
+// Counts items that need fixing: under repair, faulty or needing attention.
+const needsRepair = (i: InventoryItemRow) =>
+  i.status === "under_repair" || i.condition === "faulty" || i.condition === "needs_attention";
+
+function useOffices() {
+  return useQuery({
+    queryKey: ["offices", "admin"],
+    queryFn: () => apiJson<Office[]>("/offices"),
+  });
+}
 
 function InventoryPage() {
   const { isAdminOrCeo, hasRole } = useAuth();
   const canManage = isAdminOrCeo || hasRole("it");
-  const officesQ = useQuery({
-    queryKey: ["offices", "admin"],
-    queryFn: () => apiJson<Office[]>("/offices"),
-  });
+  const officesQ = useOffices();
 
   const [category, setCategory] = useState<InventoryCategory | "">("");
   const [status, setStatus] = useState<InventoryStatus | "">("");
@@ -84,6 +113,7 @@ function InventoryPage() {
     officeId: officeId || undefined,
     q: q.trim() || undefined,
   };
+  const hasFilters = Object.values(activeFilters).some(Boolean);
   const itemsQ = useInventoryItems(activeFilters, { page, pageSize });
   const allMatchingQ = useInventoryItems(activeFilters);
   const deleteItem = useDeleteInventoryItem();
@@ -95,6 +125,26 @@ function InventoryPage() {
   const total = result && !Array.isArray(result) ? result.total : items.length;
   const startIndex = (page - 1) * pageSize;
 
+  const summary = useMemo(() => {
+    const all = allMatchingQ.data ?? [];
+    return {
+      count: all.length,
+      cost: all.reduce((sum, i) => sum + (i.purchase_cost ?? 0), 0),
+      value: all.reduce((sum, i) => sum + (i.current_value ?? 0), 0),
+      repair: all.filter(needsRepair).length,
+    };
+  }, [allMatchingQ.data]);
+  const summaryReady = allMatchingQ.isSuccess;
+
+  const clearFilters = () => {
+    setCategory("");
+    setStatus("");
+    setCondition("");
+    setOfficeId("");
+    setQ("");
+    setPage(1);
+  };
+
   const exportPdf = async () => {
     setExporting(true);
     try {
@@ -103,42 +153,62 @@ function InventoryPage() {
         category && INVENTORY_CATEGORY_LABELS[category],
         status && INVENTORY_STATUS_LABELS[status],
         condition && INVENTORY_CONDITION_LABELS[condition],
+        officeId && officesQ.data?.find((o) => o.id === officeId)?.name,
         q.trim() && `“${q.trim()}”`,
       ].filter(Boolean);
       exportInventoryPdf(all, bits.length ? bits.join(" · ") : undefined);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to export PDF");
+      toast.error(err instanceof Error ? err.message : "Couldn't export the PDF");
     } finally {
       setExporting(false);
     }
   };
 
+  const handleDelete = async (item: InventoryItemRow) => {
+    const ok = await confirmDialog({
+      title: `Delete "${item.device_name}"?`,
+      description: `${item.device_name} (${item.asset_tag}) will be removed from Inventory. This can't be undone.`,
+      confirmLabel: "Delete item",
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteItem.mutate(item.id, {
+      onSuccess: () => toast.success(`${item.device_name} deleted`),
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Couldn't delete item"),
+    });
+  };
+
+  const addButton = (
+    <Button size="sm" onClick={() => setEditing("new")}>
+      <Plus className="h-4 w-4 mr-1" /> New inventory item
+    </Button>
+  );
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Inventory</h1>
-          <p className="text-xs text-muted-foreground">
-            Computers and related hardware across Amsol's offices — asset tags, assignment and
-            status.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={exportPdf} disabled={exporting}>
-            {exporting ? (
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4 mr-1" />
-            )}
-            Export PDF
-          </Button>
-          {canManage && (
-            <Button size="sm" onClick={() => setEditing("new")}>
-              <Plus className="h-4 w-4 mr-1" /> New item
+      <PageHeader
+        title="Inventory"
+        description="Computers and other hardware across Amsol's offices — who has what, its condition and its value."
+        actions={
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={exportPdf}
+              disabled={exporting || !summaryReady || summary.count === 0}
+            >
+              {exporting ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-1" />
+              )}
+              Export PDF
             </Button>
-          )}
-        </div>
-      </div>
+            {canManage && addButton}
+          </>
+        }
+      />
+      {!canManage && <ViewOnlyBanner area="Inventory" action="add or change items" />}
 
       <div className="rounded-lg border bg-card p-3 flex flex-wrap items-end gap-3">
         <div className="relative flex-1 min-w-50">
@@ -149,11 +219,12 @@ function InventoryPage() {
               setQ(e.target.value);
               setPage(1);
             }}
-            placeholder="Search asset tag, device, serial, assignee…"
+            placeholder="Search name, tag, serial, brand, model or person"
+            aria-label="Search inventory"
             className="pl-7"
           />
         </div>
-        <div className="w-40">
+        <div className="w-full sm:w-40">
           <Select
             value={category || ALL}
             onValueChange={(v) => {
@@ -161,7 +232,7 @@ function InventoryPage() {
               setPage(1);
             }}
           >
-            <SelectTrigger className="h-9">
+            <SelectTrigger className="h-9" aria-label="Filter by category">
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
@@ -174,7 +245,7 @@ function InventoryPage() {
             </SelectContent>
           </Select>
         </div>
-        <div className="w-40">
+        <div className="w-full sm:w-40">
           <Select
             value={status || ALL}
             onValueChange={(v) => {
@@ -182,7 +253,7 @@ function InventoryPage() {
               setPage(1);
             }}
           >
-            <SelectTrigger className="h-9">
+            <SelectTrigger className="h-9" aria-label="Filter by status">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -195,7 +266,7 @@ function InventoryPage() {
             </SelectContent>
           </Select>
         </div>
-        <div className="w-40">
+        <div className="w-full sm:w-40">
           <Select
             value={condition || ALL}
             onValueChange={(v) => {
@@ -203,7 +274,7 @@ function InventoryPage() {
               setPage(1);
             }}
           >
-            <SelectTrigger className="h-9">
+            <SelectTrigger className="h-9" aria-label="Filter by condition">
               <SelectValue placeholder="Condition" />
             </SelectTrigger>
             <SelectContent>
@@ -216,7 +287,7 @@ function InventoryPage() {
             </SelectContent>
           </Select>
         </div>
-        <div className="w-44">
+        <div className="w-full sm:w-44">
           <Select
             value={officeId || ALL}
             onValueChange={(v) => {
@@ -224,7 +295,7 @@ function InventoryPage() {
               setPage(1);
             }}
           >
-            <SelectTrigger className="h-9">
+            <SelectTrigger className="h-9" aria-label="Filter by office">
               <SelectValue placeholder="Office" />
             </SelectTrigger>
             <SelectContent>
@@ -239,13 +310,53 @@ function InventoryPage() {
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <SummaryCard
+          icon={Package}
+          label="Items"
+          value={summaryReady ? summary.count.toLocaleString() : "—"}
+        />
+        <SummaryCard
+          icon={Banknote}
+          label="Total purchase cost"
+          value={summaryReady ? formatCurrency(summary.cost) : "—"}
+        />
+        <SummaryCard
+          icon={TrendingDown}
+          label="Total current value"
+          value={summaryReady ? formatCurrency(summary.value) : "—"}
+          hint="After wear and age"
+        />
+        <SummaryCard
+          icon={AlertTriangle}
+          label="Needs repair / faulty"
+          value={summaryReady ? summary.repair.toLocaleString() : "—"}
+          hint="Under repair, faulty or needing attention"
+          warn={summary.repair > 0}
+        />
+      </div>
+
       {itemsQ.isLoading ? (
         <div className="py-12 flex justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
+      ) : itemsQ.isError ? (
+        <LoadError what="inventory" error={itemsQ.error} onRetry={() => itemsQ.refetch()} />
       ) : items.length === 0 ? (
-        <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">
-          No inventory matches these filters.
+        <div className="rounded-lg border bg-card py-12 flex flex-col items-center gap-3 text-sm text-muted-foreground">
+          {hasFilters ? (
+            <>
+              <span>No matches</span>
+              <Button size="sm" variant="outline" onClick={clearFilters}>
+                <X className="h-4 w-4 mr-1" /> Clear filters
+              </Button>
+            </>
+          ) : (
+            <>
+              <span>No inventory items yet</span>
+              {canManage && addButton}
+            </>
+          )}
         </div>
       ) : (
         <div className="rounded-lg border bg-card overflow-hidden">
@@ -259,9 +370,16 @@ function InventoryPage() {
                   <TableHead>Category</TableHead>
                   <TableHead>Condition</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Department</TableHead>
                   <TableHead>Assigned to</TableHead>
                   <TableHead>Office</TableHead>
-                  <TableHead className="w-20" />
+                  <TableHead className="text-right">Purchase cost</TableHead>
+                  <TableHead className="text-right">Current value</TableHead>
+                  {canManage && (
+                    <TableHead className="w-20">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -304,41 +422,51 @@ function InventoryPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {item.assigned_to ?? "—"}
+                      {item.department_name ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {item.assigned_user_name ? (
+                        <>
+                          <div className="text-foreground">{item.assigned_user_name}</div>
+                          {item.assigned_to && <div className="text-xs">{item.assigned_to}</div>}
+                        </>
+                      ) : (
+                        (item.assigned_to ?? "—")
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {item.office_name ?? "—"}
                     </TableCell>
-                    <TableCell>
-                      {canManage && (
+                    <TableCell className="text-right text-sm tabular-nums whitespace-nowrap">
+                      {item.purchase_cost != null ? formatCurrency(item.purchase_cost) : "—"}
+                    </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums whitespace-nowrap">
+                      {item.current_value != null ? formatCurrency(item.current_value) : "—"}
+                    </TableCell>
+                    {canManage && (
+                      <TableCell>
                         <div className="flex gap-1">
-                          <Button size="icon" variant="ghost" onClick={() => setEditing(item)}>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => setEditing(item)}
+                            aria-label={`Edit ${item.device_name} (${item.asset_tag})`}
+                          >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             size="icon"
                             variant="ghost"
-                            onClick={async () => {
-                              const ok = await confirmDialog({
-                                title: `Remove "${item.device_name}"?`,
-                                confirmLabel: "Remove",
-                                destructive: true,
-                                description: "This can't be undone.",
-                              });
-                              if (!ok) return;
-                              deleteItem.mutate(item.id, {
-                                onError: (err) =>
-                                  toast.error(
-                                    err instanceof Error ? err.message : "Failed to delete",
-                                  ),
-                              });
-                            }}
+                            className="text-muted-foreground hover:text-destructive"
+                            aria-label={`Delete ${item.device_name} (${item.asset_tag})`}
+                            disabled={deleteItem.isPending}
+                            onClick={() => handleDelete(item)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
-                      )}
-                    </TableCell>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -366,107 +494,224 @@ function EditItemDialog({
   value: InventoryItemRow | "new" | null;
   onClose: () => void;
 }) {
+  const [dirty, setDirty] = useState(false);
+  const { guardClose } = useUnsavedChanges(dirty);
+  const close = () => {
+    setDirty(false);
+    onClose();
+  };
   return (
-    <Dialog open={!!value} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={!!value} onOpenChange={(open) => !open && guardClose(close)}>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
-        {value && <EditItemForm value={value === "new" ? null : value} onDone={onClose} />}
+        {value && (
+          <EditItemForm
+            value={value === "new" ? null : value}
+            onDirtyChange={setDirty}
+            onCancel={() => guardClose(close)}
+            onDone={close}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function EditItemForm({ value, onDone }: { value: InventoryItemRow | null; onDone: () => void }) {
+function SummaryCard({
+  icon: Icon,
+  label,
+  value,
+  hint,
+  warn,
+}: {
+  icon: typeof Package;
+  label: string;
+  value: string;
+  hint?: string;
+  warn?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border bg-card p-3">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" aria-hidden="true" /> {label}
+      </div>
+      <div className={cn("mt-1 text-xl font-semibold tabular-nums", warn && "text-warning")}>
+        {value}
+      </div>
+      {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
+    </div>
+  );
+}
+
+type FormErrors = Partial<
+  Record<"assetTag" | "deviceName" | "purchaseCost" | "usefulLife", string>
+>;
+
+function EditItemForm({
+  value,
+  onDirtyChange,
+  onCancel,
+  onDone,
+}: {
+  value: InventoryItemRow | null;
+  onDirtyChange: (dirty: boolean) => void;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
   const save = useSaveInventoryItem();
-  const officesQ = useQuery({
-    queryKey: ["offices", "admin"],
-    queryFn: () => apiJson<Office[]>("/offices"),
-  });
-  const [assetTag, setAssetTag] = useState(value?.asset_tag ?? "");
-  const [deviceName, setDeviceName] = useState(value?.device_name ?? "");
-  const [description, setDescription] = useState(value?.description ?? "");
-  const [category, setCategory] = useState<InventoryCategory>(value?.category ?? "laptop");
-  const [status, setStatus] = useState<InventoryStatus>(value?.status ?? "in_use");
-  const [condition, setCondition] = useState<InventoryCondition>(value?.condition ?? "good");
-  const [brand, setBrand] = useState(value?.brand ?? "");
-  const [model, setModel] = useState(value?.model ?? "");
-  const [serialNumber, setSerialNumber] = useState(value?.serial_number ?? "");
-  const [assignedTo, setAssignedTo] = useState(value?.assigned_to ?? "");
-  const [officeId, setOfficeId] = useState(value?.office_id ?? "");
-  const [purchaseDate, setPurchaseDate] = useState(value?.purchase_date?.slice(0, 10) ?? "");
-  const [warrantyExpiry, setWarrantyExpiry] = useState(value?.warranty_expiry?.slice(0, 10) ?? "");
-  const [notes, setNotes] = useState(value?.notes ?? "");
+  const officesQ = useOffices();
+  const departmentsQ = useDepartments();
+  const profilesQ = useProfilesLite();
+
+  const initial = {
+    assetTag: value?.asset_tag ?? "",
+    deviceName: value?.device_name ?? "",
+    description: value?.description ?? "",
+    category: value?.category ?? ("laptop" as InventoryCategory),
+    status: value?.status ?? ("in_use" as InventoryStatus),
+    condition: value?.condition ?? ("good" as InventoryCondition),
+    brand: value?.brand ?? "",
+    model: value?.model ?? "",
+    serialNumber: value?.serial_number ?? "",
+    assignedTo: value?.assigned_to ?? "",
+    assignedUserId: value?.assigned_user_id ?? "",
+    departmentId: value?.department_id ?? "",
+    officeId: value?.office_id ?? "",
+    purchaseDate: value?.purchase_date?.slice(0, 10) ?? "",
+    warrantyExpiry: value?.warranty_expiry?.slice(0, 10) ?? "",
+    purchaseCost: value?.purchase_cost?.toString() ?? "",
+    usefulLife: value?.useful_life_months?.toString() ?? "",
+    notes: value?.notes ?? "",
+  };
+  const [draft, setDraft] = useState(initial);
+  const [errors, setErrors] = useState<FormErrors>({});
+
+  const dirty = (Object.keys(initial) as (keyof typeof initial)[]).some(
+    (k) => initial[k] !== draft[k],
+  );
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+
+  const edit = (patch: Partial<typeof initial>) => {
+    setDraft((d) => ({ ...d, ...patch }));
+    setErrors((e) => {
+      const next = { ...e };
+      for (const k of Object.keys(patch)) delete next[k as keyof FormErrors];
+      return next;
+    });
+  };
+
+  const validate = (): FormErrors => {
+    const next: FormErrors = {};
+    if (!draft.assetTag.trim()) next.assetTag = "Enter the asset tag";
+    if (!draft.deviceName.trim()) next.deviceName = "Enter the device name";
+    if (draft.purchaseCost.trim()) {
+      const n = Number(draft.purchaseCost);
+      if (!Number.isFinite(n) || n < 0) next.purchaseCost = "Enter an amount of 0 or more";
+    }
+    if (draft.usefulLife.trim()) {
+      const n = Number(draft.usefulLife);
+      if (!Number.isInteger(n) || n < 1) {
+        next.usefulLife = "Enter a whole number of months, 1 or more";
+      }
+    }
+    return next;
+  };
 
   const submit = () => {
-    if (!assetTag.trim() || !deviceName.trim()) {
-      toast.error("Asset tag and device name are required");
-      return;
-    }
+    const found = validate();
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
     save.mutate(
       {
         id: value?.id,
-        assetTag: assetTag.trim(),
-        deviceName: deviceName.trim(),
-        description: description || undefined,
-        category,
-        status,
-        condition,
-        brand: brand || undefined,
-        model: model || undefined,
-        serialNumber: serialNumber || undefined,
-        assignedTo: assignedTo || undefined,
-        officeId: officeId || undefined,
-        purchaseDate: purchaseDate || undefined,
-        warrantyExpiry: warrantyExpiry || undefined,
-        notes: notes || undefined,
+        assetTag: draft.assetTag.trim(),
+        deviceName: draft.deviceName.trim(),
+        description: draft.description || undefined,
+        category: draft.category,
+        status: draft.status,
+        condition: draft.condition,
+        brand: draft.brand || undefined,
+        model: draft.model || undefined,
+        serialNumber: draft.serialNumber || undefined,
+        assignedTo: draft.assignedTo.trim() || (value ? null : undefined),
+        assignedUserId: draft.assignedUserId || null,
+        departmentId: draft.departmentId || null,
+        officeId: draft.officeId || undefined,
+        purchaseDate: draft.purchaseDate || undefined,
+        warrantyExpiry: draft.warrantyExpiry || undefined,
+        purchaseCost: draft.purchaseCost.trim() ? Number(draft.purchaseCost) : null,
+        usefulLifeMonths: draft.usefulLife.trim() ? Number(draft.usefulLife) : null,
+        notes: draft.notes || undefined,
       },
       {
         onSuccess: () => {
-          toast.success(value ? "Updated" : "Added");
+          toast.success(
+            value ? `${draft.deviceName.trim()} updated` : `${draft.deviceName.trim()} added`,
+          );
           onDone();
         },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save"),
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Couldn't save item"),
       },
     );
   };
 
+  const invalid = (key: keyof FormErrors, id: string) =>
+    errors[key] ? { "aria-invalid": true, "aria-describedby": `${id}-error` } : {};
+
   return (
-    <>
+    <form
+      className="space-y-4"
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
       <DialogHeader>
-        <DialogTitle>{value ? "Edit inventory item" : "New inventory item"}</DialogTitle>
+        <DialogTitle>
+          {value ? `Edit ${value.device_name} (${value.asset_tag})` : "New inventory item"}
+        </DialogTitle>
+        <DialogDescription>
+          A piece of hardware: what it is, who has it, and what it cost.
+        </DialogDescription>
       </DialogHeader>
+      <RequiredNote />
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Asset tag</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormField id="inv-asset-tag" label="Asset tag" required error={errors.assetTag}>
             <Input
-              value={assetTag}
-              onChange={(e) => setAssetTag(e.target.value)}
+              id="inv-asset-tag"
+              value={draft.assetTag}
+              onChange={(e) => edit({ assetTag: e.target.value })}
               placeholder="AMS-LT-001"
+              {...invalid("assetTag", "inv-asset-tag")}
             />
-          </div>
-          <div>
-            <Label>Device name</Label>
+          </FormField>
+          <FormField id="inv-device-name" label="Device name" required error={errors.deviceName}>
             <Input
-              value={deviceName}
-              onChange={(e) => setDeviceName(e.target.value)}
+              id="inv-device-name"
+              value={draft.deviceName}
+              onChange={(e) => edit({ deviceName: e.target.value })}
               placeholder="Dell Latitude 5420"
+              {...invalid("deviceName", "inv-device-name")}
             />
-          </div>
+          </FormField>
         </div>
-        <div>
-          <Label>Description (optional)</Label>
+        <FormField id="inv-description" label="Description (optional)">
           <Textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            id="inv-description"
+            value={draft.description}
+            onChange={(e) => edit({ description: e.target.value })}
             rows={2}
             placeholder="Silver, 16GB RAM, 512GB SSD…"
           />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Category</Label>
-            <Select value={category} onValueChange={(v) => setCategory(v as InventoryCategory)}>
-              <SelectTrigger>
+        </FormField>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormField id="inv-category" label="Category" required>
+            <Select
+              value={draft.category}
+              onValueChange={(v) => edit({ category: v as InventoryCategory })}
+            >
+              <SelectTrigger id="inv-category">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -477,11 +722,13 @@ function EditItemForm({ value, onDone }: { value: InventoryItemRow | null; onDon
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <div>
-            <Label>Status</Label>
-            <Select value={status} onValueChange={(v) => setStatus(v as InventoryStatus)}>
-              <SelectTrigger>
+          </FormField>
+          <FormField id="inv-status" label="Status" required>
+            <Select
+              value={draft.status}
+              onValueChange={(v) => edit({ status: v as InventoryStatus })}
+            >
+              <SelectTrigger id="inv-status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -492,12 +739,14 @@ function EditItemForm({ value, onDone }: { value: InventoryItemRow | null; onDon
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </FormField>
         </div>
-        <div>
-          <Label>Condition</Label>
-          <Select value={condition} onValueChange={(v) => setCondition(v as InventoryCondition)}>
-            <SelectTrigger>
+        <FormField id="inv-condition" label="Condition" required>
+          <Select
+            value={draft.condition}
+            onValueChange={(v) => edit({ condition: v as InventoryCondition })}
+          >
+            <SelectTrigger id="inv-condition">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -508,45 +757,93 @@ function EditItemForm({ value, onDone }: { value: InventoryItemRow | null; onDon
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Brand (optional)</Label>
-            <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Dell" />
-          </div>
-          <div>
-            <Label>Model (optional)</Label>
+        </FormField>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormField id="inv-brand" label="Brand (optional)">
             <Input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
+              id="inv-brand"
+              value={draft.brand}
+              onChange={(e) => edit({ brand: e.target.value })}
+              placeholder="Dell"
+            />
+          </FormField>
+          <FormField id="inv-model" label="Model (optional)">
+            <Input
+              id="inv-model"
+              value={draft.model}
+              onChange={(e) => edit({ model: e.target.value })}
               placeholder="Latitude 5420"
             />
-          </div>
+          </FormField>
         </div>
-        <div>
-          <Label>Serial number (optional)</Label>
-          <Input value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Assigned to (optional)</Label>
-            <Input
-              value={assignedTo}
-              onChange={(e) => setAssignedTo(e.target.value)}
-              placeholder="Who's using this"
-            />
-          </div>
-          <div>
-            <Label>Office</Label>
+        <FormField id="inv-serial" label="Serial number (optional)">
+          <Input
+            id="inv-serial"
+            value={draft.serialNumber}
+            onChange={(e) => edit({ serialNumber: e.target.value })}
+          />
+        </FormField>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormField id="inv-assigned-user" label="Assigned to (optional)">
             <Select
-              value={officeId || NONE_OFFICE}
-              onValueChange={(v) => setOfficeId(v === NONE_OFFICE ? "" : v)}
+              value={draft.assignedUserId || NONE}
+              onValueChange={(v) => edit({ assignedUserId: v === NONE ? "" : v })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="inv-assigned-user">
+                <SelectValue placeholder="No one" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>No one</SelectItem>
+                {(profilesQ.data ?? []).map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.full_name ?? p.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField
+            id="inv-assigned-to"
+            label="Or location / other person (optional)"
+            hint="For shared rooms or people not on AIMS"
+          >
+            <Input
+              id="inv-assigned-to"
+              value={draft.assignedTo}
+              onChange={(e) => edit({ assignedTo: e.target.value })}
+              placeholder="e.g. Boardroom"
+            />
+          </FormField>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormField id="inv-department" label="Department (optional)">
+            <Select
+              value={draft.departmentId || NONE}
+              onValueChange={(v) => edit({ departmentId: v === NONE ? "" : v })}
+            >
+              <SelectTrigger id="inv-department">
+                <SelectValue placeholder="No department" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>No department</SelectItem>
+                {(departmentsQ.data ?? []).map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField id="inv-office" label="Office (optional)">
+            <Select
+              value={draft.officeId || NONE}
+              onValueChange={(v) => edit({ officeId: v === NONE ? "" : v })}
+            >
+              <SelectTrigger id="inv-office">
                 <SelectValue placeholder="Unassigned" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NONE_OFFICE}>Unassigned</SelectItem>
+                <SelectItem value={NONE}>Unassigned</SelectItem>
                 {(officesQ.data ?? []).map((o) => (
                   <SelectItem key={o.id} value={o.id}>
                     {o.name}
@@ -554,37 +851,85 @@ function EditItemForm({ value, onDone }: { value: InventoryItemRow | null; onDon
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </FormField>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Purchase date (optional)</Label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormField id="inv-purchase-date" label="Purchase date (optional)">
             <Input
+              id="inv-purchase-date"
               type="date"
-              value={purchaseDate}
-              onChange={(e) => setPurchaseDate(e.target.value)}
+              value={draft.purchaseDate}
+              onChange={(e) => edit({ purchaseDate: e.target.value })}
             />
-          </div>
-          <div>
-            <Label>Warranty expiry (optional)</Label>
+          </FormField>
+          <FormField id="inv-warranty" label="Warranty expiry (optional)">
             <Input
+              id="inv-warranty"
               type="date"
-              value={warrantyExpiry}
-              onChange={(e) => setWarrantyExpiry(e.target.value)}
+              value={draft.warrantyExpiry}
+              onChange={(e) => edit({ warrantyExpiry: e.target.value })}
             />
-          </div>
+          </FormField>
         </div>
-        <div>
-          <Label>Notes</Label>
-          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormField
+            id="inv-cost"
+            label="Purchase cost in KES (optional)"
+            error={errors.purchaseCost}
+          >
+            <Input
+              id="inv-cost"
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              value={draft.purchaseCost}
+              onChange={(e) => edit({ purchaseCost: e.target.value })}
+              placeholder="e.g. 120000"
+              {...invalid("purchaseCost", "inv-cost")}
+            />
+          </FormField>
+          <FormField
+            id="inv-useful-life"
+            label="Useful life in months (optional)"
+            hint="How long until it's worth nothing — e.g. 36 for a laptop"
+            error={errors.usefulLife}
+          >
+            <Input
+              id="inv-useful-life"
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              value={draft.usefulLife}
+              onChange={(e) => edit({ usefulLife: e.target.value })}
+              placeholder="e.g. 36"
+              {...invalid("usefulLife", "inv-useful-life")}
+            />
+          </FormField>
         </div>
+        <FormField id="inv-notes" label="Notes (optional)">
+          <Textarea
+            id="inv-notes"
+            value={draft.notes}
+            onChange={(e) => edit({ notes: e.target.value })}
+            rows={3}
+          />
+        </FormField>
       </div>
-      <DialogFooter>
-        <Button onClick={submit} disabled={save.isPending}>
-          {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Save
+      <DialogFooter className="gap-2">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={save.isPending}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={save.isPending}>
+          {save.isPending ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4 mr-2" />
+          )}
+          {value ? "Save item" : "Add inventory item"}
         </Button>
       </DialogFooter>
-    </>
+    </form>
   );
 }

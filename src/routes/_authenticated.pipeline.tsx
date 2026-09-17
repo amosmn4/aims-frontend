@@ -5,19 +5,16 @@ import { usePipelineProjects } from "@/features/pipeline/use-pipeline";
 
 export const Route = createFileRoute("/_authenticated/pipeline")({
   head: () => ({
-    meta: [{ title: "Pipeline — AIMS" }],
+    meta: [{ title: "Pipelines — AIMS" }],
   }),
   component: PipelineLayout,
 });
 
-// Pipeline is the cross-department aggregate view — kanbans only, each one the exact same
-// component embedded in its owning department's hub (Bid Pipeline also lives in the Tender hub,
-// Client Requests also lives in the Operations hub). More department kanbans (IT, Marketing) are
-// a deliberate future addition, not part of this pass.
+// Company-wide boards; each also appears in its owning department's menu.
 const TABS = [
-  { to: "/pipeline/engagements", label: "Client Requests", match: "/pipeline/engagements" },
-  { to: "/pipeline/tenders", label: "Bid Pipeline", match: "/pipeline/tenders" },
-  { to: "/pipeline/projects", label: "Delivery Board", match: "/pipeline/projects" },
+  { to: "/pipeline/engagements", label: "Client requests", match: "/pipeline/engagements" },
+  { to: "/pipeline/tenders", label: "Tenders", match: "/pipeline/tenders" },
+  { to: "/pipeline/projects", label: "Projects board", match: "/pipeline/projects" },
 ];
 
 function PipelineLayout() {
@@ -33,15 +30,17 @@ function PipelineLayout() {
     (r) => !["won", "lost", "withdrawn"].includes(r.stage),
   ).length;
   const activeProjects = (projectsQ.data ?? []).filter((p) => p.delivery_stage !== "closed").length;
-  const counts: Record<string, number> = {
-    "/pipeline/tenders": activeTenders,
-    "/pipeline/engagements": activeEngagements,
-    "/pipeline/projects": activeProjects,
+  // Counts appear only once loaded, so a failed load never reads as zero.
+  const counts: Record<string, number | undefined> = {
+    "/pipeline/tenders": tendersQ.data ? activeTenders : undefined,
+    "/pipeline/engagements": requestsQ.data ? activeEngagements : undefined,
+    "/pipeline/projects": projectsQ.data ? activeProjects : undefined,
   };
 
   return (
     <div className="pipeline-scope -m-4 sm:-m-6" style={{ background: "var(--pipeline-paper)" }}>
-      <div
+      <nav
+        aria-label="Pipelines"
         className="flex gap-1 overflow-x-auto border-b px-4 sm:px-6"
         style={{ borderColor: "var(--pipeline-line)", background: "var(--pipeline-paper-2)" }}
       >
@@ -51,6 +50,7 @@ function PipelineLayout() {
             <Link
               key={t.to}
               to={t.to}
+              aria-current={active ? "page" : undefined}
               className="flex items-center gap-2 whitespace-nowrap px-4 py-3 text-[13.5px] font-medium"
               style={{
                 color: active ? "var(--pipeline-ink)" : "var(--pipeline-slate)",
@@ -60,6 +60,7 @@ function PipelineLayout() {
               {t.label}
               {counts[t.to] != null && (
                 <span
+                  aria-label={`${counts[t.to]} active`}
                   className="p-mono rounded-full px-1.5 py-px text-[11px]"
                   style={{
                     background: active ? "var(--pipeline-gold-soft)" : "var(--pipeline-line-soft)",
@@ -72,7 +73,7 @@ function PipelineLayout() {
             </Link>
           );
         })}
-      </div>
+      </nav>
       <div className="mx-auto max-w-[1600px] px-4 py-5 sm:px-6">
         <Outlet />
       </div>

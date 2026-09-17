@@ -1,8 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, apiJson } from "@/lib/api-client";
 
 export type DocumentResourceType =
-  "project" | "task" | "finance_report" | "tender" | "client_request" | "tender_document_library";
+  | "project"
+  | "task"
+  | "finance_report"
+  | "department_report"
+  | "tender"
+  | "client_request"
+  | "tender_document_library"
+  | "department";
 export type LibraryResourceType = DocumentResourceType | "contract";
 export type DocumentAccessType = "everyone" | "department" | "user";
 
@@ -10,17 +17,85 @@ export const RESOURCE_TYPE_LABELS: Record<LibraryResourceType, string> = {
   project: "Project",
   task: "Task",
   finance_report: "Finance report",
+  department_report: "Department report",
   tender: "Tender",
   client_request: "Client request",
   contract: "Contract",
   tender_document_library: "Mandatory documents library",
+  department: "Department library",
 };
 
 export const ACCESS_TYPE_LABELS: Record<DocumentAccessType, string> = {
   everyone: "Everyone",
-  department: "Specific departments",
+  department: "Departments",
   user: "Specific people",
 };
+
+/** Where a file is attached, grouped the way people look for it. */
+export type DocumentPlace =
+  "library" | "projects" | "client_requests" | "tenders" | "reports" | "contracts";
+
+export const DOCUMENT_PLACES: { value: DocumentPlace; label: string }[] = [
+  { value: "library", label: "Library" },
+  { value: "projects", label: "Projects" },
+  { value: "client_requests", label: "Client requests" },
+  { value: "tenders", label: "Tenders" },
+  { value: "reports", label: "Reports" },
+  { value: "contracts", label: "Contracts" },
+];
+
+export function documentPlace(type: LibraryResourceType): DocumentPlace {
+  switch (type) {
+    case "department":
+    case "tender_document_library":
+      return "library";
+    case "project":
+    case "task":
+      return "projects";
+    case "client_request":
+      return "client_requests";
+    case "tender":
+      return "tenders";
+    case "finance_report":
+    case "department_report":
+      return "reports";
+    case "contract":
+      return "contracts";
+  }
+}
+
+/** File types the server accepts, for the file picker. */
+export const DOCUMENT_ACCEPT =
+  ".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.png,.jpg,.jpeg,.txt,.zip";
+export const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
+
+/** "PDF", "Word document", "Excel sheet", "Image", else the extension. */
+export function fileTypeLabel(
+  version: Pick<DocumentVersionRow, "file_name" | "mime_type"> | null,
+): string {
+  if (!version) return "File";
+  const name = version.file_name ?? "";
+  const ext = name.includes(".") ? (name.split(".").pop() ?? "").toLowerCase() : "";
+  const mime = version.mime_type ?? "";
+  if (mime === "application/pdf" || ext === "pdf") return "PDF";
+  if (
+    mime.includes("wordprocessingml") ||
+    mime === "application/msword" ||
+    ext === "doc" ||
+    ext === "docx"
+  )
+    return "Word document";
+  if (
+    mime.includes("spreadsheetml") ||
+    mime === "application/vnd.ms-excel" ||
+    ext === "xls" ||
+    ext === "xlsx"
+  )
+    return "Excel sheet";
+  if (mime.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp"].includes(ext))
+    return "Image";
+  return ext ? ext.toUpperCase() : "File";
+}
 
 export const DOCUMENT_CATEGORY_SUGGESTIONS = [
   "proposal",
@@ -57,6 +132,8 @@ export interface DocumentRow {
   created_at: string;
   updated_at: string;
   latest_version: DocumentVersionRow | null;
+  /** Empty means the same people who can see where it's attached. */
+  access_grants: DocumentAccessGrantRow[];
 }
 
 export interface DocumentAccessGrantRow {
@@ -93,6 +170,7 @@ type BackendDocument = {
   createdAt: string;
   updatedAt: string;
   latestVersion: BackendVersion | null;
+  accessGrants?: BackendAccessGrant[];
 };
 
 type BackendAccessGrant = {
@@ -132,6 +210,7 @@ function mapDocument(d: BackendDocument): DocumentRow {
     created_at: d.createdAt,
     updated_at: d.updatedAt,
     latest_version: d.latestVersion ? mapVersion(d.latestVersion) : null,
+    access_grants: (d.accessGrants ?? []).map(mapAccessGrant),
   };
 }
 
@@ -180,6 +259,8 @@ function buildQuery(filters: DocumentFilters): string {
 export function useDocuments(filters: DocumentFilters = {}) {
   return useQuery({
     queryKey: ["documents", "list", filters],
+    // Keeps the list on screen while a new search loads.
+    placeholderData: keepPreviousData,
     queryFn: async () =>
       (await apiJson<BackendDocument[]>(`/documents${buildQuery(filters)}`)).map(mapDocument),
   });
@@ -235,9 +316,9 @@ export function useUploadDocument() {
       if (input.category) form.append("category", input.category);
       if (input.tags && input.tags.length > 0) form.append("tags", input.tags.join(","));
       if (input.access) form.append("access", JSON.stringify(input.access));
-      const res = await apiFetch("/documents", { method: "POST", body: form });
-      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
-      return mapDocument(await res.json());
+      return mapDocument(
+        await apiJson<BackendDocument>("/documents", { method: "POST", body: form }),
+      );
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
   });
@@ -249,12 +330,12 @@ export function useUploadNewVersion() {
     mutationFn: async ({ documentId, file }: { documentId: string; file: File }) => {
       const form = new FormData();
       form.append("file", file);
-      const res = await apiFetch(`/documents/${documentId}/versions`, {
-        method: "POST",
-        body: form,
-      });
-      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
-      return mapDocument(await res.json());
+      return mapDocument(
+        await apiJson<BackendDocument>(`/documents/${documentId}/versions`, {
+          method: "POST",
+          body: form,
+        }),
+      );
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
   });
@@ -309,23 +390,26 @@ export function useSetDocumentAccess() {
         })
       ).map(mapAccessGrant);
     },
-    onSuccess: (_d, vars) =>
-      qc.invalidateQueries({ queryKey: ["documents", vars.documentId, "access"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
   });
 }
 
-/**
- * Fetches the file as a blob (auth header required) and opens it via a local object URL.
- * Contract documents still live in the legacy /contracts endpoint (see DocumentsService),
- * so they're routed there instead of /documents/:id/download.
- */
+/** Opens the file through a blob URL; contract files come from the older /contracts endpoint. */
 export async function downloadDocument(doc: DocumentRow, versionId?: string): Promise<void> {
   const path =
     doc.resource_type === "contract"
       ? `/contracts/documents/${doc.id}/download`
       : `/documents/${doc.id}/download${versionId ? `?versionId=${versionId}` : ""}`;
   const res = await apiFetch(path);
-  if (!res.ok) throw new Error(`Could not open file (${res.status})`);
+  if (!res.ok) {
+    throw new Error(
+      res.status === 403
+        ? "You don't have access to this file. Ask whoever added it."
+        : res.status === 404
+          ? "This file no longer exists."
+          : "Couldn't open the file. Try again.",
+    );
+  }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   window.open(url, "_blank", "noopener,noreferrer");

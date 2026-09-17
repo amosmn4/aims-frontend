@@ -1,5 +1,5 @@
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { FormField } from "@/components/form-field";
 import {
   Select,
   SelectContent,
@@ -12,10 +12,7 @@ import {
   type ExtensionAttribution,
 } from "@/features/projects/use-projects";
 
-// Shown inline on a project/task edit form whenever the date field is pushed later than its
-// current value — encourages recording why, without hard-blocking the save (the backend accepts
-// the update either way; this is rigor, not a workflow gate). Shared between EditProjectDialog
-// (endDate) and EditTaskForm (dueDate).
+// Shown on project/task edit forms when a date is pushed later, to record why.
 export function isExtension(previousDate: string | null | undefined, newDate: string): boolean {
   if (!previousDate || !newDate) return false;
   return new Date(newDate).getTime() > new Date(previousDate).getTime();
@@ -26,33 +23,37 @@ export function ExtensionPrompt({
   onReasonChange,
   attribution,
   onAttributionChange,
+  reasonError,
+  idPrefix = "extension",
 }: {
   reason: string;
   onReasonChange: (v: string) => void;
   attribution: ExtensionAttribution;
   onAttributionChange: (v: ExtensionAttribution) => void;
+  reasonError?: string;
+  idPrefix?: string;
 }) {
   return (
     <div className="rounded-md border border-warning/30 bg-warning/5 p-3 space-y-2">
       <div className="text-xs font-medium text-warning">
-        This pushes the date out — why is it extending?
+        This moves the date later. Record why, so there&apos;s a history of delays.
       </div>
-      <div>
-        <Label className="text-xs">Reason</Label>
+      <FormField id={`${idPrefix}-reason`} label="Reason" required error={reasonError}>
         <Textarea
+          id={`${idPrefix}-reason`}
           value={reason}
           onChange={(e) => onReasonChange(e.target.value)}
           rows={2}
-          placeholder="e.g. Client added two new deliverables mid-stream"
+          placeholder="e.g. Client added two new deliverables"
+          aria-invalid={!!reasonError}
         />
-      </div>
-      <div>
-        <Label className="text-xs">Whose delay is this?</Label>
+      </FormField>
+      <FormField id={`${idPrefix}-attribution`} label="Whose delay is this?">
         <Select
           value={attribution}
           onValueChange={(v) => onAttributionChange(v as ExtensionAttribution)}
         >
-          <SelectTrigger className="h-9">
+          <SelectTrigger id={`${idPrefix}-attribution`} className="h-9">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -63,7 +64,7 @@ export function ExtensionPrompt({
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </FormField>
     </div>
   );
 }

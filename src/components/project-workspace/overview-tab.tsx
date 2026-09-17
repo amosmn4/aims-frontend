@@ -10,20 +10,19 @@ import {
   TASK_STATUS_LABELS,
   useUpdateProject,
   useTimelineExtensions,
+  taskCompletion,
+  tracksDeliveryMetrics,
   SYSTEM_DEVELOPMENT_METHODOLOGY,
   SDLC_STAGES,
   SDLC_STAGE_LABELS,
   EXTENSION_ATTRIBUTION_LABELS,
 } from "@/features/projects/use-projects";
-import {
-  TASK_STATUS_COLORS,
-  MILESTONE_STATUS_STYLES,
-  money,
-  fmtDate,
-} from "@/features/project-workspace/workspace-theme";
+import { TASK_STATUS_COLORS, money } from "@/features/project-workspace/workspace-theme";
 import { computePercentComplete, computeEvm } from "@/features/project-workspace/workspace-calcs";
 import { StageTracker, SectionLabel } from "@/components/pipeline/detail-sheet";
 import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
+import { LoadError } from "@/components/load-error";
+import { formatDate } from "@/lib/format-date";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -32,12 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-function milestoneStatus(m: Milestone): "done" | "atrisk" | "upcoming" {
-  if (m.is_complete) return "done";
-  const daysUntil = Math.round((new Date(m.due_date).getTime() - Date.now()) / 86400000);
-  return daysUntil <= 7 ? "atrisk" : "upcoming";
-}
+import { MilestonesPanel } from "@/features/projects/milestones-panel";
 
 function DonutChart({ counts, total }: { counts: Record<TaskStatus, number>; total: number }) {
   const r = 52;
@@ -63,9 +57,23 @@ function DonutChart({ counts, total }: { counts: Record<TaskStatus, number>; tot
     return seg;
   });
   return (
-    <svg width="140" height="140" viewBox="0 0 140 140" style={{ transform: "rotate(-90deg)" }}>
+    <svg
+      width="140"
+      height="140"
+      viewBox="0 0 140 140"
+      style={{ transform: "rotate(-90deg)" }}
+      aria-hidden="true"
+    >
       {segs}
     </svg>
+  );
+}
+
+function Explain({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mt-1 text-xs" style={{ color: "var(--pipeline-slate)" }}>
+      {children}
+    </div>
   );
 }
 
@@ -74,13 +82,17 @@ export function OverviewTab({
   tasks,
   milestones,
   actualCost,
+  canManage = false,
 }: {
   project: Project;
   tasks: Task[];
   milestones: Milestone[];
   actualCost: number;
+  canManage?: boolean;
 }) {
-  const pct = computePercentComplete(tasks);
+  const detailed = tracksDeliveryMetrics(project.department_code);
+  const pct = detailed ? computePercentComplete(tasks) : taskCompletion(tasks);
+  const done = tasks.filter((t) => t.status === "completed").length;
   const budget = project.budget ?? 0;
   const budgetPct = budget > 0 ? Math.min(100, Math.round((actualCost / budget) * 100)) : 0;
   const evm = computeEvm({
@@ -91,7 +103,6 @@ export function OverviewTab({
     actualCost,
   });
 
-  const phases = Array.from(new Set(tasks.map((t) => t.phase).filter(Boolean)));
   const statusCounts = tasks.reduce(
     (acc, t) => {
       acc[t.status] = (acc[t.status] ?? 0) + 1;
@@ -104,15 +115,15 @@ export function OverviewTab({
   const related: RelatedRecordItem[] = [];
   if (project.tender_id) {
     related.push({
-      label: "Originating Tender",
+      label: "From tender",
       title: project.tender_title ?? "Tender",
       to: `/tender/${project.tender_id}`,
     });
   }
   if (project.client_request_id) {
     related.push({
-      label: "Originating Request",
-      title: project.client_request_title ?? "Client Request",
+      label: "From client request",
+      title: project.client_request_title ?? "Client request",
       to: `/requests/${project.client_request_id}`,
     });
   }
@@ -124,7 +135,13 @@ export function OverviewTab({
     });
   }
   if (project.client_id) {
-    related.push({ label: "Client", title: project.client_name ?? "Client", to: "/clients" });
+    related.push({
+      label: "Client",
+      title: project.client_name ?? "Client",
+      to: project.client_name
+        ? `/clients?q=${encodeURIComponent(project.client_name)}`
+        : "/clients",
+    });
   }
 
   return (
@@ -132,7 +149,7 @@ export function OverviewTab({
       <RelatedRecords items={related} engagementTo={`/engagements/project/${project.id}`} />
       <div className="ws-ov-grid">
         <div className="ws-metric-card">
-          <div className="label">Overall Progress</div>
+          <div className="label">Progress</div>
           <div className="num">{pct}%</div>
           <div className="ws-bar-track">
             <div
@@ -141,11 +158,15 @@ export function OverviewTab({
             />
           </div>
           <div className="sub">
-            {tasks.length} tasks across {phases.length || 1} phases
+            {detailed
+              ? "Estimated hours of finished work, out of all estimated hours"
+              : tasks.length === 0
+                ? "No tasks yet"
+                : `${done} of ${tasks.length} tasks done`}
           </div>
         </div>
         <div className="ws-metric-card">
-          <div className="label">Budget Burn</div>
+          <div className="label">Budget used</div>
           <div className="num">{budgetPct}%</div>
           <div className="ws-bar-track">
             <div
@@ -157,150 +178,143 @@ export function OverviewTab({
             />
           </div>
           <div className="sub">
-            {money(actualCost)} of {money(budget)}
+            {budget > 0 ? `${money(actualCost)} of ${money(budget)}` : "No budget set"}
           </div>
         </div>
-        <div className="ws-metric-card">
-          <div className="label">Schedule Performance (SPI)</div>
-          <div
-            className="num"
-            style={{ color: evm.spi >= 1 ? "var(--pipeline-teal)" : "var(--pipeline-coral)" }}
-          >
-            {evm.spi.toFixed(2)}
-          </div>
-          <div className="sub">{evm.spi >= 1 ? "Ahead of / on schedule" : "Behind schedule"}</div>
-        </div>
-        <div className="ws-metric-card">
-          <div className="label">Cost Performance (CPI)</div>
-          <div
-            className="num"
-            style={{ color: evm.cpi >= 1 ? "var(--pipeline-teal)" : "var(--pipeline-coral)" }}
-          >
-            {evm.cpi.toFixed(2)}
-          </div>
-          <div className="sub">
-            {evm.cpi >= 1 ? "Under / on budget" : "Over budget for work done"}
-          </div>
-        </div>
+        {detailed && (
+          <>
+            <div className="ws-metric-card">
+              <div className="label">Schedule health (SPI)</div>
+              <div
+                className="num"
+                style={{ color: evm.spi >= 1 ? "var(--pipeline-teal)" : "var(--pipeline-coral)" }}
+              >
+                {evm.spi.toFixed(2)}
+              </div>
+              <div className="sub">{evm.spi >= 1 ? "Ahead of or on plan" : "Behind plan"}</div>
+              <Explain>Above 1 means ahead of plan.</Explain>
+            </div>
+            <div className="ws-metric-card">
+              <div className="label">Cost health (CPI)</div>
+              <div
+                className="num"
+                style={{ color: evm.cpi >= 1 ? "var(--pipeline-teal)" : "var(--pipeline-coral)" }}
+              >
+                {evm.cpi.toFixed(2)}
+              </div>
+              <div className="sub">
+                {evm.cpi >= 1 ? "Under or on budget" : "Over budget for the work done"}
+              </div>
+              <Explain>Above 1 means under budget for the work done.</Explain>
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="ws-two-col">
-        <div className="ws-panel">
-          <h3>Milestones</h3>
-          {milestones.length === 0 ? (
-            <div className="ws-section-label">No milestones recorded yet.</div>
-          ) : (
-            <div className="ws-milestone-strip">
-              {milestones.map((m) => {
-                const st = MILESTONE_STATUS_STYLES[milestoneStatus(m)];
-                return (
-                  <div key={m.id} className="ws-ms-item">
-                    <div className="d">{fmtDate(m.due_date)}</div>
-                    <div className="t">{m.title}</div>
-                    <span className="ws-ms-status" style={{ background: st.bg, color: st.c }}>
-                      {st.label}
-                    </span>
+      <MilestonesPanel projectId={project.id} milestones={milestones} canManage={canManage} />
+
+      <div className={detailed ? "ws-two-col" : "mt-3.5"}>
+        {detailed && (
+          <div className="ws-panel">
+            <h3>Spending vs work done</h3>
+            <Explain>
+              Compares planned spend by today with the value of finished work and what has actually
+              been spent.
+            </Explain>
+            <div className="evm-bars" style={{ marginTop: 12 }}>
+              {[
+                ["Planned spend by today (PV)", evm.pv, "var(--pipeline-slate-light)"],
+                ["Value of work done (EV)", evm.ev, "var(--pipeline-teal)"],
+                ["Actual spend (AC)", evm.ac, "var(--pipeline-gold)"],
+              ].map(([label, value, color]) => (
+                <div key={label as string} className="evm-row">
+                  <div className="evm-label">{label}</div>
+                  <div className="evm-track">
+                    <div
+                      className="evm-fill"
+                      style={{
+                        width: `${budget > 0 ? Math.min(100, ((value as number) / budget) * 100) : 0}%`,
+                        background: color as string,
+                      }}
+                    />
                   </div>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="ws-section-label" style={{ marginTop: 20 }}>
-            EVM Snapshot
-          </div>
-          <div className="evm-bars">
-            <div className="evm-row">
-              <div className="evm-label">Planned Value (PV)</div>
-              <div className="evm-track">
-                <div
-                  className="evm-fill"
-                  style={{
-                    width: `${budget > 0 ? Math.min(100, (evm.pv / budget) * 100) : 0}%`,
-                    background: "var(--pipeline-slate-light)",
-                  }}
-                />
-              </div>
-              <div className="evm-val">{money(evm.pv)}</div>
-            </div>
-            <div className="evm-row">
-              <div className="evm-label">Earned Value (EV)</div>
-              <div className="evm-track">
-                <div
-                  className="evm-fill"
-                  style={{
-                    width: `${budget > 0 ? Math.min(100, (evm.ev / budget) * 100) : 0}%`,
-                    background: "var(--pipeline-teal)",
-                  }}
-                />
-              </div>
-              <div className="evm-val">{money(evm.ev)}</div>
-            </div>
-            <div className="evm-row">
-              <div className="evm-label">Actual Cost (AC)</div>
-              <div className="evm-track">
-                <div
-                  className="evm-fill"
-                  style={{
-                    width: `${budget > 0 ? Math.min(100, (evm.ac / budget) * 100) : 0}%`,
-                    background: "var(--pipeline-gold)",
-                  }}
-                />
-              </div>
-              <div className="evm-val">{money(evm.ac)}</div>
+                  <div className="evm-val">{money(value as number)}</div>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
+        )}
 
         <div className="ws-panel">
-          <h3>Task Status Breakdown</h3>
-          <DonutChart counts={statusCounts} total={tasks.length} />
-          <div className="ws-donut-legend">
-            {(Object.keys(TASK_STATUS_LABELS) as TaskStatus[]).map((k) => (
-              <div key={k} className="ws-dl-row">
-                <span className="ws-dl-dot" style={{ background: TASK_STATUS_COLORS[k] }} />
-                {TASK_STATUS_LABELS[k]}
-                <span className="ws-dl-num">{statusCounts[k]}</span>
+          <h3>Tasks by status</h3>
+          {tasks.length === 0 ? (
+            <div className="text-sm" style={{ color: "var(--pipeline-slate)" }}>
+              No tasks yet. Add them on the Tasks tab.
+            </div>
+          ) : (
+            <>
+              <DonutChart counts={statusCounts} total={tasks.length} />
+              <div className="ws-donut-legend">
+                {(Object.keys(TASK_STATUS_LABELS) as TaskStatus[]).map((k) => (
+                  <div key={k} className="ws-dl-row">
+                    <span className="ws-dl-dot" style={{ background: TASK_STATUS_COLORS[k] }} />
+                    {TASK_STATUS_LABELS[k]}
+                    <span className="ws-dl-num">{statusCounts[k]}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </div>
       </div>
 
-      <SdlcPanel project={project} />
+      {detailed && <SdlcPanel project={project} canManage={canManage} />}
       <TimelinePanel projectId={project.id} />
     </>
   );
 }
 
-// Every recorded date push-out for this project, most recent first — the point isn't just
-// history, it's the "was this our fault" record: who/when/why, and whether the client caused it.
-function TimelinePanel({ projectId }: { projectId: string }) {
+// Every recorded date push-out for this project: who, when, why, and whose delay.
+export function TimelinePanel({ projectId }: { projectId: string }) {
   const extensionsQ = useTimelineExtensions("project", projectId);
   const extensions = extensionsQ.data ?? [];
 
+  if (extensionsQ.isError) {
+    return (
+      <div className="ws-panel">
+        <h3>Date extensions</h3>
+        <LoadError
+          what="date extensions"
+          error={extensionsQ.error}
+          onRetry={() => extensionsQ.refetch()}
+        />
+      </div>
+    );
+  }
   if (!extensionsQ.isLoading && extensions.length === 0) return null;
 
   return (
     <div className="ws-panel">
-      <h3>Timeline Extensions</h3>
+      <h3>Date extensions</h3>
       {extensionsQ.isLoading ? (
-        <div className="ws-section-label">Loading…</div>
+        <div className="text-sm" style={{ color: "var(--pipeline-slate)" }}>
+          Loading…
+        </div>
       ) : (
         <div className="divide-y">
           {extensions.map((e) => (
             <div key={e.id} className="py-2 text-sm">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-medium">
-                  {fmtDate(e.previous_date)} → {fmtDate(e.new_date)}
+                  {formatDate(e.previous_date)} → {formatDate(e.new_date)}
                 </span>
-                <span className="ws-section-label" style={{ margin: 0 }}>
-                  {EXTENSION_ATTRIBUTION_LABELS[e.attributed_to]}
+                <span className="text-xs text-muted-foreground">
+                  Delay caused by: {EXTENSION_ATTRIBUTION_LABELS[e.attributed_to]}
                 </span>
               </div>
               <div className="text-xs text-muted-foreground mt-0.5">{e.reason}</div>
-              <div className="text-[0.6875rem] text-muted-foreground mt-0.5">
-                {e.created_by_name ?? "Unknown"} · {fmtDate(e.created_at)}
+              <div className="text-xs text-muted-foreground mt-0.5">
+                {e.created_by_name ?? "Unknown"} · {formatDate(e.created_at)}
               </div>
             </div>
           ))}
@@ -310,23 +324,24 @@ function TimelinePanel({ projectId }: { projectId: string }) {
   );
 }
 
-// Only relevant once a project is flagged as system-development work — the toggle below sets
-// methodology to SYSTEM_DEVELOPMENT_METHODOLOGY and initializes the stage; tasks/milestones
-// above still work normally underneath this, it's just an extra layer showing SDLC progress.
-function SdlcPanel({ project }: { project: Project }) {
+// IT only: which step of building a system this project is at.
+function SdlcPanel({ project, canManage }: { project: Project; canManage: boolean }) {
   const updateProject = useUpdateProject();
   const isSystemDevelopment = project.methodology === SYSTEM_DEVELOPMENT_METHODOLOGY;
 
   if (!isSystemDevelopment) {
+    if (!canManage) return null;
     return (
       <div className="ws-panel">
-        <h3>System Development</h3>
-        <p className="ws-section-label" style={{ margin: "8px 0 12px" }}>
-          Not tracked as a system-development project.
-        </p>
+        <h3>System development stages</h3>
+        <Explain>
+          For projects that build or change a system: track it through requirements, design,
+          development, testing, deployment and maintenance.
+        </Explain>
         <Button
           size="sm"
           variant="outline"
+          className="mt-3"
           disabled={updateProject.isPending}
           onClick={() =>
             updateProject.mutate(
@@ -336,14 +351,14 @@ function SdlcPanel({ project }: { project: Project }) {
                 sdlcStage: "requirements",
               },
               {
-                onSuccess: () => toast.success("Now tracking as a system-development project"),
+                onSuccess: () => toast.success("Now tracking system development stages"),
                 onError: (err) =>
                   toast.error(err instanceof Error ? err.message : "Failed to update"),
               },
             )
           }
         >
-          Track as System Development project
+          Track system development stages
         </Button>
       </div>
     );
@@ -354,35 +369,46 @@ function SdlcPanel({ project }: { project: Project }) {
 
   return (
     <div className="ws-panel">
-      <h3>System Development — SDLC Stage</h3>
+      <h3>System development stage (SDLC)</h3>
+      <Explain>The step this system build is at, from requirements through to maintenance.</Explain>
       <SectionLabel>Stage progress</SectionLabel>
       <StageTracker total={SDLC_STAGES.length} doneCount={idx} currentIndex={idx} />
-      <div className="ws-section-label" style={{ marginTop: 4 }}>
-        Move stage
-      </div>
-      <Select
-        value={stage}
-        onValueChange={(v) =>
-          updateProject.mutate(
-            { id: project.id, sdlcStage: v as SdlcStage },
-            {
-              onError: (err) =>
-                toast.error(err instanceof Error ? err.message : "Failed to update"),
-            },
-          )
-        }
-      >
-        <SelectTrigger className="w-full max-w-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {SDLC_STAGES.map((s) => (
-            <SelectItem key={s} value={s}>
-              {SDLC_STAGE_LABELS[s]}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {canManage ? (
+        <>
+          <label
+            htmlFor={`sdlc-stage-${project.id}`}
+            className="mt-1 block text-xs font-medium"
+            style={{ color: "var(--pipeline-slate)" }}
+          >
+            Move to stage
+          </label>
+          <Select
+            value={stage}
+            onValueChange={(v) =>
+              updateProject.mutate(
+                { id: project.id, sdlcStage: v as SdlcStage },
+                {
+                  onError: (err) =>
+                    toast.error(err instanceof Error ? err.message : "Failed to update"),
+                },
+              )
+            }
+          >
+            <SelectTrigger id={`sdlc-stage-${project.id}`} className="w-full max-w-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SDLC_STAGES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {SDLC_STAGE_LABELS[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </>
+      ) : (
+        <div className="text-sm">Current stage: {SDLC_STAGE_LABELS[stage]}</div>
+      )}
     </div>
   );
 }

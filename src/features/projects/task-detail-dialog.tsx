@@ -1,14 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Pencil, Send, Trash2, X } from "lucide-react";
+import { Loader2, Pencil, Trash2, X } from "lucide-react";
 import {
-  useTaskComments,
-  useCreateComment,
-  useDeleteComment,
+  useProject,
   useUpdateTask,
   useDeleteTask,
   useAddTaskDependency,
   useRemoveTaskDependency,
+  tracksDeliveryMetrics,
   TASK_STATUS_LABELS,
   TASK_PRIORITY_LABELS,
   TASK_STATUS_COLUMNS,
@@ -20,17 +19,25 @@ import {
   type ExtensionAttribution,
 } from "@/features/projects/use-projects";
 import { ExtensionPrompt, isExtension } from "@/features/projects/extension-prompt";
-import { useProfilesLite } from "@/features/clients/use-clients-contracts";
+import { StaffSelect, useStaffOptions } from "@/features/projects/staff-picker";
 import { useAuth } from "@/lib/auth";
 import { confirmDialog } from "@/components/confirm-dialog";
+import { FormField, RequiredNote } from "@/components/form-field";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { formatDate } from "@/lib/format-date";
 import { AttachmentsPanel } from "@/features/documents/attachments-panel";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { TaskComments } from "@/features/activity/task-comments";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   Select,
@@ -48,21 +55,29 @@ export function TaskDetailDialog({
 }: {
   task: Task | null;
   onClose: () => void;
-  /** Whether the current user has department-level access to the task's project — the
-   * uploader/assignee always additionally gets manage rights, checked inside the panel. */
+  /** Department-level access to the task's project; the assignee always gets it too. */
   canManageDocuments?: boolean;
   /** Sibling tasks in the same project, for the dependency editor. Omit to hide that section. */
   projectTasks?: Task[];
 }) {
+  const [editDirty, setEditDirty] = useState(false);
+  const { guardClose } = useUnsavedChanges(!!task && editDirty);
+
+  useEffect(() => {
+    if (!task) setEditDirty(false);
+  }, [task]);
+
   return (
-    <Dialog open={!!task} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={!!task} onOpenChange={(open) => !open && guardClose(onClose)}>
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         {task && (
           <TaskDetailBody
+            key={task.id}
             task={task}
             onClose={onClose}
             canManageDocuments={canManageDocuments}
             projectTasks={projectTasks}
+            onEditDirtyChange={setEditDirty}
           />
         )}
       </DialogContent>
@@ -75,41 +90,35 @@ function TaskDetailBody({
   onClose,
   canManageDocuments,
   projectTasks,
+  onEditDirtyChange,
 }: {
   task: Task;
   onClose: () => void;
   canManageDocuments: boolean;
   projectTasks?: Task[];
+  onEditDirtyChange: (dirty: boolean) => void;
 }) {
   const { profile } = useAuth();
-  const commentsQ = useTaskComments(task.id);
-  const createComment = useCreateComment(task.id);
-  const deleteComment = useDeleteComment(task.id);
+  const projectQ = useProject(task.project_id);
+  const detailed = tracksDeliveryMetrics(projectQ.data?.department_code);
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
   const addDependency = useAddTaskDependency();
   const removeDependency = useRemoveTaskDependency();
-  const profilesQ = useProfilesLite();
-  const [body, setBody] = useState("");
+  const { nameOf } = useStaffOptions();
   const [depToAdd, setDepToAdd] = useState("");
   const [isEditing, setIsEditing] = useState(false);
 
-  // Matches the backend's own access rule (TasksService.assertTaskAccess): the assignee can
-  // always manage their own task, on top of the department-level access already computed by
-  // the caller — same combined condition the attachments panel below already used, just now
-  // shared by the edit/delete controls too.
+  // Mirrors the backend rule: department access, or the task's own assignee.
   const canManageTask = canManageDocuments || task.assignee_id === profile?.id;
 
   const dependencyCandidates = (projectTasks ?? []).filter(
     (t) => t.id !== task.id && !task.depends_on.some((d) => d.id === t.id),
   );
 
-  const submitComment = () => {
-    if (!body.trim()) return;
-    createComment.mutate(body.trim(), {
-      onSuccess: () => setBody(""),
-      onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to post comment"),
-    });
+  const stopEditing = () => {
+    onEditDirtyChange(false);
+    setIsEditing(false);
   };
 
   const changeStatus = (status: TaskStatus) => {
@@ -123,7 +132,7 @@ function TaskDetailBody({
     const ok = await confirmDialog({
       title: `Delete "${task.title}"?`,
       description: "This removes the task, its comments and its attachments. This can't be undone.",
-      confirmLabel: "Delete",
+      confirmLabel: "Delete task",
       destructive: true,
     });
     if (!ok) return;
@@ -136,27 +145,31 @@ function TaskDetailBody({
     });
   };
 
+  const assignee = nameOf(task.assignee_id);
+
   return (
     <>
       <DialogHeader>
         <div className="flex items-start justify-between gap-2 pr-6">
-          <DialogTitle className="text-left">{task.title}</DialogTitle>
+          <DialogTitle className="text-left">{isEditing ? "Edit task" : task.title}</DialogTitle>
           {canManageTask && !isEditing && (
             <div className="flex gap-1 shrink-0">
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-7 w-7"
+                className="h-8 w-8"
                 onClick={() => setIsEditing(true)}
+                aria-label={`Edit task ${task.title}`}
               >
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
                 disabled={deleteTask.isPending}
                 onClick={handleDelete}
+                aria-label={`Delete task ${task.title}`}
               >
                 {deleteTask.isPending ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -167,19 +180,27 @@ function TaskDetailBody({
             </div>
           )}
         </div>
+        {!isEditing && task.project_name && (
+          <DialogDescription className="text-left">{task.project_name}</DialogDescription>
+        )}
       </DialogHeader>
 
       {isEditing ? (
         <EditTaskForm
           task={task}
-          profiles={profilesQ.data ?? []}
-          onDone={() => setIsEditing(false)}
+          detailed={detailed}
+          onDirtyChange={onEditDirtyChange}
+          onDone={stopEditing}
         />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Select value={task.status} onValueChange={(v) => changeStatus(v as TaskStatus)}>
-              <SelectTrigger className="h-7 w-[150px] text-xs">
+            <Select
+              value={task.status}
+              onValueChange={(v) => changeStatus(v as TaskStatus)}
+              disabled={!canManageTask}
+            >
+              <SelectTrigger className="h-8 w-[150px] text-xs" aria-label="Task status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -191,22 +212,24 @@ function TaskDetailBody({
               </SelectContent>
             </Select>
             <Badge variant="secondary">{TASK_PRIORITY_LABELS[task.priority]} priority</Badge>
-            {task.due_date && <Badge variant="outline">Due {task.due_date}</Badge>}
-            {task.phase && <Badge variant="outline">{task.phase}</Badge>}
-            {task.estimated_hours != null && (
+            {task.due_date && <Badge variant="outline">Due {formatDate(task.due_date)}</Badge>}
+            {detailed && task.phase && <Badge variant="outline">Phase: {task.phase}</Badge>}
+            {detailed && task.estimated_hours != null && (
               <Badge variant="outline">
-                Est {task.estimated_hours}h / Act {task.actual_hours}h
+                Estimated {task.estimated_hours}h · spent {task.actual_hours}h
               </Badge>
             )}
           </div>
 
-          {task.assignee_id && (
-            <div className="text-xs text-muted-foreground">
-              Assigned to{" "}
-              {(profilesQ.data ?? []).find((p) => p.id === task.assignee_id)?.full_name ??
-                (profilesQ.data ?? []).find((p) => p.id === task.assignee_id)?.email ??
-                "—"}
-            </div>
+          <div className="text-xs text-muted-foreground">
+            {task.assignee_id
+              ? `Assigned to ${assignee ?? "a former staff member"}`
+              : "Not assigned"}
+          </div>
+          {!canManageTask && (
+            <p className="text-xs text-muted-foreground">
+              Only the person assigned or staff who manage this project can change this task.
+            </p>
           )}
 
           <TaskExtensionsIndicator taskId={task.id} />
@@ -217,38 +240,49 @@ function TaskDetailBody({
         </>
       )}
 
-      {projectTasks && (
+      {projectTasks && !isEditing && (
         <div className="space-y-1.5">
-          <div className="text-xs font-semibold text-muted-foreground">Depends on</div>
+          <div className="text-xs font-semibold text-muted-foreground">Waits on</div>
           <div className="flex flex-wrap gap-1.5">
             {task.depends_on.length === 0 && (
-              <span className="text-xs text-muted-foreground">No dependencies</span>
+              <span className="text-xs text-muted-foreground">Nothing — it can start any time</span>
             )}
             {task.depends_on.map((d) => (
               <Badge key={d.id} variant="secondary" className="gap-1 pr-1">
                 {d.title}
-                <button
-                  onClick={() =>
-                    removeDependency.mutate(
-                      { taskId: task.id, dependsOnId: d.id },
-                      {
-                        onError: (err) =>
-                          toast.error(err instanceof Error ? err.message : "Failed to remove"),
-                      },
-                    )
-                  }
-                  className="hover:text-destructive"
-                >
-                  <X className="h-3 w-3" />
-                </button>
+                {canManageTask && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ok = await confirmDialog({
+                        title: "Remove this link?",
+                        description: `"${task.title}" will no longer wait on "${d.title}".`,
+                        confirmLabel: "Remove link",
+                        destructive: true,
+                      });
+                      if (!ok) return;
+                      removeDependency.mutate(
+                        { taskId: task.id, dependsOnId: d.id },
+                        {
+                          onError: (err) =>
+                            toast.error(err instanceof Error ? err.message : "Failed to remove"),
+                        },
+                      );
+                    }}
+                    className="hover:text-destructive"
+                    aria-label={`Stop waiting on ${d.title}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
               </Badge>
             ))}
           </div>
-          {dependencyCandidates.length > 0 && (
+          {canManageTask && dependencyCandidates.length > 0 && (
             <div className="flex gap-2">
               <Select value={depToAdd} onValueChange={setDepToAdd}>
-                <SelectTrigger className="h-7 flex-1 text-xs">
-                  <SelectValue placeholder="Add a dependency…" />
+                <SelectTrigger className="h-8 flex-1 text-xs" aria-label="Task this one waits on">
+                  <SelectValue placeholder="Choose a task this waits on…" />
                 </SelectTrigger>
                 <SelectContent>
                   {dependencyCandidates.map((t) => (
@@ -273,7 +307,7 @@ function TaskDetailBody({
                   )
                 }
               >
-                Add
+                Add waits-on task
               </Button>
             </div>
           )}
@@ -282,54 +316,7 @@ function TaskDetailBody({
 
       <Separator />
 
-      <div className="text-xs font-semibold text-muted-foreground">Comments</div>
-      <ScrollArea className="max-h-56">
-        <div className="space-y-3 pr-3">
-          {commentsQ.isLoading ? (
-            <div className="py-4 flex justify-center">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            </div>
-          ) : (commentsQ.data ?? []).length === 0 ? (
-            <p className="text-xs text-muted-foreground py-2">No comments yet.</p>
-          ) : (
-            (commentsQ.data ?? []).map((c) => (
-              <div key={c.id} className="text-xs group">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{c.author_name}</span>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <span>{new Date(c.created_at).toLocaleString()}</span>
-                    {c.author_id === profile?.id && (
-                      <button
-                        onClick={() => deleteComment.mutate(c.id)}
-                        className="opacity-0 group-hover:opacity-100 hover:text-destructive"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <p className="mt-0.5 whitespace-pre-wrap">{c.body}</p>
-              </div>
-            ))
-          )}
-        </div>
-      </ScrollArea>
-
-      <div className="flex items-end gap-2">
-        <Textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Add a comment…"
-          className="min-h-[60px] text-sm"
-        />
-        <Button size="icon" onClick={submitComment} disabled={createComment.isPending}>
-          {createComment.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4" />
-          )}
-        </Button>
-      </div>
+      <TaskComments taskId={task.id} />
 
       <Separator />
 
@@ -342,48 +329,91 @@ function TaskDetailBody({
   );
 }
 
+type EditTaskErrors = Partial<Record<"title" | "hours" | "extensionReason", string>>;
+
 function EditTaskForm({
   task,
-  profiles,
+  detailed,
+  onDirtyChange,
   onDone,
 }: {
   task: Task;
-  profiles: { id: string; full_name: string | null; email: string }[];
+  detailed: boolean;
+  onDirtyChange: (dirty: boolean) => void;
   onDone: () => void;
 }) {
-  const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description ?? "");
-  const [priority, setPriority] = useState<TaskPriority>(task.priority);
-  const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? "");
-  const [phase, setPhase] = useState(task.phase ?? "");
-  const [dueDate, setDueDate] = useState(task.due_date?.slice(0, 10) ?? "");
-  const [estimatedHours, setEstimatedHours] = useState(
-    task.estimated_hours != null ? String(task.estimated_hours) : "",
-  );
+  const initial = {
+    title: task.title,
+    description: task.description ?? "",
+    priority: task.priority,
+    assigneeId: task.assignee_id ?? "",
+    phase: task.phase ?? "",
+    dueDate: task.due_date?.slice(0, 10) ?? "",
+    estimatedHours: task.estimated_hours != null ? String(task.estimated_hours) : "",
+  };
+  const [title, setTitle] = useState(initial.title);
+  const [description, setDescription] = useState(initial.description);
+  const [priority, setPriority] = useState<TaskPriority>(initial.priority);
+  const [assigneeId, setAssigneeId] = useState(initial.assigneeId);
+  const [phase, setPhase] = useState(initial.phase);
+  const [dueDate, setDueDate] = useState(initial.dueDate);
+  const [estimatedHours, setEstimatedHours] = useState(initial.estimatedHours);
   const [extensionReason, setExtensionReason] = useState("");
   const [extensionAttribution, setExtensionAttribution] = useState<ExtensionAttribution>("client");
+  const [errors, setErrors] = useState<EditTaskErrors>({});
   const update = useUpdateTask();
   const extending = isExtension(task.due_date, dueDate);
 
+  const dirty =
+    title !== initial.title ||
+    description !== initial.description ||
+    priority !== initial.priority ||
+    assigneeId !== initial.assigneeId ||
+    phase !== initial.phase ||
+    dueDate !== initial.dueDate ||
+    estimatedHours !== initial.estimatedHours;
+
+  useEffect(() => {
+    onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
+
+  const cancel = async () => {
+    if (dirty) {
+      const ok = await confirmDialog({
+        title: "Discard your changes?",
+        description: "What you changed in this task hasn't been saved.",
+        confirmLabel: "Discard changes",
+        cancelLabel: "Keep editing",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
+    onDone();
+  };
+
   const submit = () => {
-    if (!title.trim()) {
-      toast.error("Title is required");
-      return;
-    }
-    if (extending && !extensionReason.trim()) {
-      toast.error("Add a reason for the extension before saving");
-      return;
-    }
+    const found: EditTaskErrors = {};
+    if (!title.trim()) found.title = "The task needs a title.";
+    if (detailed && estimatedHours && Number(estimatedHours) < 0)
+      found.hours = "Hours can't be negative.";
+    if (extending && !extensionReason.trim())
+      found.extensionReason = "Say why the due date is moving.";
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
     update.mutate(
       {
         id: task.id,
         title: title.trim(),
         description: description || undefined,
         priority,
-        assigneeId: assigneeId || undefined,
-        phase: phase || undefined,
+        assigneeId: assigneeId || null,
         dueDate: dueDate || undefined,
-        estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
+        ...(detailed
+          ? {
+              phase: phase.trim() || null,
+              estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
+            }
+          : {}),
         extensionReason: extending ? extensionReason.trim() : undefined,
         extensionAttribution: extending ? extensionAttribution : undefined,
       },
@@ -398,20 +428,46 @@ function EditTaskForm({
   };
 
   return (
-    <div className="space-y-3">
-      <div>
-        <Label>Title</Label>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-      </div>
-      <div>
-        <Label>Description</Label>
-        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label>Priority</Label>
+    <form
+      noValidate
+      className="space-y-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <RequiredNote />
+      <FormField id="edit-task-title" label="Title" required error={errors.title}>
+        <Input
+          id="edit-task-title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          aria-invalid={!!errors.title}
+        />
+      </FormField>
+      <FormField id="edit-task-description" label="Description">
+        <Textarea
+          id="edit-task-description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={3}
+        />
+      </FormField>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <FormField id="edit-task-assignee" label="Assign to">
+          <StaffSelect id="edit-task-assignee" value={assigneeId} onChange={setAssigneeId} />
+        </FormField>
+        <FormField id="edit-task-due" label="Due date">
+          <Input
+            id="edit-task-due"
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+          />
+        </FormField>
+        <FormField id="edit-task-priority" label="Priority">
           <Select value={priority} onValueChange={(v) => setPriority(v as TaskPriority)}>
-            <SelectTrigger>
+            <SelectTrigger id="edit-task-priority">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -422,40 +478,29 @@ function EditTaskForm({
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div>
-          <Label>Assignee</Label>
-          <Select value={assigneeId} onValueChange={setAssigneeId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Unassigned" />
-            </SelectTrigger>
-            <SelectContent>
-              {profiles.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.full_name ?? p.email}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <Label>Phase</Label>
-          <Input value={phase} onChange={(e) => setPhase(e.target.value)} placeholder="Optional" />
-        </div>
-        <div>
-          <Label>Due date</Label>
-          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        </div>
-        <div>
-          <Label>Est. hours</Label>
-          <Input
-            type="number"
-            value={estimatedHours}
-            onChange={(e) => setEstimatedHours(e.target.value)}
-          />
-        </div>
+        </FormField>
+        {detailed && (
+          <>
+            <FormField id="edit-task-phase" label="Phase" hint="Groups tasks on the Timeline.">
+              <Input
+                id="edit-task-phase"
+                value={phase}
+                onChange={(e) => setPhase(e.target.value)}
+                placeholder="e.g. Testing"
+              />
+            </FormField>
+            <FormField id="edit-task-hours" label="Estimated hours" error={errors.hours}>
+              <Input
+                id="edit-task-hours"
+                type="number"
+                min={0}
+                value={estimatedHours}
+                onChange={(e) => setEstimatedHours(e.target.value)}
+                aria-invalid={!!errors.hours}
+              />
+            </FormField>
+          </>
+        )}
       </div>
       {extending && (
         <ExtensionPrompt
@@ -463,23 +508,24 @@ function EditTaskForm({
           onReasonChange={setExtensionReason}
           attribution={extensionAttribution}
           onAttributionChange={setExtensionAttribution}
+          reasonError={errors.extensionReason}
+          idPrefix={`task-${task.id}`}
         />
       )}
       <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={onDone}>
+        <Button type="button" variant="outline" size="sm" onClick={cancel}>
           Cancel
         </Button>
-        <Button size="sm" onClick={submit} disabled={update.isPending}>
+        <Button type="submit" size="sm" disabled={update.isPending}>
           {update.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Save changes
+          Save task
         </Button>
       </div>
-    </div>
+    </form>
   );
 }
 
-// Compact "Extended Nx" indicator with an expandable list — same underlying data as the
-// project's Timeline Extensions panel, scoped to just this task.
+// "Due date moved N times", with the list of changes on request.
 function TaskExtensionsIndicator({ taskId }: { taskId: string }) {
   const [open, setOpen] = useState(false);
   const extensionsQ = useTimelineExtensions("task", taskId);
@@ -488,15 +534,21 @@ function TaskExtensionsIndicator({ taskId }: { taskId: string }) {
 
   return (
     <div className="text-xs">
-      <button type="button" onClick={() => setOpen(!open)} className="text-warning hover:underline">
-        Extended {extensions.length}x
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="text-warning hover:underline"
+        aria-expanded={open}
+      >
+        Due date moved {extensions.length} {extensions.length === 1 ? "time" : "times"}
       </button>
       {open && (
         <div className="mt-1 space-y-1.5 border-l-2 border-warning/30 pl-2">
           {extensions.map((e) => (
             <div key={e.id}>
               <div className="text-muted-foreground">
-                {e.previous_date} → {e.new_date} · {EXTENSION_ATTRIBUTION_LABELS[e.attributed_to]}
+                {formatDate(e.previous_date)} → {formatDate(e.new_date)} · Delay caused by:{" "}
+                {EXTENSION_ATTRIBUTION_LABELS[e.attributed_to]}
               </div>
               <div>{e.reason}</div>
             </div>

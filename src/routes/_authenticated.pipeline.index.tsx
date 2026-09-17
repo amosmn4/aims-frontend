@@ -6,12 +6,11 @@ import { useDepartments } from "@/features/clients/use-clients-contracts";
 import { formatCurrency } from "@/features/finance/finance";
 import { DEPT_COLORS, DEPT_COLOR_FALLBACK } from "@/features/pipeline/pipeline-theme";
 import { useAuth } from "@/lib/auth";
+import { formatDate } from "@/lib/format-date";
 
-// Pipeline's in-page tabs are kanban-only now (see _authenticated.pipeline.tsx) — this overview
-// dashboard is kept intact but no longer part of that tab set, so the bare /pipeline URL (what
-// the top-nav link points to) redirects straight to the first kanban instead of landing here.
+// Bare /pipeline opens the Client requests board; this overview is currently unused.
 export const Route = createFileRoute("/_authenticated/pipeline/")({
-  head: () => ({ meta: [{ title: "Pipeline — AIMS" }] }),
+  head: () => ({ meta: [{ title: "Pipelines — AIMS" }] }),
   beforeLoad: () => {
     throw redirect({ to: "/pipeline/engagements" });
   },
@@ -72,22 +71,22 @@ function PipelineOverview() {
 
       <div className="my-5 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
         <StatCard
-          label="Active Tenders"
+          label="Active tenders"
           value={activeTenders.length}
           sub="in identification → submitted"
         />
         <StatCard
-          label="Active Engagements"
+          label="Active client requests"
           value={activeRequests.length}
-          sub="being engaged by departments"
+          sub="being worked on by departments"
         />
         <StatCard
-          label="Live Projects"
+          label="Live projects"
           value={activeProjects.length}
           sub="in delivery, invoicing or payment"
         />
         <StatCard
-          label="Pipeline Value"
+          label="Value in progress"
           value={formatCurrency(pipelineValue)}
           sub="not yet won or lost"
           money
@@ -116,7 +115,7 @@ function PipelineOverview() {
                 dot="var(--pipeline-teal)"
                 text={
                   <>
-                    <b>Engagement</b> · {r.client_name ?? r.prospect_client_name ?? r.title}
+                    <b>Client request</b> · {r.client_name ?? r.prospect_client_name ?? r.title}
                   </>
                 }
                 when={r.created_at}
@@ -175,21 +174,21 @@ function PipelineOverview() {
           className="p-panel flex-1 text-sm font-semibold hover:opacity-80"
           style={{ minWidth: 200 }}
         >
-          Open Tender Pipeline →
+          Open Tenders →
         </Link>
         <Link
           to="/pipeline/engagements"
           className="p-panel flex-1 text-sm font-semibold hover:opacity-80"
           style={{ minWidth: 200 }}
         >
-          Open Client Engagement →
+          Open Client requests →
         </Link>
         <Link
           to="/pipeline/projects"
           className="p-panel flex-1 text-sm font-semibold hover:opacity-80"
           style={{ minWidth: 200 }}
         >
-          Open Projects & Delivery →
+          Open Projects board →
         </Link>
       </div>
     </div>
@@ -245,7 +244,7 @@ function FeedRow({ dot, text, when }: { dot: string; text: React.ReactNode; when
           className="p-mono mt-0.5 text-[10.5px]"
           style={{ color: "var(--pipeline-slate-light)" }}
         >
-          {new Date(when).toLocaleDateString(undefined, { month: "short", day: "2-digit" })}
+          {formatDate(when)}
         </div>
       </div>
     </div>

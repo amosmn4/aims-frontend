@@ -73,6 +73,13 @@ export interface InventoryItemRow {
   purchase_date: string | null;
   warranty_expiry: string | null;
   notes: string | null;
+  purchase_cost: number | null;
+  useful_life_months: number | null;
+  current_value: number | null;
+  department_id: string | null;
+  department_name: string | null;
+  assigned_user_id: string | null;
+  assigned_user_name: string | null;
 }
 
 type BackendInventoryItem = {
@@ -92,6 +99,13 @@ type BackendInventoryItem = {
   purchaseDate: string | null;
   warrantyExpiry: string | null;
   notes: string | null;
+  purchaseCost: string | number | null;
+  usefulLifeMonths: number | null;
+  currentValue: number | null;
+  departmentId: string | null;
+  department: { id: string; name: string; code: string } | null;
+  assignedUserId: string | null;
+  assignedUser: { id: string; fullName: string | null; email: string } | null;
 };
 
 function mapInventoryItem(i: BackendInventoryItem): InventoryItemRow {
@@ -106,12 +120,19 @@ function mapInventoryItem(i: BackendInventoryItem): InventoryItemRow {
     brand: i.brand,
     model: i.model,
     serial_number: i.serialNumber,
-    assigned_to: i.assignedTo,
+    assigned_to: i.assignedTo || null,
     office_id: i.officeId,
     office_name: i.office?.name ?? null,
     purchase_date: i.purchaseDate,
     warranty_expiry: i.warrantyExpiry,
     notes: i.notes,
+    purchase_cost: i.purchaseCost == null ? null : Number(i.purchaseCost),
+    useful_life_months: i.usefulLifeMonths ?? null,
+    current_value: i.currentValue ?? null,
+    department_id: i.departmentId ?? null,
+    department_name: i.department?.name ?? null,
+    assigned_user_id: i.assignedUserId ?? null,
+    assigned_user_name: i.assignedUser ? (i.assignedUser.fullName ?? i.assignedUser.email) : null,
   };
 }
 
@@ -167,11 +188,16 @@ export interface SaveInventoryItemInput {
   brand?: string;
   model?: string;
   serialNumber?: string;
-  assignedTo?: string;
+  // null clears the value on edit.
+  assignedTo?: string | null;
   officeId?: string;
   purchaseDate?: string;
   warrantyExpiry?: string;
   notes?: string;
+  purchaseCost?: number | null;
+  usefulLifeMonths?: number | null;
+  departmentId?: string | null;
+  assignedUserId?: string | null;
 }
 
 export function useSaveInventoryItem() {
@@ -188,11 +214,15 @@ export function useSaveInventoryItem() {
         brand: input.brand || undefined,
         model: input.model || undefined,
         serialNumber: input.serialNumber || undefined,
-        assignedTo: input.assignedTo || undefined,
+        assignedTo: input.assignedTo === null ? null : input.assignedTo || undefined,
         officeId: input.officeId || undefined,
         purchaseDate: input.purchaseDate || undefined,
         warrantyExpiry: input.warrantyExpiry || undefined,
         notes: input.notes || undefined,
+        purchaseCost: input.purchaseCost,
+        usefulLifeMonths: input.usefulLifeMonths,
+        departmentId: input.departmentId,
+        assignedUserId: input.assignedUserId,
       };
       if (input.id) {
         return mapInventoryItem(

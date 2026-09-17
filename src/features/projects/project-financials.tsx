@@ -1,4 +1,6 @@
 import { Loader2 } from "lucide-react";
+import { LoadError } from "@/components/load-error";
+import { formatDate } from "@/lib/format-date";
 import { useProjectFinancials } from "@/features/projects/use-projects";
 import { formatCurrency } from "@/features/finance/finance";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +16,7 @@ import {
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border bg-card p-3">
-      <div className="text-[0.6875rem] text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold mt-0.5">{value}</div>
     </div>
   );
@@ -31,12 +33,22 @@ export function ProjectFinancialsTab({ projectId }: { projectId: string }) {
     );
   }
 
+  if (financialsQ.isError) {
+    return (
+      <LoadError
+        what="project financials"
+        error={financialsQ.error}
+        onRetry={() => financialsQ.refetch()}
+      />
+    );
+  }
+
   const data = financialsQ.data;
   if (!data || !data.hasContract) {
     return (
       <div className="rounded-lg border bg-card py-10 text-center text-sm text-muted-foreground">
-        This project isn't linked to a contract yet — link one from the project's edit screen to see
-        budget vs. actual, invoices, and margin here.
+        This project isn&apos;t linked to a contract yet. Link one under Client &amp; contract to
+        see budget, invoices and margin here.
       </div>
     );
   }
@@ -72,7 +84,7 @@ export function ProjectFinancialsTab({ projectId }: { projectId: string }) {
                 {budgets.map((b) => (
                   <TableRow key={b.id}>
                     <TableCell className="text-xs">
-                      {b.periodStart.slice(0, 10)} → {b.periodEnd.slice(0, 10)}
+                      {formatDate(b.periodStart)} → {formatDate(b.periodEnd)}
                     </TableCell>
                     <TableCell className="text-right text-xs">
                       {formatCurrency(b.budgetedAmount)}
@@ -108,8 +120,8 @@ export function ProjectFinancialsTab({ projectId }: { projectId: string }) {
                   <TableRow key={inv.id}>
                     <TableCell className="text-xs font-medium">{inv.invoiceNumber}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="text-[0.625rem]">
-                        {inv.status}
+                      <Badge variant="secondary" className="capitalize">
+                        {inv.status.replace(/_/g, " ")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right text-xs">

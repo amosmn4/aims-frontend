@@ -1,42 +1,37 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-import { useAuth, type AppRole } from "@/lib/auth";
+import { ArrowLeft, CheckCircle2, Loader2, Pencil, Rocket, Send, Trash2 } from "lucide-react";
+import { usePermissions } from "@/lib/permissions";
 import {
   useClientRequest,
   useRouteClientRequest,
   useUpdateClientRequestStage,
-  useSaveClientRequest,
   useDeleteClientRequest,
-  useConvertToProject,
-  useConvertClientRequestToContract,
-  useClientRequestActivities,
-  useLogActivity,
-  useDeleteActivity,
   CLIENT_REQUEST_STAGES,
   CLIENT_REQUEST_STAGE_LABELS,
   CLIENT_REQUEST_STAGE_STYLES,
   SOURCE_LABELS,
-  ACTIVITY_TYPE_LABELS,
-  type ClientRequestStage,
-  type ClientRequestSource,
-  type ClientRequestActivityType,
   type ClientRequestRow,
+  type ClientRequestStage,
 } from "@/features/client-requests/use-client-requests";
 import { useDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
-import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
-import { ClientPicker } from "@/features/clients/client-picker";
 import { formatCurrency } from "@/features/finance/finance";
 import { AttachmentsPanel } from "@/features/documents/attachments-panel";
 import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
+import { ActivityThread } from "@/features/activity/activity-thread";
 import { EntityBreadcrumb, type BreadcrumbSegment } from "@/components/entity-breadcrumb";
 import { confirmDialog } from "@/components/confirm-dialog";
+import { LoadError } from "@/components/load-error";
+import { ActionHint } from "@/components/help-link";
+import { FormField, RequiredNote } from "@/components/form-field";
+import { EditRequestDialog } from "@/features/client-requests/edit-request-dialog";
+import { StartProjectDialog } from "@/features/client-requests/start-project-dialog";
+import { useClientRequestsBoardPath } from "@/features/client-requests/board-path";
+import { ShareDialog } from "@/features/permissions/share-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -53,34 +48,33 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { askLossReason } from "@/features/pipeline/stage-reasons";
 
 export const Route = createFileRoute("/_authenticated/requests/$requestId")({
-  head: () => ({ meta: [{ title: "Client Request — AIMS" }] }),
+  head: () => ({ meta: [{ title: "Client request — AIMS" }] }),
   component: ClientRequestDetail,
 });
 
-function buildRequestRelated(
-  request: ReturnType<typeof useClientRequest>["data"],
-): RelatedRecordItem[] {
+function buildRequestRelated(request: ClientRequestRow | undefined): RelatedRecordItem[] {
   if (!request) return [];
   const items: RelatedRecordItem[] = [];
   if (request.converted_from_lead_id) {
     items.push({
-      label: "Source Lead",
+      label: "Source lead",
       title: request.converted_from_lead_name ?? "Lead",
       to: "/marketing/leads",
     });
   }
   if (request.converted_project_id) {
     items.push({
-      label: "Converted Project",
+      label: "Project",
       title: request.converted_project_name ?? "Project",
       to: `/projects/${request.converted_project_id}`,
     });
   }
   if (request.converted_contract_id) {
     items.push({
-      label: "Converted Contract",
+      label: "Contract",
       title: request.converted_contract_number ?? "Contract",
       to: `/clients/contracts/${request.converted_contract_id}`,
     });
@@ -89,7 +83,8 @@ function buildRequestRelated(
 }
 
 function buildRequestBreadcrumb(
-  request: ReturnType<typeof useClientRequest>["data"],
+  request: ClientRequestRow | undefined,
+  boardPath: string,
 ): BreadcrumbSegment[] {
   if (!request) return [];
   const segments: BreadcrumbSegment[] = [];
@@ -97,65 +92,109 @@ function buildRequestBreadcrumb(
     segments.push({ label: "Leads", to: "/marketing/leads" });
     segments.push({ label: request.converted_from_lead_name ?? "Lead", to: "/marketing/leads" });
   }
-  segments.push({ label: "Client Requests", to: "/requests" });
+  segments.push({ label: "Client requests", to: boardPath });
   segments.push({ label: request.title });
   return segments;
 }
 
+const isClosed = (stage: ClientRequestStage) => stage === "lost" || stage === "withdrawn";
+
 function ClientRequestDetail() {
   const { requestId } = Route.useParams();
   const navigate = useNavigate();
-  const { hasRole, isAdminOrCeo } = useAuth();
+  const perms = usePermissions();
+  const boardPath = useClientRequestsBoardPath();
   const requestQ = useClientRequest(requestId);
   const updateStage = useUpdateClientRequestStage();
   const deleteRequest = useDeleteClientRequest();
   const departmentsQ = useDepartments();
   const [editing, setEditing] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   if (requestQ.isLoading) {
     return (
-      <div className="py-12 flex justify-center">
+      <div className="py-12 flex justify-center" role="status" aria-label="Loading client request">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
+  const status = (requestQ.error as { status?: number } | null)?.status;
+  if (requestQ.isError && status !== 404 && status !== 403) {
+    return (
+      <LoadError
+        what="this client request"
+        error={requestQ.error}
+        onRetry={() => requestQ.refetch()}
+      />
+    );
+  }
   const request = requestQ.data;
-  if (!request) return <div className="text-sm text-muted-foreground">Request not found.</div>;
+  if (!request) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-lg border bg-card p-8 text-center">
+        <p className="text-sm font-medium">
+          This client request doesn't exist or you don't have access to it.
+        </p>
+        <Button size="sm" variant="outline" asChild>
+          <Link to={boardPath}>
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back to Client requests
+          </Link>
+        </Button>
+      </div>
+    );
+  }
 
-  const isIntake = isAdminOrCeo || hasRole("operations");
-  const departmentCode = departmentsQ.data?.find((d) => d.id === request.department_id)?.code;
-  const canManage =
-    isAdminOrCeo ||
-    (request.department_id ? !!departmentCode && hasRole(departmentCode as AppRole) : isIntake);
+  const isIntake = perms.canManageIntake;
+  const departmentCode =
+    request.department_code ?? departmentsQ.data?.find((d) => d.id === request.department_id)?.code;
+  const withDept = { department_code: departmentCode ?? null };
+  const canManage = perms.canEditRequest(withDept);
+  const canOnboard = perms.canOnboardRequest(withDept);
+  const canMove = canManage && !!request.department_id;
+  const started = !!request.converted_project_id || !!request.converted_contract_id;
+  const closed = isClosed(request.stage);
 
-  const changeStage = (stage: ClientRequestStage) => {
-    if (stage === "lost" || stage === "withdrawn") {
-      const reason =
-        window.prompt(`Reason the request was marked ${stage} (optional):`) ?? undefined;
-      updateStage.mutate(
-        { id: request.id, stage, lost_reason: reason },
-        { onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed") },
-      );
-      return;
-    }
+  const offerStart = async () => {
+    if (!canOnboard || started) return;
+    const ok = await confirmDialog({
+      title: "Start the project now?",
+      description: `“${request.title}” is Won. Start its project now, or do it later from this page.`,
+      confirmLabel: "Start project from request",
+      cancelLabel: "Later",
+    });
+    if (ok) setStarting(true);
+  };
+
+  const changeStage = async (stage: ClientRequestStage) => {
+    if (stage === request.stage) return;
+    const reason = isClosed(stage)
+      ? await askLossReason("request", CLIENT_REQUEST_STAGE_LABELS[stage])
+      : undefined;
+    if (reason === null) return;
     updateStage.mutate(
-      { id: request.id, stage },
-      { onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed") },
+      { id: request.id, stage, lost_reason: reason },
+      {
+        onSuccess: () => {
+          toast.success(`Moved to ${CLIENT_REQUEST_STAGE_LABELS[stage]}`);
+          if (stage === "won") void offerStart();
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : "The move didn't save"),
+      },
     );
   };
 
   const handleDelete = async () => {
     const ok = await confirmDialog({
       title: `Delete "${request.title}"?`,
-      description: "This removes the request and its activity log. This can't be undone.",
-      confirmLabel: "Delete",
+      description: "This removes the request and its activity. This can't be undone.",
+      confirmLabel: "Delete client request",
       destructive: true,
     });
     if (!ok) return;
     deleteRequest.mutate(request.id, {
       onSuccess: () => {
-        toast.success("Request deleted");
-        navigate({ to: "/requests" });
+        toast.success("Client request deleted");
+        navigate({ to: boardPath });
       },
       onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
     });
@@ -163,15 +202,18 @@ function ClientRequestDetail() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-2">
-        <EntityBreadcrumb segments={buildRequestBreadcrumb(request)} />
-        <div className="flex gap-1 shrink-0">
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <EntityBreadcrumb segments={buildRequestBreadcrumb(request, boardPath)} />
+        <div className="flex gap-1 shrink-0 flex-wrap">
           {canManage && (
             <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
-              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit request
             </Button>
           )}
-          {isAdminOrCeo && (
+          {canManage && (
+            <ShareDialog resource="client-requests" resourceId={request.id} recordLabel="request" />
+          )}
+          {perms.canManageIntake && (
             <Button
               size="sm"
               variant="ghost"
@@ -184,7 +226,7 @@ function ClientRequestDetail() {
               ) : (
                 <Trash2 className="h-3.5 w-3.5 mr-1" />
               )}
-              Delete
+              Delete request
             </Button>
           )}
         </div>
@@ -192,10 +234,10 @@ function ClientRequestDetail() {
 
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-lg font-semibold">{request.title}</h1>
             <div className="text-xs text-muted-foreground mt-0.5">
-              {request.department_name ?? "Unrouted"}
+              {request.department_name ?? "Not routed yet"}
               {(request.client_name ?? request.prospect_client_name) &&
                 ` · ${request.client_name ?? request.prospect_client_name}${!request.client_name ? " (prospect)" : ""}`}
               {request.service_line_name && ` · ${request.service_line_name}`}
@@ -212,27 +254,42 @@ function ClientRequestDetail() {
               <p className="text-sm text-muted-foreground mt-2 max-w-2xl">{request.description}</p>
             )}
           </div>
-          <div className="flex flex-col items-end gap-2">
-            {canManage && request.department_id ? (
-              <Select
-                value={request.stage}
-                onValueChange={(v) => changeStage(v as ClientRequestStage)}
-              >
-                <SelectTrigger className="h-8 w-[160px] text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CLIENT_REQUEST_STAGES.filter((s) => s !== "new").map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {CLIENT_REQUEST_STAGE_LABELS[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            {canMove ? (
+              <div className="space-y-1">
+                <Label htmlFor="request-stage" className="text-xs text-muted-foreground">
+                  Move to…
+                </Label>
+                <Select
+                  value={request.stage}
+                  onValueChange={(v) => changeStage(v as ClientRequestStage)}
+                  disabled={updateStage.isPending}
+                >
+                  <SelectTrigger id="request-stage" className="h-8 w-[180px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CLIENT_REQUEST_STAGES.filter(
+                      (s) => s !== "new" || request.stage === "new",
+                    ).map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {CLIENT_REQUEST_STAGE_LABELS[s]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             ) : (
-              <Badge className={CLIENT_REQUEST_STAGE_STYLES[request.stage]} variant="secondary">
-                {CLIENT_REQUEST_STAGE_LABELS[request.stage]}
-              </Badge>
+              <>
+                <Badge className={CLIENT_REQUEST_STAGE_STYLES[request.stage]} variant="secondary">
+                  {CLIENT_REQUEST_STAGE_LABELS[request.stage]}
+                </Badge>
+                <ActionHint className="max-w-xs sm:text-right">
+                  {!canManage
+                    ? "Only Operations and the owning department can move requests."
+                    : "Route this request to a department before moving it."}
+                </ActionHint>
+              </>
             )}
             {request.estimated_value != null && (
               <div className="text-sm font-semibold tabular-nums">
@@ -253,59 +310,68 @@ function ClientRequestDetail() {
           </div>
         )}
 
-        {request.stage === "lost" || request.stage === "withdrawn"
-          ? request.lost_reason && (
-              <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
-                Reason: {request.lost_reason}
-              </div>
-            )
-          : null}
+        {closed && request.lost_reason && (
+          <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Why it didn't go ahead:</span>{" "}
+            {request.lost_reason}
+          </div>
+        )}
 
-        {request.stage === "won" && (
-          <div className="mt-3 pt-3 border-t text-xs text-success space-y-0.5">
+        {started ? (
+          <div className="mt-3 pt-3 border-t text-xs text-success space-y-1">
             {request.converted_project_id && (
-              <div>
-                Converted to project{" "}
+              <div className="flex items-center gap-1">
+                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> Project started:{" "}
                 <Link
                   to="/projects/$projectId"
                   params={{ projectId: request.converted_project_id }}
                   className="underline hover:opacity-80"
                 >
-                  {request.converted_project_name}
+                  {request.converted_project_name ?? "open project"}
                 </Link>
               </div>
             )}
             {request.converted_contract_id && (
-              <div>
-                Converted to contract{" "}
+              <div className="flex items-center gap-1">
+                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> Contract:{" "}
                 <Link
                   to="/clients/contracts/$id"
                   params={{ id: request.converted_contract_id }}
                   className="underline hover:opacity-80"
                 >
-                  {request.converted_contract_number ?? request.converted_contract_id}
+                  {request.converted_contract_number ?? "open contract"}
                 </Link>
               </div>
             )}
           </div>
-        )}
-
-        {request.department_id &&
-          request.stage !== "won" &&
-          request.stage !== "lost" &&
-          request.stage !== "withdrawn" &&
-          canManage &&
-          !request.converted_project_id &&
-          !request.converted_contract_id && (
-            <div className="mt-3 pt-3 border-t flex gap-2 flex-wrap">
-              <ConvertToProjectDialog requestId={request.id} defaultClientId={request.client_id} />
-              <ConvertToContractDialog
-                requestId={request.id}
-                defaultClientId={request.client_id}
-                defaultValue={request.estimated_value}
-              />
+        ) : (
+          !closed &&
+          request.department_id && (
+            <div className="mt-3 pt-3 border-t flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              {canOnboard ? (
+                request.stage === "won" ? (
+                  <Button size="sm" onClick={() => setStarting(true)}>
+                    <Rocket className="h-4 w-4 mr-1" /> Start project from request
+                  </Button>
+                ) : (
+                  <>
+                    <Button size="sm" variant="outline" disabled>
+                      <Rocket className="h-4 w-4 mr-1" /> Start project from request
+                    </Button>
+                    <ActionHint topic="start project from request">
+                      You can start the project once the request is Won.
+                    </ActionHint>
+                  </>
+                )
+              ) : (
+                <ActionHint topic="start project from request">
+                  Only the {request.department_name ?? "owning department's"} team can start the
+                  project from this request.
+                </ActionHint>
+              )}
             </div>
-          )}
+          )
+        )}
       </div>
 
       <RelatedRecords
@@ -331,189 +397,12 @@ function ClientRequestDetail() {
       </Tabs>
 
       {editing && <EditRequestDialog request={request} onClose={() => setEditing(false)} />}
+      <StartProjectDialog
+        request={request}
+        open={starting}
+        onOpenChange={(o) => !o && setStarting(false)}
+      />
     </div>
-  );
-}
-
-function EditRequestDialog({
-  request,
-  onClose,
-}: {
-  request: ClientRequestRow;
-  onClose: () => void;
-}) {
-  const [title, setTitle] = useState(request.title);
-  const [source, setSource] = useState<ClientRequestSource>(request.source);
-  const [clientMode, setClientMode] = useState<"existing" | "prospect">(
-    request.client_id ? "existing" : "prospect",
-  );
-  const [clientId, setClientId] = useState(request.client_id ?? "");
-  const [prospectClientName, setProspectClientName] = useState(request.prospect_client_name ?? "");
-  const [contactName, setContactName] = useState(request.contact_name ?? "");
-  const [contactEmail, setContactEmail] = useState(request.contact_email ?? "");
-  const [contactPhone, setContactPhone] = useState(request.contact_phone ?? "");
-  const [serviceLineId, setServiceLineId] = useState(request.service_line_id ?? "");
-  const [estimatedValue, setEstimatedValue] = useState(
-    request.estimated_value != null ? String(request.estimated_value) : "",
-  );
-  const [description, setDescription] = useState(request.description ?? "");
-
-  const clientsQ = useClients();
-  const serviceLinesQ = useServiceLines();
-  const save = useSaveClientRequest();
-
-  const submit = () => {
-    if (!title.trim()) {
-      toast.error("Title is required");
-      return;
-    }
-    save.mutate(
-      {
-        id: request.id,
-        title: title.trim(),
-        source,
-        client_id: clientMode === "existing" ? clientId || undefined : undefined,
-        prospect_client_name:
-          clientMode === "prospect" ? prospectClientName.trim() || undefined : undefined,
-        contact_name: contactName || undefined,
-        contact_email: contactEmail || undefined,
-        contact_phone: contactPhone || undefined,
-        service_line_id: serviceLineId || undefined,
-        estimated_value: estimatedValue ? Number(estimatedValue) : undefined,
-        description: description || undefined,
-      },
-      {
-        onSuccess: () => {
-          toast.success("Request updated");
-          onClose();
-        },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save"),
-      },
-    );
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit request</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Title</Label>
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="What is being requested?"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Source</Label>
-              <Select value={source} onValueChange={(v) => setSource(v as ClientRequestSource)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(SOURCE_LABELS).map(([v, label]) => (
-                    <SelectItem key={v} value={v}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Service line</Label>
-              <Select value={serviceLineId} onValueChange={setServiceLineId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Optional" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(serviceLinesQ.data ?? []).map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center justify-between">
-              <Label>Client (optional)</Label>
-              <button
-                type="button"
-                onClick={() => setClientMode(clientMode === "existing" ? "prospect" : "existing")}
-                className="text-[0.6875rem] text-primary hover:underline"
-              >
-                {clientMode === "existing" ? "+ New company" : "Pick existing client"}
-              </button>
-            </div>
-            {clientMode === "existing" ? (
-              <Select value={clientId} onValueChange={setClientId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Not yet known" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(clientsQ.data ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Input
-                value={prospectClientName}
-                onChange={(e) => setProspectClientName(e.target.value)}
-                placeholder="Company name (not in system yet)"
-              />
-            )}
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label>Contact name</Label>
-              <Input value={contactName} onChange={(e) => setContactName(e.target.value)} />
-            </div>
-            <div>
-              <Label>Contact email</Label>
-              <Input
-                type="email"
-                value={contactEmail}
-                onChange={(e) => setContactEmail(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>Contact phone</Label>
-              <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <Label>Est. value (optional)</Label>
-            <Input
-              type="number"
-              value={estimatedValue}
-              onChange={(e) => setEstimatedValue(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label>Description</Label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={submit} disabled={save.isPending}>
-            {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Save changes
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -521,378 +410,117 @@ function RouteDialog({ requestId }: { requestId: string }) {
   const [open, setOpen] = useState(false);
   const [departmentId, setDepartmentId] = useState("");
   const [assignedToId, setAssignedToId] = useState("");
+  const [error, setError] = useState("");
   const departmentsQ = useDepartments();
   const profilesQ = useProfilesLite();
   const route = useRouteClientRequest();
 
+  const close = () => {
+    setOpen(false);
+    setDepartmentId("");
+    setAssignedToId("");
+    setError("");
+  };
+
   const submit = () => {
     if (!departmentId) {
-      toast.error("Choose a department to route to");
+      setError("Choose the department that will handle this request.");
       return;
     }
     route.mutate(
       { id: requestId, department_id: departmentId, assigned_to_id: assignedToId || undefined },
       {
         onSuccess: () => {
-          toast.success("Request routed");
-          setOpen(false);
+          const name = departmentsQ.data?.find((d) => d.id === departmentId)?.name;
+          toast.success(name ? `Routed to ${name}` : "Client request routed");
+          close();
         },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to route"),
+        onError: (err) => toast.error(err instanceof Error ? err.message : "Routing didn't save"),
       },
     );
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
       <DialogTrigger asChild>
-        <Button size="sm">Route to department</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Route request to a department</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Department</Label>
-            <Select value={departmentId} onValueChange={setDepartmentId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {(departmentsQ.data ?? [])
-                  .filter((d) => d.code !== "operations")
-                  .map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Assign to (optional)</Label>
-            <Select value={assignedToId} onValueChange={setAssignedToId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Unassigned" />
-              </SelectTrigger>
-              <SelectContent>
-                {(profilesQ.data ?? []).map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.full_name ?? p.email}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={submit} disabled={route.isPending}>
-            {route.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Route
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ConvertToProjectDialog({
-  requestId,
-  defaultClientId,
-}: {
-  requestId: string;
-  defaultClientId: string | null;
-}) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [clientId, setClientId] = useState(defaultClientId ?? "");
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const convert = useConvertToProject();
-
-  const submit = () => {
-    if (!defaultClientId && !clientId) {
-      toast.error("Choose a client — a project needs a real client on file");
-      return;
-    }
-    convert.mutate(
-      { requestId, name: name.trim() || undefined, clientId: clientId || undefined, startDate },
-      {
-        onSuccess: () => {
-          toast.success("Converted to project");
-          setOpen(false);
-        },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Conversion failed"),
-      },
-    );
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm">Convert to project</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Convert to project</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Project name (optional)</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Defaults to request title"
-            />
-          </div>
-          {!defaultClientId && (
-            <div>
-              <Label>Client</Label>
-              <ClientPicker value={clientId} onChange={setClientId} />
-            </div>
-          )}
-          <div>
-            <Label>Start date</Label>
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={submit} disabled={convert.isPending}>
-            {convert.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Convert
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ConvertToContractDialog({
-  requestId,
-  defaultClientId,
-  defaultValue,
-}: {
-  requestId: string;
-  defaultClientId: string | null;
-  defaultValue: number | null;
-}) {
-  const [open, setOpen] = useState(false);
-  const [contractNumber, setContractNumber] = useState("");
-  const [billingFrequency, setBillingFrequency] = useState<
-    "one_off" | "monthly" | "quarterly" | "annual"
-  >("monthly");
-  const [clientId, setClientId] = useState(defaultClientId ?? "");
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const convert = useConvertClientRequestToContract();
-
-  const submit = () => {
-    if (!contractNumber.trim()) {
-      toast.error("Contract number is required");
-      return;
-    }
-    if (!defaultClientId && !clientId) {
-      toast.error("Choose a client — a recurring contract needs a real client on file");
-      return;
-    }
-    convert.mutate(
-      {
-        requestId,
-        contractNumber: contractNumber.trim(),
-        billingFrequency,
-        startDate,
-        clientId: clientId || undefined,
-      },
-      {
-        onSuccess: () => {
-          toast.success("Converted to recurring contract");
-          setOpen(false);
-        },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Conversion failed"),
-      },
-    );
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="outline">
-          Convert to recurring contract
+        <Button size="sm">
+          <Send className="h-4 w-4 mr-1" /> Route to department
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Convert to recurring contract</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Contract number</Label>
-            <Input value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} />
-          </div>
-          {!defaultClientId && (
-            <div>
-              <Label>Client</Label>
-              <ClientPicker value={clientId} onChange={setClientId} />
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Billing frequency</Label>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Route to department</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-3">
+            <RequiredNote />
+            <FormField id="route-department" label="Department" required error={error}>
               <Select
-                value={billingFrequency}
-                onValueChange={(v) => setBillingFrequency(v as typeof billingFrequency)}
+                value={departmentId}
+                onValueChange={(v) => {
+                  setDepartmentId(v);
+                  setError("");
+                }}
               >
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger id="route-department" aria-invalid={!!error}>
+                  <SelectValue placeholder="Choose a department…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="one_off">One-off</SelectItem>
-                  <SelectItem value="monthly">Monthly</SelectItem>
-                  <SelectItem value="quarterly">Quarterly</SelectItem>
-                  <SelectItem value="annual">Annual</SelectItem>
+                  {(departmentsQ.data ?? [])
+                    .filter((d) => d.code !== "operations")
+                    .map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <Label>Start date</Label>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-            </div>
+            </FormField>
+            <FormField id="route-assignee" label="Assign to" hint="Optional.">
+              <Select
+                value={assignedToId || "__none__"}
+                onValueChange={(v) => setAssignedToId(v === "__none__" ? "" : v)}
+              >
+                <SelectTrigger id="route-assignee">
+                  <SelectValue placeholder="Unassigned" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Unassigned</SelectItem>
+                  {(profilesQ.data ?? []).map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.full_name ?? p.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
           </div>
-          {defaultValue != null && (
-            <p className="text-xs text-muted-foreground">
-              Contract value defaults to the request's estimated value (
-              {formatCurrency(defaultValue)}).
-            </p>
-          )}
-        </div>
-        <DialogFooter>
-          <Button onClick={submit} disabled={convert.isPending}>
-            {convert.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Convert
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={close}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={route.isPending}>
+              {route.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Route to department
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
 }
 
 function ActivityTab({ requestId, canManage }: { requestId: string; canManage: boolean }) {
-  const activitiesQ = useClientRequestActivities(requestId);
-  const deleteActivity = useDeleteActivity(requestId);
-
   return (
-    <div className="rounded-lg border bg-card p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold">Engagement timeline</div>
-        {canManage && <LogActivityDialog requestId={requestId} />}
-      </div>
-      {activitiesQ.isLoading ? (
-        <div className="py-8 flex justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </div>
-      ) : (activitiesQ.data ?? []).length === 0 ? (
-        <div className="text-xs text-muted-foreground py-4 text-center">
-          No activity logged yet — record calls, emails and meetings here.
-        </div>
-      ) : (
-        <div className="divide-y rounded-md border">
-          {(activitiesQ.data ?? []).map((a) => (
-            <div key={a.id} className="flex items-start gap-3 px-3 py-2">
-              <Badge variant="secondary" className="mt-0.5">
-                {ACTIVITY_TYPE_LABELS[a.type]}
-              </Badge>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm">{a.summary}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  {new Date(a.occurred_at).toLocaleString()}
-                  {a.created_by_name && ` · ${a.created_by_name}`}
-                </div>
-              </div>
-              {canManage && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-xs text-muted-foreground"
-                  onClick={() =>
-                    deleteActivity.mutate(a.id, {
-                      onError: (err) =>
-                        toast.error(err instanceof Error ? err.message : "Failed to delete"),
-                    })
-                  }
-                >
-                  Remove
-                </Button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LogActivityDialog({ requestId }: { requestId: string }) {
-  const [open, setOpen] = useState(false);
-  const [type, setType] = useState<ClientRequestActivityType>("note");
-  const [summary, setSummary] = useState("");
-  const logActivity = useLogActivity(requestId);
-
-  const submit = () => {
-    if (!summary.trim()) {
-      toast.error("Summary is required");
-      return;
-    }
-    logActivity.mutate(
-      { type, summary: summary.trim() },
-      {
-        onSuccess: () => {
-          toast.success("Activity logged");
-          setOpen(false);
-          setSummary("");
-          setType("note");
-        },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to log"),
-      },
-    );
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Plus className="h-4 w-4 mr-1" /> Log activity
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Log engagement activity</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Type</Label>
-            <Select value={type} onValueChange={(v) => setType(v as ClientRequestActivityType)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(ACTIVITY_TYPE_LABELS).map(([v, label]) => (
-                  <SelectItem key={v} value={v}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Summary</Label>
-            <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={3} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={submit} disabled={logActivity.isPending}>
-            {logActivity.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Log
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ActivityThread
+      record={{ kind: "client_request", id: requestId }}
+      canLog={canManage}
+      readOnlyReason="Only the people working on this request can add activity."
+    />
   );
 }

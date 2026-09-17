@@ -61,7 +61,10 @@ export function useWebsiteAnalytics() {
       const raw = await apiJson<{ configured: boolean; snapshot: BackendSnapshot | null }>(
         "/website-analytics/latest",
       );
-      return { configured: raw.configured, snapshot: raw.snapshot ? mapSnapshot(raw.snapshot) : null } satisfies WebsiteAnalyticsLatest;
+      return {
+        configured: raw.configured,
+        snapshot: raw.snapshot ? mapSnapshot(raw.snapshot) : null,
+      } satisfies WebsiteAnalyticsLatest;
     },
   });
 }
@@ -70,7 +73,9 @@ export function useSyncWebsiteAnalyticsNow() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () =>
-      apiJson<{ configured: boolean; synced: boolean }>("/website-analytics/sync-now", { method: "POST" }),
+      apiJson<{ configured: boolean; synced: boolean }>("/website-analytics/sync-now", {
+        method: "POST",
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["website-analytics"] }),
   });
 }

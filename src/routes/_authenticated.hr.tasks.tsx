@@ -1,22 +1,33 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
-import { useDepartments } from "@/features/clients/use-clients-contracts";
+import { z } from "zod";
+import { PageHeader } from "@/components/app-shell";
+import { WithDepartment } from "@/components/nav/with-department";
 import { DepartmentTaskBoard } from "./_authenticated.projects.department";
 
 export const Route = createFileRoute("/_authenticated/hr/tasks")({
-  head: () => ({ meta: [{ title: "HR — Tasks — AIMS" }] }),
+  head: () => ({ meta: [{ title: "Tasks — AIMS" }] }),
+  validateSearch: z.object({ overdue: z.boolean().optional().catch(undefined) }),
   component: HrTasks,
 });
 
 function HrTasks() {
-  const departmentsQ = useDepartments();
-  const dept = departmentsQ.data?.find((d) => d.code === "hr");
-  if (!dept) {
-    return (
-      <div className="py-12 flex justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
-    );
-  }
-  return <DepartmentTaskBoard departmentId={dept.id} />;
+  const { overdue } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  return (
+    <div>
+      <PageHeader
+        title="Tasks"
+        description="Every task on HR projects. Choose Mine to see only yours."
+      />
+      <WithDepartment code="hr">
+        {(dept) => (
+          <DepartmentTaskBoard
+            departmentId={dept.id}
+            overdueOnly={overdue === true}
+            onShowAllTasks={() => navigate({ search: {}, replace: true })}
+          />
+        )}
+      </WithDepartment>
+    </div>
+  );
 }

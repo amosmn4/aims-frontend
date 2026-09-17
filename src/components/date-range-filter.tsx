@@ -23,8 +23,12 @@ const PRESET_LABELS: Record<Preset, string> = {
 
 const PRESETS: Preset[] = ["all", "this_month", "last_30", "this_quarter", "this_year", "custom"];
 
+// Local date parts, not toISOString(), so UTC offsets don't shift the day.
 function toDateOnly(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function rangeForPreset(preset: Preset): DateRange {
