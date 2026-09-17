@@ -17,6 +17,14 @@ import { useAuth } from "@/lib/auth";
 import { formatRelative } from "@/lib/format-date";
 
 import { OwnWorkPanels } from "@/features/my-work/own-work-panels";
+// The department's own pages, so they're on the page as well as in the menu.
+const MARKETING_PAGES = [
+  { to: "/marketing/leads", label: "Leads" },
+  { to: "/marketing/campaigns", label: "Campaigns" },
+  { to: "/marketing/blog", label: "Blog" },
+  { to: "/marketing/website-analytics", label: "Website analytics" },
+] as const;
+
 export const Route = createFileRoute("/_authenticated/marketing/")({
   head: () => ({ meta: [{ title: "Marketing — AIMS" }] }),
   component: MarketingOverview,
@@ -92,6 +100,17 @@ function MarketingOverview() {
         <ViewOnlyBanner area="Marketing" />
       )}
       <OwnWorkPanels departmentCode="marketing" role="marketing" />
+      <nav aria-label="Marketing pages" className="flex flex-wrap gap-2">
+        {MARKETING_PAGES.map((p) => (
+          <Link
+            key={p.to}
+            to={p.to}
+            className="rounded-lg border bg-card px-3 py-2 text-sm hover:border-primary hover:text-primary"
+          >
+            {p.label}
+          </Link>
+        ))}
+      </nav>
 
       {leadsQ.isError ? (
         <LoadError what="leads" error={leadsQ.error} onRetry={() => leadsQ.refetch()} />

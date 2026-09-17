@@ -82,8 +82,8 @@ function BackLink() {
 }
 
 function BlogEditorForm({ post }: { post: BlogPostRow }) {
-  const { isAdminOrCeo, hasRole } = useAuth();
-  const canManage = isAdminOrCeo || hasRole("marketing");
+  const { isAdminOrCeo, hasCapability } = useAuth();
+  const canManage = isAdminOrCeo || hasCapability("publish_blog");
   const navigate = useNavigate();
   const save = useSaveBlogPost();
   const uploadImage = useUploadBlogImage(post.id);

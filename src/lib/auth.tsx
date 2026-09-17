@@ -22,7 +22,8 @@ export type Capability =
   | "submit_reports"
   | "raise_invoices"
   | "manage_tenders"
-  | "log_client_requests";
+  | "log_client_requests"
+  | "publish_blog";
 
 export interface Profile {
   id: string;
@@ -58,6 +59,11 @@ interface AuthContextValue {
   /** Backend-resolved department access (roles + overrides). */
   canReadDepartment: (code: string) => boolean;
   canWriteDepartment: (code: string) => boolean;
+  /** Departments (and Water) this person can work in; more than one means they can switch. */
+  workspaces: WorkspaceCode[];
+  /** The one whose menu and home page they see now. */
+  workspace: WorkspaceCode | null;
+  setWorkspace: (code: WorkspaceCode) => void;
   /** What the person's roles let them do somewhere in AIMS. */
   capabilities: Capability[];
   hasCapability: (key: Capability) => boolean;
@@ -78,6 +84,21 @@ type MeResponse = Profile & {
   viewAs?: boolean;
 };
 
+const WORKSPACE_KEY = "aims:workspace";
+
+/** Remembers the last workspace per person, so switching survives a reload. */
+function readStoredWorkspace(userId: string | null): WorkspaceCode | null {
+  if (!userId || typeof window === "undefined") return null;
+  try {
+    const value = window.localStorage.getItem(`${WORKSPACE_KEY}:${userId}`);
+    return value && WORKSPACE_CODES.includes(value as WorkspaceCode)
+      ? (value as WorkspaceCode)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -85,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [access, setAccess] = useState<DepartmentAccess>({ read: [], write: [] });
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [viewAs, setViewAs] = useState(false);
+  const [, setWorkspaceTick] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const loadProfile = async () => {
@@ -127,6 +149,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAdminOrCeo = roles.includes("system_admin") || roles.includes("ceo");
 
+  // Every department they may open, plus the Water Project when they have it.
+  const workspaces: WorkspaceCode[] = isAdminOrCeo
+    ? []
+    : [
+        ...DEPARTMENT_CODES.filter(
+          (code) => roles.includes(code) || access.read === null || access.read.includes(code),
+        ),
+        ...(roles.includes("water") ? (["water"] as const) : []),
+      ];
+  const stored = readStoredWorkspace(user?.id ?? null);
+  const preferred = stored && workspaces.includes(stored) ? stored : null;
+  const workspace = preferred ?? workspaces[0] ?? null;
+
+  const setWorkspace = (code: WorkspaceCode) => {
+    if (!user) return;
+    try {
+      window.localStorage.setItem(`${WORKSPACE_KEY}:${user.id}`, code);
+    } catch {
+      /* a browser with storage off still switches for this page load */
+    }
+    setWorkspaceTick((n) => n + 1);
+  };
+
   const value: AuthContextValue = {
     session: user,
     user,
@@ -167,6 +212,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     viewAs,
     canReadDepartment: (code) => access.read === null || access.read.includes(code),
     canWriteDepartment: (code) => access.write === null || access.write.includes(code),
+    workspaces,
+    workspace,
+    setWorkspace,
     capabilities,
     hasCapability: (key) => isAdminOrCeo || capabilities.includes(key),
   };
@@ -185,9 +233,10 @@ const DEPARTMENT_HOME: Partial<
   operations: "/operations",
 };
 
-/** One department → its home; Water-only → /water; several or none → /departments. */
+/** The chosen workspace's home; otherwise one department → its home, Water-only → /water. */
 export function homeRouteFor(
   roles: AppRole[],
+  workspace?: WorkspaceCode | null,
 ):
   | "/dashboard"
   | "/departments"
@@ -199,6 +248,7 @@ export function homeRouteFor(
   | "/operations"
   | "/water" {
   if (roles.includes("ceo") || roles.includes("system_admin")) return "/dashboard";
+  if (workspace) return workspace === "water" ? "/water" : DEPARTMENT_HOME[workspace]!;
   const departmentHomes = new Set(
     roles.map((r) => DEPARTMENT_HOME[r]).filter((x): x is NonNullable<typeof x> => !!x),
   );
@@ -208,6 +258,8 @@ export function homeRouteFor(
 }
 
 export type DepartmentCode = "finance" | "hr" | "it" | "marketing" | "tender" | "operations";
+/** A department, or the Water Project, which has its own pages rather than a department. */
+export type WorkspaceCode = DepartmentCode | "water";
 
 const DEPARTMENT_CODES: DepartmentCode[] = [
   "finance",
@@ -217,6 +269,18 @@ const DEPARTMENT_CODES: DepartmentCode[] = [
   "tender",
   "operations",
 ];
+
+const WORKSPACE_CODES: WorkspaceCode[] = [...DEPARTMENT_CODES, "water"];
+
+export const WORKSPACE_LABELS: Record<WorkspaceCode, string> = {
+  finance: "Finance",
+  hr: "Human Resources",
+  it: "Information Technology",
+  marketing: "Marketing",
+  tender: "Tender",
+  operations: "Operations",
+  water: "Water Project",
+};
 
 /** The single department whose menu a person sees, or null (CEO, several departments, or none). */
 export function departmentScopeFor(roles: AppRole[]): DepartmentCode | null {
