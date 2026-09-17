@@ -1,7 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Loader2, Plus, FileText } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { formatDate } from "@/lib/format-date";
+import { PageHeader } from "@/components/app-shell";
+import { FormField, RequiredNote } from "@/components/form-field";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import {
   useFinanceReports,
   useCreateFinanceReport,
@@ -14,6 +20,7 @@ import {
   buildSnapshot,
   defaultPeriodFor,
   defaultTitleFor,
+  type FinanceReportStatus,
   type FinanceReportType,
 } from "@/features/finance/finance-report-snapshot";
 import {
@@ -22,10 +29,12 @@ import {
   useServiceLines,
   useClients,
 } from "@/features/finance/use-finance-data";
+import { useCompanyCurrency } from "@/features/finance/money";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -41,16 +50,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 
 export const Route = createFileRoute("/_authenticated/finance/reports/")({
-  head: () => ({ meta: [{ title: "Finance Reports — AIMS" }] }),
+  head: () => ({ meta: [{ title: "Finance reports — AIMS" }] }),
   component: FinanceReportsIndex,
 });
 
+const localIso = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 function FinanceReportsIndex() {
-  const { roles } = useAuth();
-  const canAuthor = roles.some((r) => ["finance", "ceo", "system_admin"].includes(r));
+  const { user, hasRole, isAdminOrCeo, canWriteDepartment } = useAuth();
+  const canAuthor = canWriteDepartment("finance") && (isAdminOrCeo || hasRole("finance"));
   const reportsQ = useFinanceReports();
+  const [statusFilter, setStatusFilter] = useState<"all" | FinanceReportStatus>("all");
   const authorIds = useMemo(
     () =>
       (reportsQ.data ?? []).flatMap(
@@ -61,67 +75,120 @@ function FinanceReportsIndex() {
   const profilesQ = useAuthorProfiles(authorIds);
   const [openNew, setOpenNew] = useState(false);
 
+  const reports = reportsQ.data ?? [];
+  // My drafts and reports sent back to me come first.
+  const needsMe = (r: (typeof reports)[number]) =>
+    r.created_by === user?.id && (r.status === "draft" || r.status === "changes_requested");
+  const visible = reports
+    .filter((r) => statusFilter === "all" || r.status === statusFilter)
+    .sort((a, b) => Number(needsMe(b)) - Number(needsMe(a)));
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-sm font-semibold">Reports to CEO</div>
-          <div className="text-xs text-muted-foreground">
-            Auto-snapshot metrics + Finance narrative. CEO can view, comment, approve, or request
-            changes.
-          </div>
+      <PageHeader
+        title="Finance reports"
+        description="Reports Finance sends to the CEO. The figures are captured for you; add your commentary, then submit for review."
+        actions={
+          canAuthor ? (
+            <Button onClick={() => setOpenNew(true)}>
+              <Plus className="mr-1 h-4 w-4" /> New finance report
+            </Button>
+          ) : undefined
+        }
+      />
+      {!canAuthor && <ViewOnlyBanner area="finance reports" action="write reports" />}
+
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="w-full sm:w-52">
+          <Label htmlFor="report-status-filter" className="text-xs">
+            Status
+          </Label>
+          <Select
+            value={statusFilter}
+            onValueChange={(v) => setStatusFilter(v as "all" | FinanceReportStatus)}
+          >
+            <SelectTrigger id="report-status-filter">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {(Object.keys(STATUS_LABELS) as FinanceReportStatus[]).map((s) => (
+                <SelectItem key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        {canAuthor && (
-          <Button size="sm" onClick={() => setOpenNew(true)}>
-            <Plus className="h-4 w-4 mr-1" /> New report
-          </Button>
-        )}
       </div>
 
       <div className="rounded-lg border bg-card">
         {reportsQ.isLoading ? (
-          <div className="py-10 flex justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" aria-label="Loading reports" />
           </div>
-        ) : (reportsQ.data ?? []).length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            No reports yet. Finance can create the first report for the CEO to review.
+        ) : reportsQ.isError ? (
+          <LoadError
+            what="finance reports"
+            error={reportsQ.error}
+            onRetry={() => reportsQ.refetch()}
+            className="m-3"
+          />
+        ) : reports.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 p-8 text-sm text-muted-foreground">
+            <span>No finance reports yet</span>
+            {canAuthor && (
+              <Button size="sm" onClick={() => setOpenNew(true)}>
+                <Plus className="mr-1 h-4 w-4" /> New finance report
+              </Button>
+            )}
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 p-8 text-sm text-muted-foreground">
+            <span>No matches</span>
+            <Button size="sm" variant="outline" onClick={() => setStatusFilter("all")}>
+              Clear filters
+            </Button>
           </div>
         ) : (
-          <div className="divide-y">
-            {(reportsQ.data ?? []).map((r) => {
+          <ul className="divide-y">
+            {visible.map((r) => {
               const author = profilesQ.data?.get(r.created_by);
               const reviewer = r.reviewed_by ? profilesQ.data?.get(r.reviewed_by) : null;
               return (
-                <Link
-                  key={r.id}
-                  to="/finance/reports/$id"
-                  params={{ id: r.id }}
-                  className="flex items-center gap-3 p-3 hover:bg-secondary/60 transition-colors"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium truncate">{r.title}</span>
-                      <span
-                        className={`text-[0.625rem] px-1.5 py-0.5 rounded ${STATUS_STYLES[r.status]}`}
-                      >
-                        {STATUS_LABELS[r.status]}
-                      </span>
+                <li key={r.id}>
+                  <Link
+                    to="/finance/reports/$id"
+                    params={{ id: r.id }}
+                    className="flex flex-wrap items-center gap-3 p-3 transition-colors hover:bg-secondary/60"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate text-sm font-medium">{r.title}</span>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-xs ${STATUS_STYLES[r.status]}`}
+                        >
+                          {STATUS_LABELS[r.status]}
+                        </span>
+                        {needsMe(r) && (
+                          <span className="text-xs font-medium text-primary">Needs you</span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {REPORT_TYPE_LABELS[r.report_type] ?? r.report_type} ·{" "}
+                        {formatDate(r.period_start)} – {formatDate(r.period_end)}
+                        {author && <> · By {author.full_name ?? author.email}</>}
+                        {reviewer && <> · Reviewed by {reviewer.full_name ?? reviewer.email}</>}
+                      </div>
                     </div>
-                    <div className="text-[0.6875rem] text-muted-foreground mt-0.5">
-                      {REPORT_TYPE_LABELS[r.report_type]} · Period {r.period_start} → {r.period_end}
-                      {author && <> · By {author.full_name ?? author.email}</>}
-                      {reviewer && <> · Reviewed by {reviewer.full_name ?? reviewer.email}</>}
+                    <div className="shrink-0 text-xs text-muted-foreground">
+                      Created {formatDate(r.created_at)}
                     </div>
-                  </div>
-                  <div className="text-[0.6875rem] text-muted-foreground shrink-0">
-                    {new Date(r.created_at).toLocaleDateString()}
-                  </div>
-                </Link>
+                  </Link>
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
       </div>
 
@@ -130,42 +197,76 @@ function FinanceReportsIndex() {
   );
 }
 
+type ReportErrors = Partial<Record<"start" | "end" | "title", string>>;
+
 function NewReportDialog({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const invoicesQ = useInvoices();
   const paymentsQ = usePayments();
   const slQ = useServiceLines();
   const clientsQ = useClients();
+  const companyCurrency = useCompanyCurrency();
   const create = useCreateFinanceReport();
 
-  const [type, setType] = useState<FinanceReportType>("monthly_financial");
-  const initial = defaultPeriodFor("monthly_financial");
-  const [startStr, setStartStr] = useState(initial.start.toISOString().slice(0, 10));
-  const [endStr, setEndStr] = useState(initial.end.toISOString().slice(0, 10));
-  const [title, setTitle] = useState(
-    defaultTitleFor("monthly_financial", initial.start, initial.end),
-  );
+  const [initial] = useState(() => {
+    const p = defaultPeriodFor("monthly_financial");
+    return {
+      type: "monthly_financial" as FinanceReportType,
+      start: localIso(p.start),
+      end: localIso(p.end),
+      title: defaultTitleFor("monthly_financial", p.start, p.end),
+    };
+  });
+  const [type, setType] = useState<FinanceReportType>(initial.type);
+  const [startStr, setStartStr] = useState(initial.start);
+  const [endStr, setEndStr] = useState(initial.end);
+  const [title, setTitle] = useState(initial.title);
   const [narrative, setNarrative] = useState("");
+  const [errors, setErrors] = useState<ReportErrors>({});
+  const dirty =
+    type !== initial.type ||
+    startStr !== initial.start ||
+    endStr !== initial.end ||
+    title !== initial.title ||
+    !!narrative.trim();
+  const { guardClose } = useUnsavedChanges(dirty);
 
   const dataReady = !!(invoicesQ.data && paymentsQ.data && slQ.data && clientsQ.data);
+  const dataFailed = [invoicesQ, paymentsQ, slQ, clientsQ].find((q) => q.isError);
 
   const onTypeChange = (t: FinanceReportType) => {
     setType(t);
     const p = defaultPeriodFor(t);
-    setStartStr(p.start.toISOString().slice(0, 10));
-    setEndStr(p.end.toISOString().slice(0, 10));
+    setStartStr(localIso(p.start));
+    setEndStr(localIso(p.end));
     setTitle(defaultTitleFor(t, p.start, p.end));
+    setErrors({});
   };
 
   const save = async (submit: boolean) => {
     if (!dataReady) return;
-    const start = new Date(startStr);
-    const end = new Date(endStr);
-    end.setHours(23, 59, 59, 999);
+    const found: ReportErrors = {};
+    if (!startStr) found.start = "Choose the first day of the period";
+    if (!endStr) found.end = "Choose the last day of the period";
+    else if (startStr && endStr < startStr) found.end = "The end can't be before the start";
+    if (!title.trim()) found.title = "Give the report a title";
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
+    if (submit) {
+      const ok = await confirmDialog({
+        title: "Send this report to the CEO?",
+        description: "You can't edit it again unless the CEO asks for changes.",
+        confirmLabel: "Submit to CEO",
+      });
+      if (!ok) return;
+    }
+    const start = new Date(`${startStr}T00:00:00`);
+    const end = new Date(`${endStr}T23:59:59.999`);
     const snapshot = buildSnapshot({
       type,
       periodStart: start,
       periodEnd: end,
+      currency: companyCurrency,
       invoices: invoicesQ.data!,
       payments: paymentsQ.data!,
       serviceLines: slQ.data!,
@@ -176,7 +277,7 @@ function NewReportDialog({ onClose }: { onClose: () => void }) {
         report_type: type,
         period_start: startStr,
         period_end: endStr,
-        title,
+        title: title.trim(),
         narrative,
         snapshot,
         submit,
@@ -190,16 +291,19 @@ function NewReportDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+    <Dialog open onOpenChange={(o) => !o && guardClose(onClose)}>
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>New finance report</DialogTitle>
+          <DialogDescription>
+            Figures for the period are captured from invoices and payments in {companyCurrency}.
+          </DialogDescription>
         </DialogHeader>
+        <RequiredNote />
         <div className="space-y-3">
-          <div>
-            <Label className="text-xs">Report type</Label>
+          <FormField id="new-report-type" label="Report type" required>
             <Select value={type} onValueChange={(v) => onTypeChange(v as FinanceReportType)}>
-              <SelectTrigger>
+              <SelectTrigger id="new-report-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -212,33 +316,70 @@ function NewReportDialog({ onClose }: { onClose: () => void }) {
                 )}
               </SelectContent>
             </Select>
+          </FormField>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FormField id="new-report-start" label="Period start" required error={errors.start}>
+              <Input
+                id="new-report-start"
+                type="date"
+                value={startStr}
+                aria-invalid={!!errors.start}
+                onChange={(e) => setStartStr(e.target.value)}
+              />
+            </FormField>
+            <FormField id="new-report-end" label="Period end" required error={errors.end}>
+              <Input
+                id="new-report-end"
+                type="date"
+                value={endStr}
+                min={startStr || undefined}
+                aria-invalid={!!errors.end}
+                onChange={(e) => setEndStr(e.target.value)}
+              />
+            </FormField>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className="text-xs">Period start</Label>
-              <Input type="date" value={startStr} onChange={(e) => setStartStr(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Period end</Label>
-              <Input type="date" value={endStr} onChange={(e) => setEndStr(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <Label className="text-xs">Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-          <div>
-            <Label className="text-xs">Narrative / commentary (optional at draft)</Label>
+          <FormField id="new-report-title" label="Title" required error={errors.title}>
+            <Input
+              id="new-report-title"
+              value={title}
+              aria-invalid={!!errors.title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </FormField>
+          <FormField
+            id="new-report-narrative"
+            label="Finance commentary"
+            hint="You can add this later, before you submit."
+          >
             <Textarea
+              id="new-report-narrative"
               rows={5}
               value={narrative}
               onChange={(e) => setNarrative(e.target.value)}
-              placeholder="Key highlights, variances vs. plan, risks, actions taken…"
+              placeholder="Key highlights, differences from plan, risks, actions taken…"
             />
-          </div>
+          </FormField>
+          {dataFailed ? (
+            <LoadError
+              what="the figures for this report"
+              error={dataFailed.error}
+              onRetry={() => {
+                void invoicesQ.refetch();
+                void paymentsQ.refetch();
+                void slQ.refetch();
+                void clientsQ.refetch();
+              }}
+            />
+          ) : (
+            !dataReady && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading the latest figures…
+              </p>
+            )
+          )}
         </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={create.isPending}>
+        <DialogFooter className="gap-2">
+          <Button variant="ghost" onClick={() => guardClose(onClose)} disabled={create.isPending}>
             Cancel
           </Button>
           <Button
@@ -249,6 +390,7 @@ function NewReportDialog({ onClose }: { onClose: () => void }) {
             Save as draft
           </Button>
           <Button onClick={() => save(true)} disabled={!dataReady || create.isPending}>
+            {create.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
             Submit to CEO
           </Button>
         </DialogFooter>

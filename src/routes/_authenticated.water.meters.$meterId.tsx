@@ -1,6 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
-import { ArrowLeft, Droplets, Loader2 } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useState, type ReactNode } from "react";
+import { toast } from "sonner";
+import { ArrowLeft, Droplets, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -14,13 +15,30 @@ import {
 import {
   useWaterMeterDetail,
   useWaterReadingsWithDelta,
+  useDeleteWaterMeter,
+  useDeleteWaterReading,
+  useCanManageWater,
   vendingHealth,
   VENDING_HEALTH_LABELS,
   VENDING_HEALTH_BADGE_STYLES,
   WATER_METER_TYPE_LABELS,
   WATER_VENDING_SYSTEM_LABELS,
+  type WaterMeterDetail,
 } from "@/features/water/use-water";
+import { MeterFormDialog, type MeterFormValue } from "@/features/water/meter-form-dialog";
+import { ReadingFormDialog, type ReadingFormValue } from "@/features/water/reading-form-dialog";
+import { ListEmpty, TermInfo, WithTerm, formatPeriodKey } from "@/features/water/water-ui";
+import { RowActions } from "@/components/row-actions";
+import {
+  confirmDeleteMeter,
+  confirmDeleteReading,
+  deleteErrorToast,
+} from "@/features/water/water-delete";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
+import { formatDate, formatDateTime } from "@/lib/format-date";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -37,14 +55,44 @@ export const Route = createFileRoute("/_authenticated/water/meters/$meterId")({
 
 const MONTH_OPTIONS = [3, 6, 12, 24];
 
-function fmtDate(d: string | null) {
-  return d ? new Date(d).toLocaleDateString() : "—";
+function toFormValue(d: WaterMeterDetail): MeterFormValue {
+  return {
+    id: d.id,
+    meter_number: d.meter_number,
+    meter_type: d.meter_type,
+    name: d.name,
+    location: d.location,
+    customer_id: d.customer?.id ?? null,
+    customer_name: d.customer?.name ?? null,
+    plot_no: d.plot_no,
+    installed_at: d.installed_at,
+    zone_id: d.zone?.id ?? null,
+    is_active: d.is_active,
+    vending_system: d.vending_system,
+    replaces_meter_id: d.replaces_meter_id,
+  };
+}
+
+function BackLink() {
+  return (
+    <Link
+      to="/water/meters"
+      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+    >
+      <ArrowLeft className="h-3.5 w-3.5" /> Back to Meters Registry
+    </Link>
+  );
 }
 
 function MeterDetailPage() {
   const { meterId } = Route.useParams();
   const [months, setMonths] = useState(6);
   const detailQ = useWaterMeterDetail(meterId, months);
+  const canManage = useCanManageWater();
+  const navigate = useNavigate();
+  const deleteMeter = useDeleteWaterMeter();
+  const [editOpen, setEditOpen] = useState(false);
+  const [readingDialog, setReadingDialog] = useState<ReadingFormValue | "new" | null>(null);
 
   if (detailQ.isLoading) {
     return (
@@ -54,49 +102,76 @@ function MeterDetailPage() {
     );
   }
   const d = detailQ.data;
-  if (!d) {
+  if (detailQ.isError || !d) {
     return (
-      <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">
-        Meter not found.
+      <div className="space-y-4">
+        <BackLink />
+        <LoadError what="this meter" error={detailQ.error} onRetry={() => detailQ.refetch()} />
       </div>
     );
   }
 
   const isReadingMeter = d.meter_type !== "household";
+  const canRecordReading = canManage && isReadingMeter && d.is_active;
   const health = vendingHealth(d.totals.last_vend_at);
   const avgPerVend =
     !isReadingMeter && d.totals.transaction_count > 0
       ? d.totals.revenue / d.totals.transaction_count
       : 0;
+  const monthly = d.monthly.map((m) => ({ ...m, month: formatPeriodKey(m.month) }));
+
+  const handleDelete = async () => {
+    const ok = await confirmDeleteMeter({
+      meter_number: d.meter_number,
+      vend_count: isReadingMeter ? 0 : d.totals.transaction_count,
+      reading_count: isReadingMeter ? d.totals.transaction_count : 0,
+    });
+    if (!ok) return;
+    deleteMeter.mutate(d.id, {
+      onSuccess: () => {
+        toast.success(`Meter ${d.meter_number} deleted`);
+        navigate({ to: "/water/meters" });
+      },
+      onError: deleteErrorToast,
+    });
+  };
 
   return (
     <div className="space-y-4">
-      <Link
-        to="/water/meters"
-        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" /> Back to Meters Registry
-      </Link>
+      <BackLink />
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold flex items-center gap-2">
-            <Droplets className="h-5 w-5 text-primary" />
-            <span className="font-mono">{d.meter_number}</span>
+          <h1 className="text-lg font-semibold flex flex-wrap items-center gap-2">
+            <Droplets className="h-5 w-5 text-primary" aria-hidden="true" />
+            <span>
+              Meter <span className="font-mono">{d.meter_number}</span>
+            </span>
             {d.name && <span className="text-muted-foreground font-normal">— {d.name}</span>}
           </h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {isReadingMeter
+              ? "This meter's dial readings, how much water passed through it, and its details."
+              : "This meter's purchases, usage trend and details."}
+          </p>
           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-            <Badge variant="secondary">{WATER_METER_TYPE_LABELS[d.meter_type]}</Badge>
-            <Badge
-              className={
-                d.vending_system === "mpaya"
-                  ? "bg-accent/10 text-accent"
-                  : "bg-primary/10 text-primary"
-              }
-              variant="secondary"
-            >
-              {WATER_VENDING_SYSTEM_LABELS[d.vending_system]}
-            </Badge>
+            <span className="inline-flex items-center">
+              <Badge variant="secondary">{WATER_METER_TYPE_LABELS[d.meter_type]} meter</Badge>
+              <TermInfo term={d.meter_type} />
+            </span>
+            <span className="inline-flex items-center">
+              <Badge
+                className={
+                  d.vending_system === "mpaya"
+                    ? "bg-accent/10 text-accent"
+                    : "bg-primary/10 text-primary"
+                }
+                variant="secondary"
+              >
+                {WATER_VENDING_SYSTEM_LABELS[d.vending_system]}
+              </Badge>
+              <TermInfo term="vending" />
+            </span>
             <Badge
               className={
                 d.is_active
@@ -104,7 +179,7 @@ function MeterDetailPage() {
                   : "bg-muted text-muted-foreground"
               }
             >
-              {d.is_active ? "Active" : "Inactive"}
+              {d.is_active ? "Active (in use)" : "Inactive (not in use)"}
             </Badge>
             {!isReadingMeter && (
               <Badge className={VENDING_HEALTH_BADGE_STYLES[health]}>
@@ -113,27 +188,79 @@ function MeterDetailPage() {
             )}
           </div>
         </div>
-        <div className="w-32">
-          <Label className="text-xs">Trend period</Label>
-          <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
-            <SelectTrigger className="h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MONTH_OPTIONS.map((m) => (
-                <SelectItem key={m} value={String(m)}>
-                  {m} months
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap items-end gap-2">
+          {canManage && (
+            <>
+              {canRecordReading && (
+                <Button size="sm" onClick={() => setReadingDialog("new")}>
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Record reading
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant={canRecordReading ? "outline" : "default"}
+                onClick={() => setEditOpen(true)}
+              >
+                <Pencil className="h-3.5 w-3.5 mr-1" /> Edit meter
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                onClick={handleDelete}
+                disabled={deleteMeter.isPending}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete meter
+              </Button>
+            </>
+          )}
+          <div className="w-32">
+            <Label htmlFor="meter-trend-period" className="text-xs">
+              Trend period
+            </Label>
+            <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
+              <SelectTrigger id="meter-trend-period" className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTH_OPTIONS.map((m) => (
+                  <SelectItem key={m} value={String(m)}>
+                    {m} months
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
+      {!canManage && <ViewOnlyBanner area="the Water Project" />}
+      {canManage && isReadingMeter && !d.is_active && (
+        <p className="text-xs text-muted-foreground">
+          This meter is inactive, so it takes no new readings. Edit the meter and switch it to
+          Active if it is back in use.
+        </p>
+      )}
+
+      <MeterFormDialog
+        value={editOpen ? toFormValue(d) : null}
+        onClose={() => setEditOpen(false)}
+      />
+      <ReadingFormDialog
+        value={readingDialog}
+        meterId={d.id}
+        onClose={() => setReadingDialog(null)}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard
-          label={isReadingMeter ? "Lifetime volume" : "Lifetime units sold"}
-          value={d.totals.units_sold.toLocaleString()}
+          label={
+            isReadingMeter ? (
+              <WithTerm term="m3">Lifetime volume (m³)</WithTerm>
+            ) : (
+              <WithTerm term="units">Lifetime units sold</WithTerm>
+            )
+          }
+          value={`${d.totals.units_sold.toLocaleString()} m³`}
         />
         {isReadingMeter ? (
           <StatCard label="Readings logged" value={d.totals.transaction_count.toLocaleString()} />
@@ -147,12 +274,12 @@ function MeterDetailPage() {
           />
         )}
         <StatCard
-          label={isReadingMeter ? "Readings" : "Transactions"}
+          label={isReadingMeter ? "Readings" : "Purchases"}
           value={d.totals.transaction_count.toLocaleString()}
         />
         <StatCard
-          label={isReadingMeter ? "Last reading" : "Last vend"}
-          value={fmtDate(d.totals.last_vend_at)}
+          label={isReadingMeter ? "Last reading" : "Last purchase"}
+          value={formatDate(d.totals.last_vend_at)}
         />
       </div>
 
@@ -165,7 +292,19 @@ function MeterDetailPage() {
         ) : (
           <div>
             <div className="text-xs text-muted-foreground">Customer</div>
-            <div className="font-medium">{d.customer?.name ?? "Unassigned"}</div>
+            <div className="font-medium">
+              {d.customer ? (
+                <Link
+                  to="/water/customers/$customerId"
+                  params={{ customerId: d.customer.id }}
+                  className="text-primary hover:underline"
+                >
+                  {d.customer.name}
+                </Link>
+              ) : (
+                "Unassigned"
+              )}
+            </div>
           </div>
         )}
         <div>
@@ -182,11 +321,11 @@ function MeterDetailPage() {
         )}
         <div>
           <div className="text-xs text-muted-foreground">Installed</div>
-          <div className="font-medium">{fmtDate(d.installed_at)}</div>
+          <div className="font-medium">{formatDate(d.installed_at)}</div>
         </div>
         {(d.replaces_meter || d.replaced_by_meter) && (
           <div>
-            <div className="text-xs text-muted-foreground">Replacement lineage</div>
+            <div className="text-xs text-muted-foreground">Replacement</div>
             <div className="font-medium space-y-0.5">
               {d.replaces_meter && (
                 <div>
@@ -223,15 +362,17 @@ function MeterDetailPage() {
           {isReadingMeter
             ? d.totals.transaction_count === 0
               ? "No readings logged yet for this meter."
-              : `${d.totals.transaction_count} reading${d.totals.transaction_count === 1 ? "" : "s"} logged, totalling ${d.totals.units_sold.toLocaleString()} units drawn over that time. Each figure below is the delta between consecutive readings — last reading to current reading — not a raw dial value.`
+              : `${d.totals.transaction_count} reading${d.totals.transaction_count === 1 ? "" : "s"} logged, totalling ${d.totals.units_sold.toLocaleString()} m³ over that time. Each figure below is the change since the previous reading, not the raw dial value.`
             : d.totals.transaction_count === 0
-              ? "No vending activity recorded yet for this meter."
-              : `Averaging ${avgPerVend.toLocaleString(undefined, { style: "currency", currency: "KES" })} per transaction across ${d.totals.transaction_count} purchase${d.totals.transaction_count === 1 ? "" : "s"}. ${
-                  health === "active"
-                    ? "Vending consistently — no action needed."
-                    : health === "slowing"
-                      ? "Purchases have slowed over the last month — worth a check-in."
-                      : "No purchases in over 90 days — check whether the meter is faulty or the customer has moved on."
+              ? "No purchases recorded yet for this meter."
+              : `Averaging ${avgPerVend.toLocaleString(undefined, { style: "currency", currency: "KES" })} per purchase across ${d.totals.transaction_count} purchase${d.totals.transaction_count === 1 ? "" : "s"}. ${
+                  !d.is_active
+                    ? "This meter is inactive (not in use); its past purchases are kept for reporting."
+                    : health === "active"
+                      ? "Buying tokens regularly — no action needed."
+                      : health === "slowing"
+                        ? "Purchases have slowed over the last month — worth a check-in."
+                        : "No purchases in over 90 days — check whether the meter is faulty or the customer has moved on."
                 }`}
         </p>
       </div>
@@ -244,16 +385,16 @@ function MeterDetailPage() {
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={d.monthly} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
+            <LineChart data={monthly} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} />
-              <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} />
+              <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
               <Line
                 type="monotone"
                 dataKey="units_sold"
-                name={isReadingMeter ? "Volume" : "Units sold"}
+                name={isReadingMeter ? "Volume (m³)" : "Units sold (m³)"}
                 stroke="#0F7A78"
                 strokeWidth={2}
               />
@@ -261,7 +402,7 @@ function MeterDetailPage() {
                 <Line
                   type="monotone"
                   dataKey="revenue"
-                  name="Revenue"
+                  name="Revenue (KES)"
                   stroke="#B9762A"
                   strokeWidth={2}
                 />
@@ -272,29 +413,38 @@ function MeterDetailPage() {
       </div>
 
       {isReadingMeter ? (
-        <MeterReadingLog meterId={d.id} />
+        <MeterReadingLog
+          meterId={d.id}
+          canManage={canManage}
+          onEdit={setReadingDialog}
+          onAdd={canRecordReading ? () => setReadingDialog("new") : undefined}
+        />
       ) : (
         <div className="rounded-lg border bg-card overflow-hidden">
-          <div className="p-4 pb-0 text-sm font-semibold">Recent transactions</div>
+          <div className="p-4 pb-0 text-sm font-semibold">Recent purchases</div>
           {d.recent_usage.length === 0 ? (
             <div className="text-xs text-muted-foreground py-8 text-center">
-              No transactions yet.
+              No purchases yet. They appear here after a usage file is uploaded.
             </div>
           ) : (
             <div className="overflow-x-auto mt-3">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-xs text-muted-foreground">
-                    <th className="px-4 py-2 font-medium">Date</th>
+                    <th className="px-4 py-2 font-medium">Date & time</th>
                     <th className="px-4 py-2 font-medium">Customer</th>
-                    <th className="px-4 py-2 font-medium text-right">Units</th>
-                    <th className="px-4 py-2 font-medium text-right">Amount</th>
+                    <th className="px-4 py-2 font-medium text-right">
+                      <WithTerm term="units">Units (m³)</WithTerm>
+                    </th>
+                    <th className="px-4 py-2 font-medium text-right">Amount (KES)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {d.recent_usage.map((r) => (
                     <tr key={r.id} className="border-b last:border-0">
-                      <td className="px-4 py-2 text-xs">{fmtDate(r.recorded_at)}</td>
+                      <td className="px-4 py-2 text-xs whitespace-nowrap">
+                        {formatDateTime(r.recorded_at)}
+                      </td>
                       <td className="px-4 py-2 text-xs">{r.customer_name}</td>
                       <td className="px-4 py-2 text-xs text-right tabular-nums">{r.units_sold}</td>
                       <td className="px-4 py-2 text-xs text-right tabular-nums">
@@ -312,9 +462,28 @@ function MeterDetailPage() {
   );
 }
 
-function MeterReadingLog({ meterId }: { meterId: string }) {
+function MeterReadingLog({
+  meterId,
+  canManage,
+  onEdit,
+  onAdd,
+}: {
+  meterId: string;
+  canManage: boolean;
+  onEdit: (reading: ReadingFormValue) => void;
+  onAdd?: () => void;
+}) {
   const readingsQ = useWaterReadingsWithDelta({ meterId });
+  const deleteReading = useDeleteWaterReading();
   const rows = readingsQ.data ?? [];
+
+  const handleDelete = async (r: (typeof rows)[number]) => {
+    if (!(await confirmDeleteReading(r))) return;
+    deleteReading.mutate(r.id, {
+      onSuccess: () => toast.success("Reading deleted"),
+      onError: deleteErrorToast,
+    });
+  };
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
@@ -323,36 +492,66 @@ function MeterReadingLog({ meterId }: { meterId: string }) {
         <div className="py-8 flex justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
+      ) : readingsQ.isError ? (
+        <LoadError
+          what="readings"
+          error={readingsQ.error}
+          onRetry={() => readingsQ.refetch()}
+          className="m-4"
+        />
       ) : rows.length === 0 ? (
-        <div className="text-xs text-muted-foreground py-8 text-center">
-          No readings logged yet.
-        </div>
+        <ListEmpty
+          message="No readings yet"
+          action={
+            onAdd ? (
+              <Button size="sm" onClick={onAdd}>
+                <Plus className="h-4 w-4 mr-1" /> Record reading
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="overflow-x-auto mt-3">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
                 <th className="px-4 py-2 font-medium">Date & time</th>
-                <th className="px-4 py-2 font-medium text-right">Reading</th>
-                <th className="px-4 py-2 font-medium text-right">Usage since last</th>
+                <th className="px-4 py-2 font-medium text-right">Reading (m³)</th>
+                <th className="px-4 py-2 font-medium text-right">Used since last (m³)</th>
                 <th className="px-4 py-2 font-medium">Notes</th>
+                {canManage && (
+                  <th className="px-4 py-2 w-20">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="border-b last:border-0">
-                  <td className="px-4 py-2 text-xs">{new Date(r.reading_date).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-xs whitespace-nowrap">
+                    {formatDateTime(r.reading_date)}
+                  </td>
                   <td className="px-4 py-2 text-xs text-right tabular-nums">
                     {r.value.toLocaleString()}
                   </td>
                   <td className="px-4 py-2 text-xs text-right tabular-nums">
                     {r.delta === null ? (
-                      <span className="text-muted-foreground">first reading</span>
+                      <span className="text-muted-foreground">First reading</span>
                     ) : (
                       `+${r.delta.toLocaleString()}`
                     )}
                   </td>
                   <td className="px-4 py-2 text-xs text-muted-foreground">{r.notes ?? "—"}</td>
+                  {canManage && (
+                    <td className="px-2 py-1">
+                      <RowActions
+                        label={`reading of ${r.value.toLocaleString()} on ${formatDateTime(r.reading_date)}`}
+                        onEdit={() => onEdit(r)}
+                        onDelete={() => handleDelete(r)}
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -363,7 +562,7 @@ function MeterReadingLog({ meterId }: { meterId: string }) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ label, value }: { label: ReactNode; value: string }) {
   return (
     <div className="rounded-lg border bg-card p-3">
       <div className="text-xs text-muted-foreground">{label}</div>

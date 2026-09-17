@@ -6,6 +6,7 @@ import {
   INVENTORY_STATUS_LABELS,
   type InventoryItemRow,
 } from "./use-inventory";
+import { formatDateTime } from "@/lib/format-date";
 
 export function exportInventoryPdf(items: InventoryItemRow[], filterSummary?: string) {
   const doc = new jsPDF({ unit: "pt", format: "a4", orientation: "landscape" });
@@ -18,11 +19,11 @@ export function exportInventoryPdf(items: InventoryItemRow[], filterSummary?: st
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.text("Computer Inventory", margin, 26);
+  doc.text("Inventory", margin, 26);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.text(
-    `${filterSummary ? filterSummary + "  ·  " : ""}${items.length} item${items.length === 1 ? "" : "s"}  ·  Generated ${new Date().toLocaleString()}`,
+    `${filterSummary ? filterSummary + "  ·  " : ""}${items.length} item${items.length === 1 ? "" : "s"}  ·  Generated ${formatDateTime(new Date())}`,
     margin,
     42,
   );
@@ -38,7 +39,7 @@ export function exportInventoryPdf(items: InventoryItemRow[], filterSummary?: st
       INVENTORY_CATEGORY_LABELS[i.category],
       INVENTORY_CONDITION_LABELS[i.condition],
       INVENTORY_STATUS_LABELS[i.status],
-      i.assigned_to ?? "—",
+      [i.assigned_user_name, i.assigned_to].filter(Boolean).join("\n") || "—",
       i.office_name ?? "—",
       i.serial_number ?? "—",
     ]),
@@ -54,7 +55,7 @@ export function exportInventoryPdf(items: InventoryItemRow[], filterSummary?: st
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(140, 140, 140);
-    doc.text(`Computer Inventory  ·  Page ${i} of ${totalPages}`, pageW / 2, pageH - 16, {
+    doc.text(`Inventory  ·  Page ${i} of ${totalPages}`, pageW / 2, pageH - 16, {
       align: "center",
     });
   }

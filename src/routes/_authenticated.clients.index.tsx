@@ -1,21 +1,33 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { z } from "zod";
 import { Loader2, Plus, Pencil, Trash2, Users, Mail, Phone, Star } from "lucide-react";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
-import { useClients, useClientFacets } from "@/features/finance/use-finance-data";
+import {
+  useClients,
+  useClientFacets,
+  type Client,
+  type ClientLifecycle,
+  type ClientRelationship,
+} from "@/features/finance/use-finance-data";
 import {
   useClientContacts,
-  useSaveClient,
+  useClientPermissions,
   useDeleteClient,
   useSaveContact,
   useDeleteContact,
   useProfilesLite,
   type ClientContactRow,
 } from "@/features/clients/use-clients-contracts";
+import { ClientFormDialog } from "@/features/clients/client-form-dialog";
+import { FormField } from "@/components/form-field";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
+import { RowActions } from "@/components/row-actions";
 import { usePagination } from "@/hooks/use-pagination";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { PaginationBar } from "@/components/pagination-bar";
-import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +35,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -36,54 +49,76 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
+const searchSchema = z.object({
+  q: z.preprocess((v) => (v == null || v === "" ? undefined : String(v)), z.string().optional()),
+});
+
 export const Route = createFileRoute("/_authenticated/clients/")({
+  validateSearch: searchSchema,
   component: ClientsList,
 });
 
-type ClientDraft = {
-  id?: string;
-  name: string;
-  code: string;
-  country: string;
-  currency_code: string;
-  industry: string;
-  segment: string;
-  account_manager_id: string;
-  is_active: boolean;
-};
-const emptyClient: ClientDraft = {
-  name: "",
-  code: "",
-  country: "",
-  currency_code: "USD",
-  industry: "",
-  segment: "",
-  account_manager_id: "",
-  is_active: true,
+const LIFECYCLE_PILLS: Record<ClientLifecycle, { label: string; className: string }> = {
+  active: { label: "Active", className: "bg-success/15 text-success" },
+  past: { label: "Past client", className: "bg-muted text-muted-foreground" },
+  prospect: { label: "Prospect", className: "bg-primary/10 text-primary" },
 };
 
+const RELATIONSHIP_PILLS: Record<ClientRelationship, { label: string; className: string } | null> =
+  {
+    recurring: { label: "Recurring", className: "bg-primary/10 text-primary" },
+    one_off: { label: "One-off", className: "bg-accent/15 text-accent" },
+    none: null,
+  };
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function ClientsList() {
-  const { isAdminOrCeo, hasRole } = useAuth();
-  const canManage = isAdminOrCeo || hasRole("finance") || hasRole("hr");
-  const [search, setSearch] = useState("");
+  const { canCreateClient, canEditClient: canManage } = useClientPermissions();
+  const { q: urlQuery } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const [search, setSearch] = useState(urlQuery ?? "");
   const [industry, setIndustry] = useState("all");
   const [segment, setSegment] = useState("all");
   const { page, pageSize, setPage, setPageSize } = usePagination(25);
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
+  const writtenQuery = useRef(urlQuery ?? "");
+
+  // Keep ?q= in step with the typed search so the page can be shared or refreshed.
+  useEffect(() => {
+    if (debouncedSearch === (urlQuery ?? "")) return;
+    writtenQuery.current = debouncedSearch;
+    navigate({ search: { q: debouncedSearch || undefined }, replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to typing
+  }, [debouncedSearch]);
+
+  // A link such as /clients?q=Acme fills the search box.
+  useEffect(() => {
+    if ((urlQuery ?? "") === writtenQuery.current) return;
+    writtenQuery.current = urlQuery ?? "";
+    setSearch(urlQuery ?? "");
+    setPage(1);
+  }, [urlQuery, setPage]);
+
+  const clearSearch = () => {
+    setSearch("");
+    setPage(1);
+  };
 
   const clientsQ = useClients(
     {
       industry: industry === "all" ? undefined : industry,
       segment: segment === "all" ? undefined : segment,
-      q: search.trim() || undefined,
+      q: debouncedSearch || undefined,
     },
     { page, pageSize },
   );
+  const isFiltered = !!search.trim() || industry !== "all" || segment !== "all";
   const facetsQ = useClientFacets();
   const profilesQ = useProfilesLite();
-  const save = useSaveClient();
   const del = useDeleteClient();
-
-  const [editing, setEditing] = useState<ClientDraft | null>(null);
+  // null opens a new client; a client opens it for editing.
+  const [form, setForm] = useState<{ client: Client | null } | null>(null);
   const [contactsFor, setContactsFor] = useState<{ id: string; name: string } | null>(null);
 
   const industries = facetsQ.data?.industries ?? [];
@@ -104,42 +139,17 @@ function ClientsList() {
     return m;
   }, [profilesQ.data]);
 
-  const submit = async () => {
-    if (!editing) return;
-    if (!editing.name.trim()) {
-      toast.error("Name is required");
-      return;
-    }
-    try {
-      await save.mutateAsync({
-        id: editing.id,
-        name: editing.name.trim(),
-        code: editing.code.trim() || null,
-        country: editing.country.trim() || null,
-        currency_code: editing.currency_code.trim() || "USD",
-        industry: editing.industry.trim() || null,
-        segment: editing.segment.trim() || null,
-        account_manager_id: editing.account_manager_id || null,
-        is_active: editing.is_active,
-      });
-      toast.success(editing.id ? "Client updated" : "Client added");
-      setEditing(null);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
-    }
-  };
-
   const remove = async (id: string, name: string) => {
     const ok = await confirmDialog({
       title: `Delete ${name}?`,
-      description: "Contracts referencing this client will block deletion.",
-      confirmLabel: "Delete",
+      description: "A client with contracts can't be deleted.",
+      confirmLabel: "Delete client",
       destructive: true,
     });
     if (!ok) return;
     try {
       await del.mutateAsync(id);
-      toast.success("Deleted");
+      toast.success("Client deleted");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Cannot delete — client is in use");
     }
@@ -149,7 +159,8 @@ function ClientsList() {
     <div className="space-y-3">
       <div className="rounded-lg border bg-card p-3 flex gap-2 flex-wrap items-center">
         <Input
-          placeholder="Search name or code…"
+          placeholder="Search name, code, email or phone"
+          aria-label="Search clients"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -196,16 +207,34 @@ function ClientsList() {
           </SelectContent>
         </Select>
         <div className="flex-1" />
-        <Button size="sm" onClick={() => setEditing({ ...emptyClient })}>
-          <Plus className="h-4 w-4 mr-1" /> New client
-        </Button>
+        {canCreateClient && (
+          <Button size="sm" onClick={() => setForm({ client: null })}>
+            <Plus className="h-4 w-4 mr-1" /> New client
+          </Button>
+        )}
       </div>
+      {!canCreateClient ? (
+        <ViewOnlyBanner area="clients" action="add or edit clients" />
+      ) : (
+        !canManage && (
+          <p className="text-xs text-muted-foreground">
+            Only Finance and HR can edit or delete a client. You can add new clients and contacts.
+          </p>
+        )
+      )}
 
       <div className="rounded-lg border bg-card overflow-hidden">
         {clientsQ.isLoading ? (
           <div className="p-8 flex justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           </div>
+        ) : clientsQ.isError ? (
+          <LoadError
+            what="clients"
+            error={clientsQ.error}
+            onRetry={() => clientsQ.refetch()}
+            className="m-3"
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -213,10 +242,12 @@ function ClientsList() {
                 <tr>
                   <th className="px-3 py-2 text-left font-medium">Name</th>
                   <th className="px-3 py-2 text-left font-medium">Code</th>
+                  <th className="px-3 py-2 text-left font-medium">Department</th>
                   <th className="px-3 py-2 text-left font-medium">Industry</th>
                   <th className="px-3 py-2 text-left font-medium">Segment</th>
                   <th className="px-3 py-2 text-left font-medium">Account manager</th>
                   <th className="px-3 py-2 text-left font-medium">Country</th>
+                  <th className="px-3 py-2 text-left font-medium">Relationship</th>
                   <th className="px-3 py-2 text-left font-medium">Status</th>
                   <th className="px-3 py-2 text-right font-medium">Actions</th>
                 </tr>
@@ -224,8 +255,35 @@ function ClientsList() {
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-muted-foreground text-xs">
-                      No clients match your filters.
+                    <td
+                      colSpan={10}
+                      className="px-3 py-8 text-center text-muted-foreground text-xs"
+                    >
+                      {isFiltered ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <span>No clients match your search or filters</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              clearSearch();
+                              setIndustry("all");
+                              setSegment("all");
+                            }}
+                          >
+                            Clear filters
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <span>No clients yet</span>
+                          {canCreateClient && (
+                            <Button size="sm" onClick={() => setForm({ client: null })}>
+                              <Plus className="h-4 w-4 mr-1" /> New client
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -233,55 +291,76 @@ function ClientsList() {
                   const ind = c.industry ?? "";
                   const seg = c.segment ?? "";
                   const am = c.account_manager_id;
+                  const lifecycle = c.lifecycle ? LIFECYCLE_PILLS[c.lifecycle] : null;
+                  const relationship = c.relationship ? RELATIONSHIP_PILLS[c.relationship] : null;
                   return (
                     <tr key={c.id} className="border-t hover:bg-secondary/20">
-                      <td className="px-3 py-2 font-medium">{c.name}</td>
+                      <td className="px-3 py-2">
+                        <div className="font-medium">{c.name}</div>
+                        {(c.contact_email || c.contact_phone) && (
+                          <div className="text-xs text-muted-foreground flex gap-3 flex-wrap">
+                            {c.contact_email && (
+                              <span className="inline-flex items-center gap-1">
+                                <Mail className="h-3 w-3" />
+                                {c.contact_email}
+                              </span>
+                            )}
+                            {c.contact_phone && (
+                              <span className="inline-flex items-center gap-1">
+                                <Phone className="h-3 w-3" />
+                                {c.contact_phone}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-muted-foreground">{c.code ?? "—"}</td>
+                      <td className="px-3 py-2">{c.department_name ?? "—"}</td>
                       <td className="px-3 py-2">{ind || "—"}</td>
                       <td className="px-3 py-2">{seg || "—"}</td>
                       <td className="px-3 py-2">{am ? (profileMap.get(am) ?? "—") : "—"}</td>
                       <td className="px-3 py-2">{c.country ?? "—"}</td>
                       <td className="px-3 py-2">
-                        <span
-                          className={`text-[0.625rem] px-1.5 py-0.5 rounded ${c.is_active ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}
-                        >
-                          {c.is_active ? "Active" : "Inactive"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setContactsFor({ id: c.id, name: c.name })}
-                        >
-                          <Users className="h-3.5 w-3.5" />
-                        </Button>
-                        {canManage && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() =>
-                                setEditing({
-                                  id: c.id,
-                                  name: c.name,
-                                  code: c.code ?? "",
-                                  country: c.country ?? "",
-                                  currency_code: c.currency_code,
-                                  industry: ind,
-                                  segment: seg,
-                                  account_manager_id: am ?? "",
-                                  is_active: c.is_active,
-                                })
-                              }
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => remove(c.id, c.name)}>
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </>
+                        {relationship ? (
+                          <span
+                            className={`text-[0.625rem] px-1.5 py-0.5 rounded whitespace-nowrap ${relationship.className}`}
+                          >
+                            {relationship.label}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
                         )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {lifecycle ? (
+                          <span
+                            className={`text-[0.625rem] px-1.5 py-0.5 rounded whitespace-nowrap ${lifecycle.className}`}
+                          >
+                            {lifecycle.label}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => setContactsFor({ id: c.id, name: c.name })}
+                            title={`Contacts for ${c.name}`}
+                            aria-label={`Contacts for ${c.name}`}
+                          >
+                            <Users className="h-3.5 w-3.5" />
+                          </Button>
+                          {canManage && (
+                            <RowActions
+                              label={c.name}
+                              onEdit={() => setForm({ client: c })}
+                              onDelete={() => remove(c.id, c.name)}
+                            />
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -299,101 +378,11 @@ function ClientsList() {
         )}
       </div>
 
-      {/* Client edit dialog */}
-      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editing?.id ? "Edit client" : "New client"}</DialogTitle>
-          </DialogHeader>
-          {editing && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <Label>Name *</Label>
-                <Input
-                  value={editing.name}
-                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Code</Label>
-                <Input
-                  value={editing.code}
-                  onChange={(e) => setEditing({ ...editing, code: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Currency</Label>
-                <Input
-                  value={editing.currency_code}
-                  onChange={(e) =>
-                    setEditing({ ...editing, currency_code: e.target.value.toUpperCase() })
-                  }
-                />
-              </div>
-              <div>
-                <Label>Industry</Label>
-                <Input
-                  value={editing.industry}
-                  onChange={(e) => setEditing({ ...editing, industry: e.target.value })}
-                  placeholder="e.g. Oil & Gas"
-                />
-              </div>
-              <div>
-                <Label>Segment</Label>
-                <Input
-                  value={editing.segment}
-                  onChange={(e) => setEditing({ ...editing, segment: e.target.value })}
-                  placeholder="e.g. Enterprise, SMB"
-                />
-              </div>
-              <div>
-                <Label>Country</Label>
-                <Input
-                  value={editing.country}
-                  onChange={(e) => setEditing({ ...editing, country: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Account manager</Label>
-                <Select
-                  value={editing.account_manager_id || "none"}
-                  onValueChange={(v) =>
-                    setEditing({ ...editing, account_manager_id: v === "none" ? "" : v })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Unassigned</SelectItem>
-                    {(profilesQ.data ?? []).map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.full_name ?? p.email}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="col-span-2 flex items-center gap-2">
-                <Switch
-                  checked={editing.is_active}
-                  onCheckedChange={(v) => setEditing({ ...editing, is_active: v })}
-                />
-                <Label>Active</Label>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditing(null)}>
-              Cancel
-            </Button>
-            <Button onClick={submit} disabled={save.isPending}>
-              {save.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-              {editing?.id ? "Save changes" : "Create"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ClientFormDialog
+        open={!!form}
+        onOpenChange={(o) => !o && setForm(null)}
+        client={form?.client}
+      />
 
       {/* Contacts dialog */}
       <ContactsDialog client={contactsFor} onClose={() => setContactsFor(null)} />
@@ -411,48 +400,72 @@ function ContactsDialog({
   const q = useClientContacts(client?.id);
   const save = useSaveContact();
   const del = useDeleteContact();
-  const [draft, setDraft] = useState<Partial<ClientContactRow> | null>(null);
+  const [draft, setDraftState] = useState<Partial<ClientContactRow> | null>(null);
+  const [errors, setErrors] = useState<{ name?: string; email?: string; form?: string }>({});
+  const setDraft = (next: Partial<ClientContactRow> | null) => {
+    setDraftState(next);
+    setErrors({});
+  };
 
   const submit = async () => {
-    if (!client || !draft?.name?.trim()) {
-      toast.error("Name is required");
-      return;
-    }
+    if (!client || !draft) return;
+    const found: typeof errors = {};
+    const name = draft.name?.trim() ?? "";
+    const email = draft.email?.trim() ?? "";
+    if (!name) found.name = "Enter the contact's name";
+    if (email && !EMAIL_PATTERN.test(email)) found.email = "Enter a valid email address";
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
     try {
-      await save.mutateAsync({
-        ...draft,
-        client_id: client.id,
-        name: draft.name.trim(),
-      });
+      await save.mutateAsync({ ...draft, client_id: client.id, name, email: email || null });
       setDraft(null);
-      toast.success("Saved");
+      toast.success("Contact saved");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed");
+      setErrors({ form: e instanceof Error ? e.message : "Couldn't save the contact. Try again." });
     }
   };
 
-  const remove = async (id: string) => {
+  const close = () => {
+    onClose();
+    setDraft(null);
+  };
+  const contacts = q.data ?? [];
+
+  const remove = async (id: string, contactName: string) => {
     if (!client) return;
-    const ok = await confirmDialog({ description: "Delete this contact?", destructive: true });
+    const ok = await confirmDialog({
+      title: `Delete ${contactName}?`,
+      description: "They will be removed from this client's contacts.",
+      confirmLabel: "Delete contact",
+      destructive: true,
+    });
     if (!ok) return;
-    await del.mutateAsync({ id, client_id: client.id });
+    try {
+      await del.mutateAsync({ id, client_id: client.id });
+      toast.success("Contact deleted");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete the contact");
+    }
   };
 
   return (
-    <Dialog open={!!client} onOpenChange={(o) => !o && (onClose(), setDraft(null))}>
+    <Dialog open={!!client} onOpenChange={(o) => !o && close()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Contacts — {client?.name}</DialogTitle>
+          <DialogDescription>People you deal with at this client.</DialogDescription>
         </DialogHeader>
         <div className="space-y-2 max-h-72 overflow-y-auto">
           {q.isLoading ? (
             <div className="py-6 flex justify-center">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
-          ) : (q.data ?? []).length === 0 ? (
+          ) : q.isError ? (
+            <LoadError what="contacts" error={q.error} onRetry={() => q.refetch()} />
+          ) : contacts.length === 0 ? (
             <div className="text-xs text-muted-foreground py-6 text-center">No contacts yet.</div>
           ) : (
-            (q.data ?? []).map((c) => (
+            contacts.map((c) => (
               <div
                 key={c.id}
                 className="border rounded p-2 flex items-start justify-between gap-2 text-sm"
@@ -479,10 +492,22 @@ function ContactsDialog({
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => setDraft(c)}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setDraft(c)}
+                    title={`Edit contact ${c.name}`}
+                    aria-label={`Edit contact ${c.name}`}
+                  >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => remove(c.id)}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => remove(c.id, c.name)}
+                    title={`Delete contact ${c.name}`}
+                    aria-label={`Delete contact ${c.name}`}
+                  >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -492,60 +517,99 @@ function ContactsDialog({
         </div>
         <div className="border-t pt-3 space-y-2">
           {draft ? (
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                placeholder="Name *"
-                value={draft.name ?? ""}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              />
-              <Input
-                placeholder="Role"
-                value={draft.role ?? ""}
-                onChange={(e) => setDraft({ ...draft, role: e.target.value })}
-              />
-              <Input
-                placeholder="Email"
-                value={draft.email ?? ""}
-                onChange={(e) => setDraft({ ...draft, email: e.target.value })}
-              />
-              <Input
-                placeholder="Phone"
-                value={draft.phone ?? ""}
-                onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
-              />
-              <div className="col-span-2 flex items-center gap-2 text-sm">
-                <Switch
-                  checked={!!draft.is_primary}
-                  onCheckedChange={(v) => setDraft({ ...draft, is_primary: v })}
+            <form
+              noValidate
+              className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                submit();
+              }}
+            >
+              <FormField id="contact-name" label="Name" required error={errors.name}>
+                <Input
+                  id="contact-name"
+                  value={draft.name ?? ""}
+                  aria-invalid={!!errors.name}
+                  autoFocus
+                  onChange={(e) => {
+                    setDraftState({ ...draft, name: e.target.value });
+                    setErrors((x) => ({ ...x, name: undefined, form: undefined }));
+                  }}
                 />
-                <Label>Primary contact</Label>
+              </FormField>
+              <FormField id="contact-role" label="Role">
+                <Input
+                  id="contact-role"
+                  value={draft.role ?? ""}
+                  placeholder="e.g. HR manager"
+                  onChange={(e) => setDraftState({ ...draft, role: e.target.value })}
+                />
+              </FormField>
+              <FormField id="contact-email" label="Email" error={errors.email}>
+                <Input
+                  id="contact-email"
+                  type="email"
+                  value={draft.email ?? ""}
+                  aria-invalid={!!errors.email}
+                  onChange={(e) => {
+                    setDraftState({ ...draft, email: e.target.value });
+                    setErrors((x) => ({ ...x, email: undefined, form: undefined }));
+                  }}
+                />
+              </FormField>
+              <FormField id="contact-phone" label="Phone">
+                <Input
+                  id="contact-phone"
+                  type="tel"
+                  value={draft.phone ?? ""}
+                  onChange={(e) => setDraftState({ ...draft, phone: e.target.value })}
+                />
+              </FormField>
+              <div className="sm:col-span-2 flex items-center gap-2 text-sm">
+                <Switch
+                  id="contact-primary"
+                  checked={!!draft.is_primary}
+                  onCheckedChange={(v) => setDraftState({ ...draft, is_primary: v })}
+                />
+                <Label htmlFor="contact-primary">Primary contact</Label>
               </div>
-              <Textarea
-                className="col-span-2"
-                placeholder="Notes"
-                rows={2}
-                value={draft.notes ?? ""}
-                onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
-              />
-              <div className="col-span-2 flex justify-end gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
+              <FormField id="contact-notes" label="Notes" className="sm:col-span-2">
+                <Textarea
+                  id="contact-notes"
+                  rows={2}
+                  value={draft.notes ?? ""}
+                  onChange={(e) => setDraftState({ ...draft, notes: e.target.value })}
+                />
+              </FormField>
+              {errors.form && (
+                <p role="alert" className="sm:col-span-2 text-sm text-destructive">
+                  {errors.form}
+                </p>
+              )}
+              <div className="sm:col-span-2 flex justify-end gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => setDraft(null)}>
                   Cancel
                 </Button>
-                <Button size="sm" onClick={submit} disabled={save.isPending}>
-                  {save.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />} Save
+                <Button type="submit" size="sm" disabled={save.isPending}>
+                  {save.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />} Save contact
                 </Button>
               </div>
-            </div>
+            </form>
           ) : (
             <Button
               size="sm"
               variant="outline"
               onClick={() => setDraft({ name: "", is_primary: false })}
             >
-              <Plus className="h-4 w-4 mr-1" /> Add contact
+              <Plus className="h-4 w-4 mr-1" /> New contact
             </Button>
           )}
         </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={close}>
+            Close
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

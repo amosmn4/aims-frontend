@@ -1,12 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
-  Droplets,
   Loader2,
   TrendingDown,
   TrendingUp,
+  UploadCloud,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -25,7 +25,13 @@ import {
   useWaterTrend,
   useWaterZoneComparison,
   useWaterAllZones,
+  useCanManageWater,
 } from "@/features/water/use-water";
+import { TermInfo, WithTerm, formatPeriodKey } from "@/features/water/water-ui";
+import { PageHeader } from "@/components/app-shell";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -36,12 +42,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+import { OwnWorkPanels } from "@/features/my-work/own-work-panels";
 export const Route = createFileRoute("/_authenticated/water/")({
   head: () => ({ meta: [{ title: "Water Project — Dashboard — AIMS" }] }),
   component: WaterDashboardPage,
 });
 
 const ALL = "__all__";
+const NRW_LIMIT = 8;
 
 function currentMonth(): string {
   const now = new Date();
@@ -61,6 +69,7 @@ function formatCurrency(n: number): string {
 }
 
 function WaterDashboardPage() {
+  const canManage = useCanManageWater();
   const [month, setMonth] = useState(currentMonth());
   const [zoneId, setZoneId] = useState("");
 
@@ -71,32 +80,48 @@ function WaterDashboardPage() {
 
   const d = dashboardQ.data;
   const trendData = (trendQ.data ?? []).map((p) => ({
-    month: p.month,
+    month: formatPeriodKey(p.month),
     Main: p.main_total,
     "Zone bulk total": p.bulk_total,
     "Household total": p.household_total,
   }));
   const zoneCompData = (zoneCompQ.data ?? []).map((z) => ({
     zone: z.zone_name,
-    "Bulk meter (units)": z.bulk_total,
-    "Household sum (units)": z.household_total,
+    "Bulk meter (m³)": z.bulk_total,
+    "Household meters (m³)": z.household_total,
   }));
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold flex items-center gap-2">
-            <Droplets className="h-5 w-5 text-primary" /> Water Project
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Borehole / main meter → zone bulk meters → household meters.
-          </p>
-        </div>
-        <div className="flex items-end gap-3">
+      <PageHeader
+        title="Water Project"
+        description="How much water entered the network, how much customers paid for, and where it is being lost."
+        actions={
+          canManage ? (
+            <Button size="sm" asChild>
+              <Link to="/water/upload">
+                <UploadCloud className="h-4 w-4 mr-1" /> Upload usage file
+              </Link>
+            </Button>
+          ) : undefined
+        }
+      />
+      {!canManage && <ViewOnlyBanner area="the Water Project" />}
+      <OwnWorkPanels departmentCode="water" role="water" />
+
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <p className="text-xs text-muted-foreground max-w-xl">
+          Water flows from the borehole through the <WithTerm term="main">main meter</WithTerm>,
+          into each zone&apos;s <WithTerm term="bulk">bulk meter</WithTerm>, then to{" "}
+          <WithTerm term="household">household meters</WithTerm>.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
           <div>
-            <Label className="text-xs">Period</Label>
+            <Label htmlFor="water-period" className="text-xs">
+              Period
+            </Label>
             <Input
+              id="water-period"
               type="month"
               value={month}
               onChange={(e) => setMonth(e.target.value)}
@@ -104,9 +129,11 @@ function WaterDashboardPage() {
             />
           </div>
           <div>
-            <Label className="text-xs">Zone</Label>
+            <Label htmlFor="water-zone" className="text-xs">
+              Zone
+            </Label>
             <Select value={zoneId || ALL} onValueChange={(v) => setZoneId(v === ALL ? "" : v)}>
-              <SelectTrigger className="h-9 w-40">
+              <SelectTrigger id="water-zone" className="h-9 w-40">
                 <SelectValue placeholder="All zones" />
               </SelectTrigger>
               <SelectContent>
@@ -122,17 +149,31 @@ function WaterDashboardPage() {
         </div>
       </div>
 
-      {dashboardQ.isLoading || !d ? (
+      {dashboardQ.isLoading ? (
         <div className="py-12 flex justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
+      ) : dashboardQ.isError || !d ? (
+        <LoadError
+          what="the water dashboard"
+          error={dashboardQ.error}
+          onRetry={() => dashboardQ.refetch()}
+        />
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <KpiCard label="Active households" value={d.active_households.toLocaleString()} />
-            <KpiCard label="Active meters" value={d.active_meters.toLocaleString()} />
             <KpiCard
-              label="Units sold this period"
+              label="Active meters"
+              value={d.active_meters.toLocaleString()}
+              sub={`${d.inactive_meters.toLocaleString()} inactive (not in use)`}
+            />
+            <KpiCard
+              label={
+                <>
+                  Units sold <TermInfo term="units" />
+                </>
+              }
               value={`${fmt(d.units_sold)} m³`}
               sub={
                 d.units_sold_change_pct !== null
@@ -149,21 +190,29 @@ function WaterDashboardPage() {
             />
             <KpiCard label="Revenue collected" value={formatCurrency(d.revenue)} tone="good" />
             <KpiCard
-              label="Non-revenue water (borehole → household)"
+              label={
+                <>
+                  Non-revenue water (NRW) <TermInfo term="nrw" />
+                </>
+              }
               value={pct(d.nrw_overall_pct)}
               sub={
-                d.nrw_overall_pct !== null && d.nrw_overall_pct > 8
-                  ? "above 8% threshold"
+                d.nrw_overall_pct !== null && d.nrw_overall_pct > NRW_LIMIT
+                  ? `Above the ${NRW_LIMIT}% limit — investigate`
                   : d.nrw_overall_pct !== null
-                    ? "within normal range"
-                    : "no borehole/tank readings yet"
+                    ? "Within the normal range"
+                    : "No main meter readings yet"
               }
-              tone={d.nrw_overall_pct !== null && d.nrw_overall_pct > 8 ? "bad" : "good"}
+              tone={d.nrw_overall_pct !== null && d.nrw_overall_pct > NRW_LIMIT ? "bad" : "good"}
             />
           </div>
 
           <div className="rounded-lg border bg-card p-4">
-            <div className="text-sm font-semibold mb-3">Water flow & loss ladder</div>
+            <div className="text-sm font-semibold">Water flow and loss</div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Volumes in <WithTerm term="m3">m³</WithTerm>. Loss is water that went in at one stage
+              but didn&apos;t come out at the next.
+            </p>
             <FlowLadder
               mainTotal={d.main_reading_total}
               bulkTotal={d.bulk_reading_total}
@@ -176,18 +225,24 @@ function WaterDashboardPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div className="rounded-lg border bg-card p-4">
               <div className="text-sm font-semibold mb-2">
-                Monthly volume trend — main vs zone bulk vs household
+                Last 6 months — main vs zone bulk vs household (m³)
               </div>
-              {trendData.length === 0 ? (
+              {trendQ.isLoading ? (
+                <div className="py-8 flex justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                </div>
+              ) : trendQ.isError ? (
+                <LoadError what="the trend" error={trendQ.error} onRetry={() => trendQ.refetch()} />
+              ) : trendData.length === 0 ? (
                 <div className="text-xs text-muted-foreground py-8 text-center">No data yet.</div>
               ) : (
                 <ResponsiveContainer width="100%" height={230}>
                   <LineChart data={trendData} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} />
+                    <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Line type="monotone" dataKey="Main" stroke="#0F7A78" strokeWidth={2} />
                     <Line
                       type="monotone"
@@ -208,11 +263,26 @@ function WaterDashboardPage() {
 
             <div className="rounded-lg border bg-card p-4">
               <div className="text-sm font-semibold mb-2">
-                Zone comparison — bulk reading vs household sum
+                Zone comparison — bulk meter vs household meters (m³)
               </div>
-              {zoneCompData.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-8 text-center">
-                  No zones registered yet.
+              {zoneCompQ.isLoading ? (
+                <div className="py-8 flex justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                </div>
+              ) : zoneCompQ.isError ? (
+                <LoadError
+                  what="the zone comparison"
+                  error={zoneCompQ.error}
+                  onRetry={() => zoneCompQ.refetch()}
+                />
+              ) : zoneCompData.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-8 text-center text-xs text-muted-foreground">
+                  <span>No zones yet</span>
+                  {canManage && (
+                    <Button size="sm" variant="outline" asChild>
+                      <Link to="/water/zones">Go to Zones</Link>
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={230}>
@@ -221,12 +291,12 @@ function WaterDashboardPage() {
                     margin={{ top: 8, right: 12, left: -18, bottom: 0 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="zone" tick={{ fontSize: 11 }} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="zone" tick={{ fontSize: 12 }} tickLine={false} />
+                    <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="Bulk meter (units)" fill="#0F7A78" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Household sum (units)" fill="#2E8B57" radius={[3, 3, 0, 0]} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="Bulk meter (m³)" fill="#0F7A78" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="Household meters (m³)" fill="#2E8B57" radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -245,7 +315,7 @@ function KpiCard({
   trend,
   tone = "neutral",
 }: {
-  label: string;
+  label: ReactNode;
   value: string;
   sub?: string;
   trend?: "up" | "down";
@@ -256,14 +326,14 @@ function KpiCard({
   ];
   return (
     <div className="rounded-lg border bg-card p-3">
-      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="flex items-center gap-0.5 text-xs text-muted-foreground">{label}</div>
       <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
       {sub && (
         <div className={`mt-1.5 flex items-center gap-1 text-xs ${toneClass}`}>
           {trend === "up" ? (
-            <TrendingUp className="h-3 w-3" />
+            <TrendingUp className="h-3 w-3" aria-hidden="true" />
           ) : trend === "down" ? (
-            <TrendingDown className="h-3 w-3" />
+            <TrendingDown className="h-3 w-3" aria-hidden="true" />
           ) : null}
           {sub}
         </div>
@@ -291,7 +361,7 @@ function FlowLadder({
     value,
     color,
   }: {
-    label: string;
+    label: ReactNode;
     sub: string;
     value: number;
     color: string;
@@ -302,41 +372,49 @@ function FlowLadder({
     >
       <div className="h-2 w-2 rounded-full mb-1.5" style={{ background: color }} />
       <div className="text-sm font-medium">{label}</div>
-      <div className="text-xl font-semibold mt-1 tabular-nums">{fmt(value)} units</div>
-      <div className="text-xs text-muted-foreground mt-0.5 font-mono">{sub}</div>
+      <div className="text-xl font-semibold mt-1 tabular-nums">{fmt(value)} m³</div>
+      <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>
     </div>
   );
-  const Loss = ({ value }: { value: number | null }) => (
-    <div className="flex flex-col items-center gap-1 shrink-0 w-22">
-      <div className="w-full h-0.5 bg-border" />
-      <div
-        className={`flex items-center gap-1 text-xs font-medium whitespace-nowrap ${
-          value !== null && value > 8 ? "text-destructive" : "text-muted-foreground"
-        }`}
-      >
-        {value !== null && value > 8 ? (
-          <AlertTriangle className="h-3 w-3" />
-        ) : (
-          <CheckCircle2 className="h-3 w-3" />
-        )}
-        {pct(value)} loss
+  const Loss = ({ value }: { value: number | null }) => {
+    const high = value !== null && value > NRW_LIMIT;
+    return (
+      <div className="flex flex-col items-center gap-1 shrink-0 w-24">
+        <div className="w-full h-0.5 bg-border" />
+        <div
+          className={`flex items-center gap-1 text-xs font-medium whitespace-nowrap ${
+            high ? "text-destructive" : "text-muted-foreground"
+          }`}
+        >
+          {high ? (
+            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+          ) : (
+            <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+          )}
+          {pct(value)} loss{high ? " (high)" : ""}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
   return (
     <div className="flex items-center justify-between flex-wrap gap-2">
-      <Node label="Borehole" sub="MAIN — borehole → tank" value={mainTotal} color="#0F7A78" />
+      <Node
+        label={<WithTerm term="main">Main meter</WithTerm>}
+        sub="Borehole into the tank"
+        value={mainTotal}
+        color="#0F7A78"
+      />
       <Loss value={nrwBoreholeToTank} />
       <Node
-        label="Zone bulk meters + unzoned"
-        sub="BULK — tank → distribution"
+        label={<WithTerm term="bulk">Zone bulk meters</WithTerm>}
+        sub="Tank into the zones (plus unzoned)"
         value={bulkTotal}
         color="#B9762A"
       />
       <Loss value={nrwTankToNetwork} />
       <Node
-        label="Household meters"
-        sub="metered consumption"
+        label={<WithTerm term="household">Household meters</WithTerm>}
+        sub="Paid for by customers"
         value={householdTotal}
         color="#2E8B57"
       />

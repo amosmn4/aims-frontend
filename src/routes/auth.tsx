@@ -1,14 +1,34 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { useAuth, homeRouteFor } from "@/lib/auth";
+import { z } from "zod";
+import { toast } from "sonner";
+import { Loader2, LogIn } from "lucide-react";
+import { useAuth, homeRouteFor, type AppRole } from "@/lib/auth";
+import { ApiError, getAccessToken } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
-import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { FormField } from "@/components/form-field";
+import {
+  MIN_PASSWORD_LENGTH,
+  emailError,
+  requestErrorMessage,
+  safeRedirectPath,
+} from "@/features/auth/auth-rules";
+import {
+  AuthBrand,
+  AuthNotice,
+  SupportContactLine,
+  useAuthBrand,
+} from "@/features/auth/public-company-info";
+
+const searchSchema = z.object({
+  redirect: z.string().optional().catch(undefined),
+  reason: z.enum(["expired"]).optional().catch(undefined),
+});
 
 export const Route = createFileRoute("/auth")({
+  validateSearch: searchSchema,
   head: () => ({
     meta: [
       { title: "Sign in — AIMS" },
@@ -19,32 +39,63 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+type FieldErrors = { email?: string; password?: string };
+type FormError = { message: string; setupIncomplete?: boolean };
+
 function AuthPage() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
   const { session, roles, loading, login } = useAuth();
+  const { logoSrc, companyName } = useAuthBrand();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [formError, setFormError] = useState<FormError | null>(null);
 
+  const goToApp = (r: AppRole[]) => {
+    const target = safeRedirectPath(search.redirect);
+    if (target) navigate({ href: target, replace: true });
+    else navigate({ to: homeRouteFor(r), replace: true });
+  };
+
+  // A profile can outlive an expired session, so also require a live token.
   useEffect(() => {
-    if (!loading && session) navigate({ to: homeRouteFor(roles) });
-  }, [loading, session, roles, navigate]);
+    if (!loading && session && getAccessToken()) goToApp(roles);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, session, roles]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const errors: FieldErrors = { email: emailError(email) };
+    if (!password) errors.password = "Enter your password.";
+    else if (password.length < MIN_PASSWORD_LENGTH)
+      errors.password = `Passwords have at least ${MIN_PASSWORD_LENGTH} characters. Check what you typed.`;
+    setFieldErrors(errors);
+    setFormError(null);
+    if (errors.email || errors.password) {
+      document.getElementById(errors.email ? "email" : "password")?.focus();
+      return;
+    }
+
     setSubmitting(true);
-    setError(null);
     try {
-      const newRoles = await login(email, password);
-      toast.success("Welcome back.");
-      navigate({ to: homeRouteFor(newRoles) });
-    } catch (err: unknown) {
-      // The backend already sends a specific, human-readable reason (wrong password vs
-      // unregistered email vs deactivated account vs malformed email) — surface that exact
-      // text here on the page itself, not just a toast that can be missed or dismissed before
-      // it's read.
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      const newRoles = await login(email.trim(), password);
+      toast.success("Welcome to AIMS");
+      goToApp(newRoles);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      if (!(err instanceof ApiError) || err.status === 429 || err.status >= 500) {
+        setFormError({ message: requestErrorMessage(err) });
+      } else if (/setup/i.test(message)) {
+        setFormError({ message, setupIncomplete: true });
+      } else if (/password/i.test(message)) {
+        setFieldErrors({ password: message });
+      } else if (/email|registered/i.test(message)) {
+        setFieldErrors({ email: message });
+      } else {
+        setFormError({ message: message || "Couldn't sign you in. Try again." });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -54,15 +105,19 @@ function AuthPage() {
     <div className="min-h-screen grid md:grid-cols-2">
       {/* Brand side */}
       <div className="hidden md:flex flex-col justify-between p-10 bg-brand-navy-dark text-white">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-md bg-white p-1.5 flex items-center justify-center">
-              <img src="/amsol-logo.png" alt="Amsol" className="h-full w-full object-contain" />
-            </div>
-            <div>
-              <div className="text-lg font-semibold leading-tight">AIMS</div>
-              <div className="text-xs text-white/70">AMSOL Management System</div>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 overflow-hidden rounded-md bg-white p-1.5 flex items-center justify-center">
+            {logoSrc && (
+              <img
+                src={logoSrc}
+                alt={`${companyName} logo`}
+                className="h-full w-full object-contain"
+              />
+            )}
+          </div>
+          <div>
+            <div className="text-lg font-semibold leading-tight">AIMS</div>
+            <div className="text-xs text-white/70">{companyName}</div>
           </div>
         </div>
         <div className="max-w-md">
@@ -91,64 +146,90 @@ function AuthPage() {
       {/* Form side */}
       <div className="flex items-center justify-center p-6 bg-background">
         <div className="w-full max-w-sm">
-          <div className="md:hidden mb-6 flex items-center gap-2">
-            <div className="h-9 w-9 rounded-md bg-white p-1 flex items-center justify-center border">
-              <img src="/amsol-logo.png" alt="Amsol" className="h-full w-full object-contain" />
-            </div>
-            <div className="font-semibold">AIMS</div>
-          </div>
+          <AuthBrand className="md:hidden mb-6" />
           <h2 className="text-2xl font-semibold">Sign in</h2>
-          <p className="text-sm text-muted-foreground mt-1">Access your Amsol workspace.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Use your work email to open your {companyName} workspace.
+          </p>
 
-          {error && (
-            <div
-              role="alert"
-              className="mt-4 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"
-            >
-              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>{error}</span>
-            </div>
+          {search.reason === "expired" && (
+            <AuthNotice tone="info" className="mt-4">
+              Your session ended. Sign in again to continue.
+            </AuthNotice>
           )}
 
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <div>
-              <Label htmlFor="email">Work email</Label>
+          {formError && (
+            <AuthNotice tone="error" className="mt-4">
+              <p>{formError.message}</p>
+              {formError.setupIncomplete && (
+                <Link
+                  to="/forgot-password"
+                  search={{ email: email.trim() || undefined }}
+                  className="mt-1 inline-block font-medium underline"
+                >
+                  Send me a new setup link
+                </Link>
+              )}
+            </AuthNotice>
+          )}
+
+          <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-4">
+            <FormField id="email" label="Work email" required error={fieldErrors.email}>
               <Input
                 id="email"
                 type="email"
+                inputMode="email"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
-                  setError(null);
+                  setFieldErrors((f) => ({ ...f, email: undefined }));
+                  setFormError(null);
                 }}
-                required
                 autoComplete="email"
+                aria-invalid={!!fieldErrors.email}
+                aria-describedby={fieldErrors.email ? "email-error" : undefined}
               />
-            </div>
-            <div>
-              <Label htmlFor="password">Password</Label>
-              <PasswordInput
-                id="password"
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setError(null);
-                }}
-                required
-                minLength={6}
-                autoComplete="current-password"
-              />
+            </FormField>
+            <div className="space-y-1">
+              <FormField id="password" label="Password" required error={fieldErrors.password}>
+                <PasswordInput
+                  id="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setFieldErrors((f) => ({ ...f, password: undefined }));
+                    setFormError(null);
+                  }}
+                  minLength={MIN_PASSWORD_LENGTH}
+                  autoComplete="current-password"
+                  aria-invalid={!!fieldErrors.password}
+                  aria-describedby={fieldErrors.password ? "password-error" : undefined}
+                />
+              </FormField>
+              <div className="flex justify-end">
+                <Link
+                  to="/forgot-password"
+                  search={{ email: email.trim() || undefined }}
+                  className="text-sm text-primary hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
             </div>
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {submitting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <LogIn className="h-4 w-4 mr-2" />
+              )}
               Sign in
             </Button>
           </form>
 
           <p className="mt-4 text-xs text-muted-foreground text-center">
-            Accounts are created by your System Administrator — check your email for an invite link.
-            Trouble signing in? Ask your admin for a password reset.
+            New to AIMS? Open your invite email and use its link to set your password.
           </p>
+          <SupportContactLine className="mt-2 text-center" />
 
           <div className="mt-8 text-center">
             <Link to="/" className="text-xs text-muted-foreground hover:text-foreground">

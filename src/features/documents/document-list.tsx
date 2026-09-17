@@ -1,16 +1,29 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
-import { Download, File, History, Share2, Trash2 } from "lucide-react";
+import {
+  Download,
+  File,
+  FileImage,
+  FileSpreadsheet,
+  FileText,
+  History,
+  Trash2,
+  Users,
+} from "lucide-react";
 import {
   downloadDocument,
+  fileTypeLabel,
   formatFileSize,
-  RESOURCE_TYPE_LABELS,
   type DocumentRow,
 } from "@/features/documents/use-documents";
-import { useProfilesLite } from "@/features/clients/use-clients-contracts";
+import { DocumentLocation } from "@/features/documents/document-location";
+import { useDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
+import { formatDate } from "@/lib/format-date";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+
+type ConfirmCopy = { title: string; description: string; confirmLabel: string };
 
 export function DocumentList({
   documents,
@@ -19,132 +32,216 @@ export function DocumentList({
   onDelete,
   onShowVersions,
   onShowAccess,
+  emptyState,
+  deleteCopy,
 }: {
   documents: DocumentRow[];
   canManage: (doc: DocumentRow) => boolean;
+  /** Shows where each file is attached, linking to the record. */
   showResourceType?: boolean;
-  onDelete: (doc: DocumentRow) => void;
+  onDelete: (doc: DocumentRow) => Promise<unknown> | void;
   onShowVersions: (doc: DocumentRow) => void;
-  onShowAccess: (doc: DocumentRow) => void;
+  onShowAccess?: (doc: DocumentRow) => void;
+  emptyState?: ReactNode;
+  deleteCopy?: (doc: DocumentRow) => ConfirmCopy;
 }) {
   const profilesQ = useProfilesLite();
+  const departmentsQ = useDepartments();
   const profileMap = new Map((profilesQ.data ?? []).map((p) => [p.id, p.full_name ?? p.email]));
+  const departmentMap = new Map((departmentsQ.data ?? []).map((d) => [d.id, d.name]));
 
   if (documents.length === 0) {
     return (
-      <div className="rounded-lg border bg-card py-8 text-center text-sm text-muted-foreground">
-        No documents yet.
-      </div>
+      emptyState ?? (
+        <div className="rounded-lg border bg-card py-8 text-center text-sm text-muted-foreground">
+          No files attached yet.
+        </div>
+      )
     );
   }
 
   return (
-    <div className="rounded-lg border bg-card divide-y">
+    <ul className="rounded-lg border bg-card divide-y">
       {documents.map((doc) => (
         <DocumentRowItem
           key={doc.id}
           doc={doc}
           uploaderName={doc.created_by ? profileMap.get(doc.created_by) : undefined}
+          visibleTo={visibleToText(doc, departmentMap)}
           canManage={canManage(doc)}
-          showResourceType={showResourceType}
+          showLocation={showResourceType}
           onDelete={onDelete}
           onShowVersions={onShowVersions}
           onShowAccess={onShowAccess}
+          deleteCopy={deleteCopy}
         />
       ))}
-    </div>
+    </ul>
   );
+}
+
+function visibleToText(doc: DocumentRow, departments: Map<string, string>) {
+  const grants = doc.access_grants;
+  if (grants.length === 0) return undefined;
+  if (grants.some((g) => g.access_type === "everyone")) return "Everyone in the company";
+  const names = grants
+    .filter((g) => g.access_type === "department")
+    .map((g) => departments.get(g.department_id ?? ""))
+    .filter((n): n is string => !!n);
+  const people = grants.filter((g) => g.access_type === "user");
+  if (people.length === 1 && names.length === 0 && people[0].user_id === doc.created_by)
+    return "Only the person who added it";
+  const parts = [
+    names.length > 0 ? `Everyone in ${names.join(", ")}` : null,
+    people.length > 0 ? `${people.length} ${people.length === 1 ? "person" : "people"}` : null,
+  ].filter(Boolean);
+  return parts.join(" and ");
+}
+
+function TypeIcon({ label }: { label: string }) {
+  const className = "h-5 w-5 text-muted-foreground shrink-0 mt-0.5";
+  if (label === "Image") return <FileImage className={className} aria-hidden="true" />;
+  if (label === "Excel sheet") return <FileSpreadsheet className={className} aria-hidden="true" />;
+  if (label === "PDF" || label === "Word document")
+    return <FileText className={className} aria-hidden="true" />;
+  return <File className={className} aria-hidden="true" />;
 }
 
 function DocumentRowItem({
   doc,
   uploaderName,
+  visibleTo,
   canManage,
-  showResourceType,
+  showLocation,
   onDelete,
   onShowVersions,
   onShowAccess,
+  deleteCopy,
 }: {
   doc: DocumentRow;
   uploaderName?: string;
+  visibleTo?: string;
   canManage: boolean;
-  showResourceType: boolean;
-  onDelete: (doc: DocumentRow) => void;
+  showLocation: boolean;
+  onDelete: (doc: DocumentRow) => Promise<unknown> | void;
   onShowVersions: (doc: DocumentRow) => void;
-  onShowAccess: (doc: DocumentRow) => void;
+  onShowAccess?: (doc: DocumentRow) => void;
+  deleteCopy?: (doc: DocumentRow) => ConfirmCopy;
 }) {
   const [deleting, setDeleting] = useState(false);
   const version = doc.latest_version;
+  const type = fileTypeLabel(version);
+  const isContract = doc.resource_type === "contract";
 
   const handleDownload = () =>
     downloadDocument(doc).catch((err) =>
-      toast.error(err instanceof Error ? err.message : "Download failed"),
+      toast.error(err instanceof Error ? err.message : "Couldn't open the file"),
     );
 
   const handleDelete = async () => {
-    const ok = await confirmDialog({
+    const copy = deleteCopy?.(doc) ?? {
       title: `Delete "${doc.title}"?`,
-      description: "This removes all versions.",
-      confirmLabel: "Delete",
-      destructive: true,
-    });
+      description:
+        "The file and all its earlier versions are removed for everyone. This can't be undone.",
+      confirmLabel: "Delete file",
+    };
+    const ok = await confirmDialog({ ...copy, destructive: true });
     if (!ok) return;
     setDeleting(true);
-    onDelete(doc);
+    try {
+      await onDelete(doc);
+    } finally {
+      setDeleting(false);
+    }
   };
 
+  const meta = [
+    type,
+    version ? formatFileSize(version.size_bytes) : null,
+    version && version.version_no > 1 ? `Version ${version.version_no}` : null,
+    uploaderName ? `Added by ${uploaderName}` : null,
+    formatDate(doc.created_at),
+  ].filter(Boolean);
+
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <File className="h-5 w-5 text-muted-foreground shrink-0" />
-      <div className="min-w-0 flex-1 cursor-pointer" onClick={handleDownload}>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium truncate">{doc.title}</span>
-          <Badge variant="secondary" className="text-[0.6875rem]">
-            {doc.category}
-          </Badge>
-          {showResourceType && (
-            <Badge variant="outline" className="text-[0.6875rem]">
-              {RESOURCE_TYPE_LABELS[doc.resource_type]}
-            </Badge>
+    <li className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <TypeIcon label={type} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDownload}
+              className="min-w-0 truncate text-left text-sm font-medium hover:text-primary hover:underline"
+              title={`Open ${doc.title}`}
+            >
+              {doc.title}
+            </button>
+            {doc.category && doc.category !== "other" && (
+              <Badge variant="secondary" className="text-xs capitalize">
+                {doc.category}
+              </Badge>
+            )}
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">{meta.join(" · ")}</div>
+          {(showLocation || visibleTo) && (
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+              {showLocation && <DocumentLocation doc={doc} />}
+              {visibleTo && (
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <Users className="h-3 w-3" aria-hidden="true" />
+                  {visibleTo}
+                </span>
+              )}
+            </div>
           )}
         </div>
-        <div className="text-xs text-muted-foreground mt-0.5">
-          {version && `${formatFileSize(version.size_bytes)} · v${version.version_no}`}
-          {uploaderName && ` · ${uploaderName}`}
-          {` · ${new Date(doc.created_at).toLocaleDateString()}`}
-        </div>
       </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <Button size="icon" variant="ghost" onClick={handleDownload} title="Download">
+      <div className="flex shrink-0 items-center gap-1 self-end sm:self-start">
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={handleDownload}
+          title="Download"
+          aria-label={`Download ${doc.title}`}
+        >
           <Download className="h-4 w-4" />
         </Button>
-        {doc.resource_type !== "contract" && (
+        {!isContract && (
           <Button
             size="icon"
             variant="ghost"
             onClick={() => onShowVersions(doc)}
-            title="Version history"
+            title="Versions"
+            aria-label={`Versions of ${doc.title}`}
           >
             <History className="h-4 w-4" />
           </Button>
         )}
-        {canManage && doc.resource_type !== "contract" && (
-          <>
-            <Button size="icon" variant="ghost" onClick={() => onShowAccess(doc)} title="Sharing">
-              <Share2 className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={handleDelete}
-              disabled={deleting}
-              title="Delete"
-            >
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </Button>
-          </>
+        {canManage && !isContract && onShowAccess && (
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => onShowAccess(doc)}
+            title="Who can see this file"
+            aria-label={`Change who can see ${doc.title}`}
+          >
+            <Users className="h-4 w-4" />
+          </Button>
+        )}
+        {canManage && !isContract && (
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={handleDelete}
+            disabled={deleting}
+            title="Delete"
+            aria-label={`Delete ${doc.title}`}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
         )}
       </div>
-    </div>
+    </li>
   );
 }

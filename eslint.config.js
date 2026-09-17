@@ -34,7 +34,19 @@ export default tseslint.config(
       ],
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: "Render stored HTML with <SafeHtml> from @/components/safe-html instead.",
+        },
+      ],
     },
+  },
+  {
+    // The two vetted places allowed to write raw HTML: the sanitizer itself and chart theme CSS.
+    files: ["src/components/safe-html.tsx", "src/components/ui/chart.tsx"],
+    rules: { "no-restricted-syntax": "off" },
   },
   eslintPluginPrettier,
 );

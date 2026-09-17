@@ -13,7 +13,13 @@ export interface RelatedRecordItem {
 // page that sits somewhere in the Lead -> Client Request -> Tender/Project -> Contract chain,
 // so a user can always see and jump to whatever this record is connected to without hunting
 // through the right department's nav tree first.
-export function RelatedRecords({ items, engagementTo }: { items: RelatedRecordItem[]; engagementTo?: string }) {
+export function RelatedRecords({
+  items,
+  engagementTo,
+}: {
+  items: RelatedRecordItem[];
+  engagementTo?: string;
+}) {
   if (items.length === 0) return null;
   return (
     <div className="rounded-lg border bg-card p-4">
@@ -21,7 +27,7 @@ export function RelatedRecords({ items, engagementTo }: { items: RelatedRecordIt
         <div className="text-sm font-semibold">Related</div>
         {items.length > 1 && engagementTo && (
           <Link to={engagementTo} className="text-xs text-primary hover:underline">
-            View full engagement timeline →
+            View all activity →
           </Link>
         )}
       </div>
@@ -32,7 +38,9 @@ export function RelatedRecords({ items, engagementTo }: { items: RelatedRecordIt
             to={item.to}
             className="flex flex-col rounded-md border px-2.5 py-1.5 text-xs hover:border-primary/50 hover:bg-secondary/40 transition-colors"
           >
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{item.label}</span>
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+              {item.label}
+            </span>
             <span className="font-medium">{item.title}</span>
           </Link>
         ))}

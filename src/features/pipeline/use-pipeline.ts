@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
 import type { ProjectStatus } from "@/features/projects/use-projects";
 
-export type ProjectDeliveryStage = "onboarding" | "in_progress" | "delivery" | "invoicing" | "payment" | "closed";
+export type ProjectDeliveryStage =
+  "onboarding" | "in_progress" | "delivery" | "invoicing" | "payment" | "closed";
 
 export interface PipelineProjectRow {
   id: string;
@@ -17,6 +18,7 @@ export interface PipelineProjectRow {
   delivery_stage: ProjectDeliveryStage;
   source_type: "tender" | "client_request" | null;
   source_ref: string | null;
+  stage_changed_at: string;
   created_at: string;
 }
 
@@ -32,6 +34,7 @@ type BackendPipelineProject = {
   deliveryStage: ProjectDeliveryStage;
   tender?: { id: string; referenceNumber: string | null } | null;
   clientRequest?: { id: string; referenceNumber: string | null } | null;
+  deliveryStageChangedAt?: string;
   createdAt: string;
 };
 
@@ -51,6 +54,7 @@ function mapPipelineProject(p: BackendPipelineProject): PipelineProjectRow {
     delivery_stage: p.deliveryStage,
     source_type: sourceType,
     source_ref: sourceRef,
+    stage_changed_at: p.deliveryStageChangedAt ?? p.createdAt,
     created_at: p.createdAt,
   };
 }
@@ -59,7 +63,8 @@ export function usePipelineProjects(departmentId?: string) {
   const qs = departmentId ? `?departmentId=${departmentId}` : "";
   return useQuery({
     queryKey: ["pipeline-projects", departmentId],
-    queryFn: async () => (await apiJson<BackendPipelineProject[]>(`/projects${qs}`)).map(mapPipelineProject),
+    queryFn: async () =>
+      (await apiJson<BackendPipelineProject[]>(`/projects${qs}`)).map(mapPipelineProject),
   });
 }
 
@@ -69,8 +74,11 @@ export interface ProjectActivityRow {
   type: string;
   summary: string;
   occurred_at: string;
+  created_by_id: string | null;
   created_by_name: string | null;
   created_at: string;
+  /** The thread's first entry when this is a reply. */
+  parent_id: string | null;
 }
 
 type BackendProjectActivity = {
@@ -79,7 +87,9 @@ type BackendProjectActivity = {
   type: string;
   summary: string;
   occurredAt: string;
+  createdBy: string | null;
   creator?: { fullName: string | null; email: string } | null;
+  parentId?: string | null;
   createdAt: string;
 };
 
@@ -90,8 +100,10 @@ function mapProjectActivity(a: BackendProjectActivity): ProjectActivityRow {
     type: a.type,
     summary: a.summary,
     occurred_at: a.occurredAt,
+    created_by_id: a.createdBy,
     created_by_name: a.creator?.fullName ?? a.creator?.email ?? null,
     created_at: a.createdAt,
+    parent_id: a.parentId ?? null,
   };
 }
 
@@ -100,14 +112,16 @@ export function useProjectActivities(projectId: string | undefined) {
     queryKey: ["projects", projectId, "activities"],
     enabled: !!projectId,
     queryFn: async () =>
-      (await apiJson<BackendProjectActivity[]>(`/projects/${projectId}/activities`)).map(mapProjectActivity),
+      (await apiJson<BackendProjectActivity[]>(`/projects/${projectId}/activities`)).map(
+        mapProjectActivity,
+      ),
   });
 }
 
 export function useLogProjectActivity(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { type: string; summary: string }) =>
+    mutationFn: async (input: { type: string; summary: string; parentId?: string }) =>
       apiJson(`/projects/${projectId}/activities`, { method: "POST", body: JSON.stringify(input) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["projects", projectId, "activities"] }),
   });
@@ -118,7 +132,9 @@ type BackendActivityCommon = {
   type: string;
   summary: string;
   occurredAt: string;
+  createdBy: string | null;
   creator?: { fullName: string | null; email: string } | null;
+  parentId?: string | null;
   createdAt: string;
 };
 
@@ -128,8 +144,10 @@ function mapActivityCommon(a: BackendActivityCommon) {
     type: a.type,
     summary: a.summary,
     occurred_at: a.occurredAt,
+    created_by_id: a.createdBy,
     created_by_name: a.creator?.fullName ?? a.creator?.email ?? null,
     created_at: a.createdAt,
+    parent_id: a.parentId ?? null,
   };
 }
 
@@ -138,15 +156,24 @@ export function useTenderActivities(tenderId: string | undefined) {
     queryKey: ["tenders", tenderId, "activities"],
     enabled: !!tenderId,
     queryFn: async () =>
-      (await apiJson<BackendActivityCommon[]>(`/tenders/${tenderId}/activities`)).map(mapActivityCommon),
+      (await apiJson<BackendActivityCommon[]>(`/tenders/${tenderId}/activities`)).map(
+        mapActivityCommon,
+      ),
   });
 }
 
 export function useLogTenderActivity(tenderId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { type: string; summary: string }) =>
+    mutationFn: async (input: { type: string; summary: string; parentId?: string }) =>
       apiJson(`/tenders/${tenderId}/activities`, { method: "POST", body: JSON.stringify(input) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders", tenderId, "activities"] }),
   });
 }
+
+/** Whole days since a stage started. */
+export function daysInStage(since: string) {
+  return Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 864e5));
+}
+
+export const STUCK_AFTER_DAYS = 30;

@@ -116,8 +116,11 @@ export interface ClientRequestActivityRow {
   type: ClientRequestActivityType;
   summary: string;
   occurred_at: string;
+  created_by_id: string | null;
   created_by_name: string | null;
   created_at: string;
+  /** The thread's first entry when this is a reply. */
+  parent_id: string | null;
 }
 
 type BackendRequest = {
@@ -202,7 +205,9 @@ type BackendActivity = {
   type: ClientRequestActivityType;
   summary: string;
   occurredAt: string;
+  createdBy: string | null;
   creator?: { id: string; fullName: string | null; email: string } | null;
+  parentId?: string | null;
   createdAt: string;
 };
 
@@ -213,8 +218,10 @@ function mapActivity(a: BackendActivity): ClientRequestActivityRow {
     type: a.type,
     summary: a.summary,
     occurred_at: a.occurredAt,
+    created_by_id: a.createdBy,
     created_by_name: a.creator?.fullName ?? a.creator?.email ?? null,
     created_at: a.createdAt,
+    parent_id: a.parentId ?? null,
   };
 }
 
@@ -268,6 +275,9 @@ export function useClientRequest(id: string | undefined) {
     queryKey: ["client-requests", id],
     enabled: !!id,
     queryFn: async () => mapRequest(await apiJson<BackendRequest>(`/client-requests/${id}`)),
+    // A missing or forbidden record won't appear on retry.
+    retry: (count, err) =>
+      ![403, 404].includes((err as { status?: number }).status ?? 0) && count < 3,
   });
 }
 
@@ -367,18 +377,26 @@ export function useSaveClientRequest() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: Partial<ClientRequestRow> & { title: string }) => {
+      // On edit, a field passed as empty is sent as null so it clears; omitted fields stay untouched.
+      const field = <K extends keyof ClientRequestRow>(key: K) => {
+        const v = input[key];
+        if (v !== undefined && v !== null && v !== "") return v;
+        return input.id && key in input ? null : undefined;
+      };
       const body = {
         title: input.title,
-        description: input.description || undefined,
-        clientId: input.client_id || undefined,
-        prospectClientName: input.prospect_client_name || undefined,
-        contactName: input.contact_name || undefined,
-        contactEmail: input.contact_email || undefined,
-        contactPhone: input.contact_phone || undefined,
+        description: field("description"),
+        clientId: field("client_id"),
+        prospectClientName: field("prospect_client_name"),
+        contactName: field("contact_name"),
+        contactEmail: field("contact_email"),
+        contactPhone: field("contact_phone"),
         source: input.source || undefined,
-        serviceLineId: input.service_line_id || undefined,
-        estimatedValue: input.estimated_value ?? undefined,
+        serviceLineId: field("service_line_id"),
+        estimatedValue: field("estimated_value"),
         currency: input.currency || undefined,
+        departmentId: field("department_id"),
+        assignedToId: field("assigned_to_id"),
       };
       if (input.id) {
         await apiJson(`/client-requests/${input.id}`, {
@@ -450,13 +468,18 @@ export function useConvertToProject() {
       startDate?: string;
     }) => {
       const { requestId, ...body } = input;
-      return apiJson(`/client-requests/${requestId}/convert-to-project`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      return apiJson<{ id: string; name: string }>(
+        `/client-requests/${requestId}/convert-to-project`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      );
     },
-    onSuccess: (_d, vars) =>
-      qc.invalidateQueries({ queryKey: ["client-requests", vars.requestId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client-requests"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
   });
 }
 
@@ -475,13 +498,15 @@ export function useConvertClientRequestToContract() {
       notes?: string;
     }) => {
       const { requestId, ...body } = input;
-      return apiJson(`/client-requests/${requestId}/convert-to-contract`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      return apiJson<{ id: string; contractNumber: string }>(
+        `/client-requests/${requestId}/convert-to-contract`,
+        { method: "POST", body: JSON.stringify(body) },
+      );
     },
-    onSuccess: (_d, vars) =>
-      qc.invalidateQueries({ queryKey: ["client-requests", vars.requestId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client-requests"] });
+      qc.invalidateQueries({ queryKey: ["contracts"] });
+    },
   });
 }
 
@@ -492,6 +517,8 @@ export function useLogActivity(requestId: string) {
       type?: ClientRequestActivityType;
       summary: string;
       occurred_at?: string;
+      /** Replying: the entry being replied to. */
+      parent_id?: string;
     }) => {
       await apiJson(`/client-requests/${requestId}/activities`, {
         method: "POST",
@@ -499,6 +526,7 @@ export function useLogActivity(requestId: string) {
           type: input.type,
           summary: input.summary,
           occurredAt: input.occurred_at,
+          parentId: input.parent_id,
         }),
       });
     },

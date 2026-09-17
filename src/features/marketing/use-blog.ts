@@ -71,7 +71,8 @@ function mapPost(p: BackendBlogPost): BlogPostRow {
     views: p.views,
     likes: p.likes,
     shares: p.shares,
-    avg_time_spent_seconds: p.timeSpentSamples > 0 ? Math.round(p.totalTimeSpentSeconds / p.timeSpentSamples) : null,
+    avg_time_spent_seconds:
+      p.timeSpentSamples > 0 ? Math.round(p.totalTimeSpentSeconds / p.timeSpentSamples) : null,
     created_at: p.createdAt,
     updated_at: p.updatedAt,
   };
@@ -134,9 +135,7 @@ export function useBlogVideoPreview(id: string | undefined, hasVideo: boolean) {
 export function useSaveBlogPost() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (
-      input: Partial<BlogPostRow> & { title: string; tags?: string[] },
-    ) => {
+    mutationFn: async (input: Partial<BlogPostRow> & { title: string; tags?: string[] }) => {
       const body = {
         title: input.title,
         excerpt: input.excerpt || undefined,
@@ -152,7 +151,12 @@ export function useSaveBlogPost() {
           }),
         );
       }
-      return mapPost(await apiJson<BackendBlogPost>("/blog-posts", { method: "POST", body: JSON.stringify(body) }));
+      return mapPost(
+        await apiJson<BackendBlogPost>("/blog-posts", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+      );
     },
     onSuccess: (post) => {
       qc.invalidateQueries({ queryKey: ["blog-posts"] });
@@ -208,7 +212,8 @@ export function useUploadBlogVideo(id: string) {
 export function usePublishBlogPost() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => mapPost(await apiJson<BackendBlogPost>(`/blog-posts/${id}/publish`, { method: "POST" })),
+    mutationFn: async (id: string) =>
+      mapPost(await apiJson<BackendBlogPost>(`/blog-posts/${id}/publish`, { method: "POST" })),
     onSuccess: (post) => {
       qc.invalidateQueries({ queryKey: ["blog-posts"] });
       qc.invalidateQueries({ queryKey: ["blog-posts", post.id] });
@@ -219,7 +224,8 @@ export function usePublishBlogPost() {
 export function useUnpublishBlogPost() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => mapPost(await apiJson<BackendBlogPost>(`/blog-posts/${id}/unpublish`, { method: "POST" })),
+    mutationFn: async (id: string) =>
+      mapPost(await apiJson<BackendBlogPost>(`/blog-posts/${id}/unpublish`, { method: "POST" })),
     onSuccess: (post) => {
       qc.invalidateQueries({ queryKey: ["blog-posts"] });
       qc.invalidateQueries({ queryKey: ["blog-posts", post.id] });

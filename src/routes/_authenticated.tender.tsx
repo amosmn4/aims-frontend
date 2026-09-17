@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet } from "@tanstack/react-router";
-import { RequireRole } from "@/components/require-role";
+import { RequireDepartmentAccess } from "@/components/require-role";
 
 export const Route = createFileRoute("/_authenticated/tender")({
   head: () => ({ meta: [{ title: "Tender — AIMS" }, { name: "robots", content: "noindex" }] }),
@@ -8,11 +8,11 @@ export const Route = createFileRoute("/_authenticated/tender")({
 
 function TenderLayout() {
   return (
-    <RequireRole
-      roles={["tender"]}
-      message="The Tender workspace is restricted to the Tender team, CEO and System Administrator."
+    <RequireDepartmentAccess
+      code="tender"
+      message="The Tender workspace is for the Tender team, people granted Tender access and the CEO."
     >
       <Outlet />
-    </RequireRole>
+    </RequireDepartmentAccess>
   );
 }

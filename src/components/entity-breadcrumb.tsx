@@ -7,7 +7,7 @@ export interface BreadcrumbSegment {
   to?: string;
 }
 
-// Shows the real chain leading to this record (e.g. Tender Records / T-118 / "Acme Rollout"),
+// Shows the real chain leading to this record (e.g. Tenders / T-118 / "Acme Rollout"),
 // not just the immediate parent — replaces the old ad-hoc "<- Back to X" links on the same
 // pages RelatedRecords is wired into, since both draw from the same relationship data.
 export function EntityBreadcrumb({ segments }: { segments: BreadcrumbSegment[] }) {

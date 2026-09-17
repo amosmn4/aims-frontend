@@ -2,12 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
 
 export type ItSystemType =
-  | "website"
-  | "internal_system"
-  | "integration"
-  | "client_system"
-  | "infrastructure"
-  | "mobile_app";
+  "website" | "internal_system" | "integration" | "client_system" | "infrastructure" | "mobile_app";
 export type ItSystemStatus = "active" | "inactive" | "deprecated";
 
 export const IT_SYSTEM_TYPE_LABELS: Record<ItSystemType, string> = {
@@ -85,9 +80,19 @@ export function useSaveItSystem() {
         notes: input.notes || undefined,
       };
       if (input.id) {
-        return mapItSystem(await apiJson<BackendItSystem>(`/it-systems/${input.id}`, { method: "PATCH", body: JSON.stringify(body) }));
+        return mapItSystem(
+          await apiJson<BackendItSystem>(`/it-systems/${input.id}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          }),
+        );
       }
-      return mapItSystem(await apiJson<BackendItSystem>("/it-systems", { method: "POST", body: JSON.stringify(body) }));
+      return mapItSystem(
+        await apiJson<BackendItSystem>("/it-systems", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+      );
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["it-systems"] }),
   });

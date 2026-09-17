@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { ensureSession } from "@/lib/api-client";
 import { AppShell } from "@/components/app-shell";
@@ -7,11 +7,11 @@ import { Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated")({
   // Client-side session check on load (SSR-safe: skip on server).
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     if (typeof window === "undefined") return;
     const authenticated = await ensureSession();
     if (!authenticated) {
-      throw redirect({ to: "/auth" });
+      throw redirect({ to: "/auth", search: { redirect: location.href } });
     }
   },
   component: AuthenticatedLayout,
@@ -20,19 +20,24 @@ export const Route = createFileRoute("/_authenticated")({
 function AuthenticatedLayout() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const router = useRouter();
 
+  // Also runs after signing out, so no return path is kept.
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth" });
   }, [loading, user, navigate]);
 
-  // Fires when a background silent refresh fails mid-session (idle timeout elapsed, session
-  // revoked, etc) — without this, the user would just see broken/401ing data instead of being
-  // sent back to log in. See refreshAccessToken in lib/api-client.ts.
+  // Background refresh failed mid-use: send them to sign in, then back here.
   useEffect(() => {
-    const onExpired = () => navigate({ to: "/auth" });
+    const onExpired = () =>
+      navigate({
+        to: "/auth",
+        search: { reason: "expired", redirect: router.state.location.href },
+        replace: true,
+      });
     window.addEventListener("aims:session-expired", onExpired);
     return () => window.removeEventListener("aims:session-expired", onExpired);
-  }, [navigate]);
+  }, [navigate, router]);
 
   if (loading) {
     return (

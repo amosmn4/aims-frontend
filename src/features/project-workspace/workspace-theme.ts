@@ -37,9 +37,9 @@ export const TASK_PRIORITY_COLORS: Record<TaskPriority, { bg: string; text: stri
 };
 
 export const HEALTH_STYLES: Record<ProjectHealth, { color: string; label: string }> = {
-  green: { color: PIPELINE_TEAL, label: "On Track" },
-  amber: { color: PIPELINE_GOLD, label: "At Risk" },
-  red: { color: PIPELINE_CORAL, label: "Off Track" },
+  green: { color: PIPELINE_TEAL, label: "On track" },
+  amber: { color: PIPELINE_GOLD, label: "At risk" },
+  red: { color: PIPELINE_CORAL, label: "Late / off track" },
 };
 
 export const RAID_TYPE_LABELS: Record<ProjectRaidType, string> = {
@@ -62,13 +62,19 @@ export const RAID_SEVERITY_COLORS: Record<ProjectRaidSeverity, { bg: string; c: 
   low: { bg: PIPELINE_TEAL_SOFT, c: PIPELINE_TEAL },
 };
 
-export const MILESTONE_STATUS_STYLES: Record<"done" | "atrisk" | "upcoming", { bg: string; c: string; label: string }> = {
+export const MILESTONE_STATUS_STYLES: Record<
+  "done" | "atrisk" | "upcoming",
+  { bg: string; c: string; label: string }
+> = {
   done: { bg: PIPELINE_TEAL_SOFT, c: PIPELINE_TEAL, label: "Complete" },
   atrisk: { bg: PIPELINE_GOLD_SOFT, c: PIPELINE_GOLD, label: "At Risk" },
   upcoming: { bg: "#F1F2EC", c: PIPELINE_SLATE_LIGHT, label: "Upcoming" },
 };
 
-export const CAL_EVENT_STYLES: Record<"deadline" | "milestone" | "meeting", { bg: string; c: string }> = {
+export const CAL_EVENT_STYLES: Record<
+  "deadline" | "milestone" | "meeting",
+  { bg: string; c: string }
+> = {
   deadline: { bg: PIPELINE_CORAL_SOFT, c: PIPELINE_CORAL },
   milestone: { bg: PIPELINE_GOLD_SOFT, c: PIPELINE_GOLD },
   meeting: { bg: PIPELINE_BLUE_SOFT, c: PIPELINE_BLUE },

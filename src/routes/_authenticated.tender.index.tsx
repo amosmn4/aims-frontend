@@ -1,28 +1,41 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { FileArchive, Loader2, Plus, Search } from "lucide-react";
-import { RequireRole } from "@/components/require-role";
+import { FileArchive, KanbanSquare, Loader2, Plus, Search } from "lucide-react";
+import { RequireDepartmentAccess } from "@/components/require-role";
+import { RowActions } from "@/components/row-actions";
+import { confirmDialog } from "@/components/confirm-dialog";
+import { usePermissions } from "@/lib/permissions";
+import { formatDate } from "@/lib/format-date";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
+import { FormField, RequiredNote } from "@/components/form-field";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { ClientPicker } from "@/features/clients/client-picker";
+import { EditTenderDialog } from "@/features/tender/edit-tender-dialog";
 import {
   useTenders,
   useTenderPipelineSummary,
   useTenderTimeMetrics,
   useSaveTender,
+  useDeleteTender,
   TENDER_STAGES,
   TENDER_STAGE_LABELS,
   TENDER_STAGE_STYLES,
   type TenderStage,
+  type TenderRow,
 } from "@/features/tender/use-tender";
-import { useDepartments, useEligibleDepartments } from "@/features/clients/use-clients-contracts";
-import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
+import { useDepartments } from "@/features/clients/use-clients-contracts";
+import { useTenderDepartmentOptions } from "@/features/tender/forward-tender-dialog";
+import { useServiceLines } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
 import { FunnelChart } from "@/components/funnel-chart";
 import { DateRangeFilter, type DateRange } from "@/components/date-range-filter";
 import { usePagination } from "@/hooks/use-pagination";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { PaginationBar } from "@/components/pagination-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -49,15 +62,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+import { OwnWorkPanels } from "@/features/my-work/own-work-panels";
 export const Route = createFileRoute("/_authenticated/tender/")({
-  head: () => ({ meta: [{ title: "Tender — AIMS" }] }),
+  head: () => ({ meta: [{ title: "Tenders — AIMS" }] }),
   component: () => (
-    <RequireRole
-      roles={["tender"]}
-      message="The Tender workspace is restricted to the Tender team, CEO and System Administrator."
+    <RequireDepartmentAccess
+      code="tender"
+      message="The Tender workspace is for the Tender team, people granted Tender access and the CEO."
     >
       <TenderWorkspace />
-    </RequireRole>
+    </RequireDepartmentAccess>
   ),
 });
 
@@ -80,28 +94,47 @@ const FUNNEL_COLORS: Record<string, string> = {
   cancelled: "#6B5490",
 };
 
-// Exported so the Tender department hub (_authenticated.tender.tsx) can embed this same
-// workspace as a tab, without a second `/tender`-shaped URL — see that file for the hub layout.
+// The Tender department dashboard.
 export function TenderWorkspace() {
   const navigate = useNavigate();
+  const perms = usePermissions();
+  const deleteTender = useDeleteTender();
+  const [editing, setEditing] = useState<TenderRow | null>(null);
   const [departmentId, setDepartmentId] = useState("all");
   const [serviceLineId, setServiceLineId] = useState("all");
   const [stage, setStage] = useState<TenderStage | "all">("all");
   const [q, setQ] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>({});
+  // Bumped on "Clear filters" so the period dropdown resets too.
+  const [filterResetKey, setFilterResetKey] = useState(0);
   const { page, pageSize, setPage, setPageSize } = usePagination(25);
+  const debouncedQ = useDebouncedValue(q.trim(), 300);
 
   const filters = {
     departmentId: departmentId === "all" ? undefined : departmentId,
     serviceLineId: serviceLineId === "all" ? undefined : serviceLineId,
     stage: stage === "all" ? undefined : stage,
-    q: q.trim() || undefined,
+    q: debouncedQ || undefined,
     dateFrom: dateRange.from,
     dateTo: dateRange.to,
   };
+  const hasFilters = Object.values(filters).some(Boolean);
+
+  const clearFilters = () => {
+    setDepartmentId("all");
+    setServiceLineId("all");
+    setStage("all");
+    setQ("");
+    setDateRange({});
+    setFilterResetKey((k) => k + 1);
+    setPage(1);
+  };
 
   const tendersQ = useTenders(filters, { page, pageSize });
-  const tendersResult = tendersQ.data;
+  // Keep showing the last results while the next filter's page loads.
+  const [lastResult, setLastResult] = useState(tendersQ.data);
+  if (tendersQ.data && tendersQ.data !== lastResult) setLastResult(tendersQ.data);
+  const tendersResult = tendersQ.data ?? lastResult;
   const tenders = tendersResult
     ? Array.isArray(tendersResult)
       ? tendersResult
@@ -145,39 +178,68 @@ export function TenderWorkspace() {
     color: FUNNEL_COLORS[s],
   }));
 
+  const removeTender = async (t: TenderRow) => {
+    const ok = await confirmDialog({
+      title: `Delete "${t.title}"?`,
+      description:
+        "This removes the tender and everything tracked against it. This can't be undone.",
+      confirmLabel: "Delete tender",
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteTender.mutate(t.id, {
+      onSuccess: () => toast.success("Tender deleted"),
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
+    });
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      {editing && <EditTenderDialog tender={editing} onClose={() => setEditing(null)} />}
+      <div className="flex items-start justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-lg font-semibold">Tender</h1>
+          <h1 className="text-lg font-semibold">Tenders</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Bid pipeline, resourcing and win/loss tracking.
+            Every tender being bid for: what's open, deadlines and how often we win.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Link to="/tender/documents">
-            <Button size="sm" variant="outline">
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" asChild>
+            <Link to="/tender/bid-pipeline">
+              <KanbanSquare className="h-4 w-4 mr-1" /> Open the board
+            </Link>
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <Link to="/tender/documents">
               <FileArchive className="h-4 w-4 mr-1" /> Mandatory documents library
-            </Button>
-          </Link>
-          <NewTenderDialog />
+            </Link>
+          </Button>
+          {perms.canManageTenders && <NewTenderDialog />}
         </div>
       </div>
+      {!perms.canManageTenders && <ViewOnlyBanner area="Tenders" />}
+      <OwnWorkPanels departmentCode="tender" role="tender" />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KpiCard label="Active tenders" value={activeCount.toLocaleString()} />
-        <KpiCard label="Pipeline value" value={formatCurrency(pipelineValue)} />
-        <KpiCard
-          label="Win rate"
-          value={winRate != null ? `${(winRate * 100).toFixed(0)}%` : "—"}
-        />
-        <KpiCard label="Total tenders" value={totalTenders.toLocaleString()} />
-      </div>
+      {summaryQ.isError ? (
+        <LoadError what="tender totals" error={summaryQ.error} onRetry={() => summaryQ.refetch()} />
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <KpiCard label="Open tenders" value={activeCount.toLocaleString()} />
+          <KpiCard label="Value being bid" value={formatCurrency(pipelineValue)} />
+          <KpiCard
+            label="Win rate"
+            value={winRate != null ? `${(winRate * 100).toFixed(0)}%` : "—"}
+          />
+          <KpiCard label="Total tenders" value={totalTenders.toLocaleString()} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-1 rounded-lg border bg-card p-4 min-w-0 overflow-hidden">
-          <div className="text-sm font-semibold mb-2">Pipeline funnel</div>
-          {summaryQ.isLoading ? (
+          <h2 className="text-sm font-semibold mb-2">How far tenders get</h2>
+          {summaryQ.isError ? (
+            <p className="text-xs text-muted-foreground py-6 text-center">Totals didn't load.</p>
+          ) : summaryQ.isLoading ? (
             <div className="py-8 flex justify-center">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
@@ -198,7 +260,8 @@ export function TenderWorkspace() {
                   setQ(e.target.value);
                   setPage(1);
                 }}
-                placeholder="Search title…"
+                placeholder="Search title, reference or client"
+                aria-label="Search tenders"
                 className="pl-7"
               />
             </div>
@@ -210,7 +273,7 @@ export function TenderWorkspace() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Department">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -231,7 +294,7 @@ export function TenderWorkspace() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Service line">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -252,7 +315,7 @@ export function TenderWorkspace() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Stage">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -266,6 +329,7 @@ export function TenderWorkspace() {
               </Select>
             </div>
             <DateRangeFilter
+              key={filterResetKey}
               value={dateRange}
               onChange={(r) => {
                 setDateRange(r);
@@ -274,16 +338,30 @@ export function TenderWorkspace() {
             />
           </div>
 
-          {tendersQ.isLoading ? (
+          {tendersQ.isError && !tendersQ.data ? (
+            <LoadError what="tenders" error={tendersQ.error} onRetry={() => tendersQ.refetch()} />
+          ) : !tendersResult && tendersQ.isPending ? (
             <div className="py-8 flex justify-center">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
+          ) : tenders.length === 0 && hasFilters ? (
+            <div className="py-6 flex flex-col items-center gap-2 text-center">
+              <div className="text-sm font-medium">No matches</div>
+              <div className="text-xs text-muted-foreground">No tenders match these filters.</div>
+              <Button size="sm" variant="outline" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            </div>
           ) : tenders.length === 0 ? (
-            <div className="text-xs text-muted-foreground py-6 text-center">
-              No tenders match these filters.
+            <div className="py-6 flex flex-col items-center gap-2 text-center">
+              <div className="text-sm font-medium">No tenders yet</div>
+              {perms.canManageTenders && <NewTenderDialog />}
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div
+              className={`overflow-x-auto transition-opacity ${tendersQ.data ? "" : "opacity-60"}`}
+              aria-busy={!tendersQ.data}
+            >
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -293,6 +371,7 @@ export function TenderWorkspace() {
                     <TableHead>Stage</TableHead>
                     <TableHead>Deadline</TableHead>
                     <TableHead className="text-right">Value</TableHead>
+                    {perms.canManageTenders && <TableHead className="w-20" />}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -322,12 +401,21 @@ export function TenderWorkspace() {
                           {TENDER_STAGE_LABELS[t.stage]}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-xs">{t.submission_deadline ?? "—"}</TableCell>
+                      <TableCell className="text-xs">{formatDate(t.submission_deadline)}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">
                         {t.estimated_value != null
                           ? formatCurrency(t.estimated_value, t.currency)
                           : "—"}
                       </TableCell>
+                      {perms.canManageTenders && (
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <RowActions
+                            label={t.title}
+                            onEdit={() => setEditing(t)}
+                            onDelete={() => removeTender(t)}
+                          />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -345,8 +433,14 @@ export function TenderWorkspace() {
       </div>
 
       <div className="rounded-lg border bg-card p-4">
-        <div className="text-sm font-semibold mb-2">Time to submit &amp; decide</div>
-        {timeMetricsQ.isLoading ? (
+        <h2 className="text-sm font-semibold mb-2">Time to submit &amp; decide</h2>
+        {timeMetricsQ.isError ? (
+          <LoadError
+            what="tender timings"
+            error={timeMetricsQ.error}
+            onRetry={() => timeMetricsQ.refetch()}
+          />
+        ) : timeMetricsQ.isLoading ? (
           <div className="py-6 flex justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           </div>
@@ -372,7 +466,7 @@ export function TenderWorkspace() {
             </div>
             <div className="md:col-span-2">
               <div className="text-xs font-medium text-muted-foreground mb-1.5">
-                Stalled — not yet submitted, oldest first
+                Waiting longest to be submitted
               </div>
               {(timeMetricsQ.data?.stalled ?? []).length === 0 ? (
                 <div className="text-xs text-muted-foreground py-2">Nothing stalled right now.</div>
@@ -413,176 +507,229 @@ function KpiCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+const blankTender = {
+  title: "",
+  referenceNumber: "",
+  departmentId: "",
+  clientMode: "existing" as "existing" | "prospect",
+  clientId: "",
+  prospectClientName: "",
+  serviceLineId: "",
+  estimatedValue: "",
+  submissionDeadline: "",
+  description: "",
+};
+type TenderForm = typeof blankTender;
+
 function NewTenderDialog() {
   const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [departmentId, setDepartmentId] = useState("");
-  const [clientMode, setClientMode] = useState<"existing" | "prospect">("existing");
-  const [clientId, setClientId] = useState("");
-  const [prospectClientName, setProspectClientName] = useState("");
-  const [serviceLineId, setServiceLineId] = useState("");
-  const [estimatedValue, setEstimatedValue] = useState("");
-  const [submissionDeadline, setSubmissionDeadline] = useState("");
-  const [description, setDescription] = useState("");
-
-  const departmentsQ = useEligibleDepartments();
-  const clientsQ = useClients();
+  const [form, setForm] = useState<TenderForm>(blankTender);
+  const [errors, setErrors] = useState<Partial<Record<keyof TenderForm, string>>>({});
+  const departmentsQ = useTenderDepartmentOptions();
   const serviceLinesQ = useServiceLines();
   const save = useSaveTender();
+  const dirty = (Object.keys(blankTender) as (keyof TenderForm)[]).some(
+    (k) => form[k] !== blankTender[k],
+  );
+  const { guardClose } = useUnsavedChanges(open && dirty);
 
-  const reset = () => {
-    setTitle("");
-    setDepartmentId("");
-    setClientMode("existing");
-    setClientId("");
-    setProspectClientName("");
-    setServiceLineId("");
-    setEstimatedValue("");
-    setSubmissionDeadline("");
-    setDescription("");
+  const set = <K extends keyof TenderForm>(key: K, value: TenderForm[K]) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    setErrors((e) => ({ ...e, [key]: undefined }));
+  };
+  const close = () => {
+    setOpen(false);
+    setForm(blankTender);
+    setErrors({});
   };
 
   const submit = () => {
-    if (!title.trim() || !departmentId) {
-      toast.error("Title and department are required");
-      return;
-    }
+    const next: typeof errors = {};
+    if (!form.title.trim()) next.title = "Enter the tender title.";
+    if (!form.departmentId) next.departmentId = "Choose the department most likely to deliver it.";
+    if (form.estimatedValue && Number(form.estimatedValue) < 0)
+      next.estimatedValue = "Value can't be negative.";
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
     save.mutate(
       {
-        title: title.trim(),
-        department_id: departmentId,
-        client_id: clientMode === "existing" ? clientId || undefined : undefined,
+        title: form.title.trim(),
+        reference_number: form.referenceNumber.trim() || undefined,
+        department_id: form.departmentId,
+        client_id: form.clientMode === "existing" ? form.clientId || undefined : undefined,
         prospect_client_name:
-          clientMode === "prospect" ? prospectClientName.trim() || undefined : undefined,
-        service_line_id: serviceLineId || undefined,
-        estimated_value: estimatedValue ? Number(estimatedValue) : undefined,
-        submission_deadline: submissionDeadline || undefined,
-        description: description || undefined,
+          form.clientMode === "prospect" ? form.prospectClientName.trim() || undefined : undefined,
+        service_line_id: form.serviceLineId || undefined,
+        estimated_value: form.estimatedValue ? Number(form.estimatedValue) : undefined,
+        submission_deadline: form.submissionDeadline || undefined,
+        description: form.description.trim() || undefined,
       },
       {
         onSuccess: () => {
-          toast.success("Tender created");
-          setOpen(false);
-          reset();
+          toast.success("Tender added");
+          close();
         },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to create"),
+        onError: (err) =>
+          toast.error(err instanceof Error ? err.message : "The tender wasn't saved"),
       },
     );
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : guardClose(close))}>
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="h-4 w-4 mr-1" /> New tender
         </Button>
       </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>New tender</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Department</Label>
-              <Select value={departmentId} onValueChange={setDepartmentId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(departmentsQ.data ?? []).map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>New tender</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-3">
+            <RequiredNote />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <FormField id="tender-new-title" label="Title" required error={errors.title}>
+                <Input
+                  id="tender-new-title"
+                  value={form.title}
+                  onChange={(e) => set("title", e.target.value)}
+                  aria-invalid={!!errors.title}
+                />
+              </FormField>
+              <FormField
+                id="tender-new-ref"
+                label="Reference number"
+                hint="As on the tender notice"
+              >
+                <Input
+                  id="tender-new-ref"
+                  value={form.referenceNumber}
+                  onChange={(e) => set("referenceNumber", e.target.value)}
+                />
+              </FormField>
             </div>
-            <div>
-              <div className="flex items-center justify-between">
-                <Label>Client (optional)</Label>
-                <button
-                  type="button"
-                  onClick={() => setClientMode(clientMode === "existing" ? "prospect" : "existing")}
-                  className="text-[0.6875rem] text-primary hover:underline"
-                >
-                  {clientMode === "existing" ? "+ New company" : "Pick existing client"}
-                </button>
-              </div>
-              {clientMode === "existing" ? (
-                <Select value={clientId} onValueChange={setClientId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Not yet known" />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <FormField
+                id="tender-new-department"
+                label="Department"
+                required
+                error={errors.departmentId}
+              >
+                <Select value={form.departmentId} onValueChange={(v) => set("departmentId", v)}>
+                  <SelectTrigger id="tender-new-department" aria-invalid={!!errors.departmentId}>
+                    <SelectValue placeholder="Choose a department…" />
                   </SelectTrigger>
                   <SelectContent>
-                    {(clientsQ.data ?? []).map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
+                    {(departmentsQ.data ?? []).map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              ) : (
+              </FormField>
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="tender-new-client" className="text-sm font-medium">
+                    Client
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      set("clientMode", form.clientMode === "existing" ? "prospect" : "existing")
+                    }
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {form.clientMode === "existing" ? "Type a company name" : "Pick a client"}
+                  </button>
+                </div>
+                <div className="mt-1">
+                  {form.clientMode === "existing" ? (
+                    <ClientPicker
+                      value={form.clientId}
+                      onChange={(v) => set("clientId", v)}
+                      allowNone
+                      placeholder="Not yet known"
+                    />
+                  ) : (
+                    <Input
+                      id="tender-new-client"
+                      value={form.prospectClientName}
+                      onChange={(e) => set("prospectClientName", e.target.value)}
+                      placeholder="Company name (not in the system yet)"
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <FormField id="tender-new-service-line" label="Service line">
+                <Select
+                  value={form.serviceLineId || "__none__"}
+                  onValueChange={(v) => set("serviceLineId", v === "__none__" ? "" : v)}
+                >
+                  <SelectTrigger id="tender-new-service-line">
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {(serviceLinesQ.data ?? []).map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+              <FormField
+                id="tender-new-value"
+                label="Estimated value"
+                error={errors.estimatedValue}
+              >
                 <Input
-                  value={prospectClientName}
-                  onChange={(e) => setProspectClientName(e.target.value)}
-                  placeholder="Company name (not in system yet)"
+                  id="tender-new-value"
+                  type="number"
+                  min={0}
+                  value={form.estimatedValue}
+                  onChange={(e) => set("estimatedValue", e.target.value)}
+                  aria-invalid={!!errors.estimatedValue}
                 />
-              )}
+              </FormField>
+              <FormField id="tender-new-deadline" label="Submission deadline">
+                <Input
+                  id="tender-new-deadline"
+                  type="date"
+                  value={form.submissionDeadline}
+                  onChange={(e) => set("submissionDeadline", e.target.value)}
+                />
+              </FormField>
             </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label>Service line</Label>
-              <Select value={serviceLineId} onValueChange={setServiceLineId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Optional" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(serviceLinesQ.data ?? []).map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Est. value</Label>
-              <Input
-                type="number"
-                value={estimatedValue}
-                onChange={(e) => setEstimatedValue(e.target.value)}
+            <FormField id="tender-new-description" label="Description">
+              <Textarea
+                id="tender-new-description"
+                value={form.description}
+                onChange={(e) => set("description", e.target.value)}
+                rows={3}
               />
-            </div>
-            <div>
-              <Label>Deadline</Label>
-              <Input
-                type="date"
-                value={submissionDeadline}
-                onChange={(e) => setSubmissionDeadline(e.target.value)}
-              />
-            </div>
+            </FormField>
           </div>
-          <div>
-            <Label>Description</Label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={submit} disabled={save.isPending}>
-            {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Create tender
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => guardClose(close)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Add tender
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

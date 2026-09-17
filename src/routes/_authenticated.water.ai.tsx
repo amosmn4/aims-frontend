@@ -21,6 +21,11 @@ import {
   type WaterAiSeverity,
   type WaterAiChatMessage,
 } from "@/features/water/use-water-ai";
+import { formatPeriodKey } from "@/features/water/water-ui";
+import { PageHeader } from "@/components/app-shell";
+import { confirmDialog } from "@/components/confirm-dialog";
+import { LoadError } from "@/components/load-error";
+import { formatDateTime } from "@/lib/format-date";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -48,6 +53,15 @@ const SEVERITY_STYLES: Record<WaterAiSeverity, string> = {
   high: "bg-destructive text-destructive-foreground",
 };
 
+const SEVERITY_LABELS: Record<WaterAiSeverity, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+};
+
+const PAGE_DESCRIPTION =
+  "Plain-language summaries of this month's water figures, unusual changes, and an assistant you can ask about the network.";
+
 function WaterAiPage() {
   const statusQ = useWaterAiStatus();
 
@@ -59,27 +73,27 @@ function WaterAiPage() {
     );
   }
 
+  if (statusQ.isError) {
+    return (
+      <div className="space-y-4">
+        <PageHeader title="AI Insights" description={PAGE_DESCRIPTION} />
+        <LoadError what="AI Insights" error={statusQ.error} onRetry={() => statusQ.refetch()} />
+      </div>
+    );
+  }
+
   if (!statusQ.data?.configured) {
     return (
-      <div>
-        <div className="mb-4">
-          <h1 className="text-lg font-semibold flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" /> AI Insights
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Trend summaries, anomaly detection, and a chat assistant over the water network's own
-            data.
-          </p>
-        </div>
-        <div className="rounded-lg border border-dashed bg-card py-14 text-center">
+      <div className="space-y-4">
+        <PageHeader title="AI Insights" description={PAGE_DESCRIPTION} />
+        <div className="rounded-lg border border-dashed bg-card py-14 px-4 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
-            <PlugZap className="h-5 w-5 text-muted-foreground" />
+            <PlugZap className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
           </div>
-          <div className="text-sm font-semibold">Not connected</div>
+          <div className="text-sm font-semibold">AI Insights isn&apos;t switched on yet</div>
           <p className="mt-1.5 max-w-md mx-auto text-xs text-muted-foreground">
-            Add <code className="rounded bg-secondary px-1 py-0.5">OPENAI_API_KEY</code> (or{" "}
-            <code className="rounded bg-secondary px-1 py-0.5">GEMINI_API_KEY</code> as a fallback)
-            to the backend environment to turn on AI insights and chat.
+            An AI provider (OpenAI or Gemini) needs to be connected before summaries and the
+            assistant work. Ask IT to connect one. The rest of the Water Project works without it.
           </p>
         </div>
       </div>
@@ -88,22 +102,14 @@ function WaterAiPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-primary" /> AI Insights
-        </h1>
-        <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap">
-          Trend summaries, anomaly detection, and a chat assistant over the water network's own
-          data.
-          <span className="inline-flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            {statusQ.data.providers.openai ? "OpenAI" : "Gemini"} connected
-            {statusQ.data.providers.openai && statusQ.data.providers.gemini
-              ? " (Gemini fallback ready)"
-              : ""}
-          </span>
-        </p>
-      </div>
+      <PageHeader title="AI Insights" description={PAGE_DESCRIPTION} />
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
+        Connected to {statusQ.data.providers.openai ? "OpenAI" : "Gemini"}
+        {statusQ.data.providers.openai && statusQ.data.providers.gemini
+          ? " (Gemini ready as a backup)"
+          : ""}
+      </p>
 
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 items-start">
         <div className="xl:col-span-2">
@@ -129,26 +135,30 @@ function InsightsPanel() {
   };
 
   const insight = insightQ.data;
+  const monthLabel = formatPeriodKey(month);
 
   return (
     <div className="rounded-lg border bg-card p-4 space-y-4">
-      <div className="flex items-end justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <Label className="text-xs">Period</Label>
+          <Label htmlFor="ai-month" className="text-xs">
+            Month
+          </Label>
           <Input
+            id="ai-month"
             type="month"
             value={month}
             onChange={(e) => setMonth(e.target.value)}
             className="h-9 w-40"
           />
         </div>
-        <Button size="sm" onClick={runGenerate} disabled={generate.isPending}>
+        <Button size="sm" onClick={runGenerate} disabled={generate.isPending || !month}>
           {generate.isPending ? (
             <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
           ) : (
             <RefreshCw className="h-4 w-4 mr-1.5" />
           )}
-          Generate insights
+          {insight ? "Refresh insights" : "Generate insights"}
         </Button>
       </div>
 
@@ -156,10 +166,14 @@ function InsightsPanel() {
         <div className="py-10 flex justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
+      ) : insightQ.isError ? (
+        <LoadError what="insights" error={insightQ.error} onRetry={() => insightQ.refetch()} />
       ) : !insight ? (
-        <div className="rounded-md border border-dashed py-10 text-center text-xs text-muted-foreground px-4">
-          No insights generated for {month} yet. Click "Generate insights" to have the assistant
-          read this month's dashboard, trend and zone-loss figures and summarize them.
+        <div className="flex flex-col items-center gap-3 rounded-md border border-dashed py-10 px-4 text-center text-xs text-muted-foreground">
+          <span>No insights for {monthLabel} yet</span>
+          <Button size="sm" variant="outline" onClick={runGenerate} disabled={generate.isPending}>
+            <Sparkles className="h-4 w-4 mr-1" /> Generate insights
+          </Button>
         </div>
       ) : (
         <div className="space-y-4">
@@ -167,19 +181,22 @@ function InsightsPanel() {
 
           {insight.anomalies.length > 0 && (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Anomalies
+              <div className="text-xs font-semibold text-muted-foreground mb-2">
+                Unusual changes
               </div>
               <div className="space-y-2">
                 {insight.anomalies.map((a, i) => (
                   <div key={i} className="rounded-md border p-2.5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="text-sm font-medium flex items-center gap-1.5">
-                        <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <AlertTriangle
+                          className="h-3.5 w-3.5 text-muted-foreground shrink-0"
+                          aria-hidden="true"
+                        />
                         {a.title}
                       </div>
                       <Badge className={cn("text-[10px] shrink-0", SEVERITY_STYLES[a.severity])}>
-                        {a.severity}
+                        {SEVERITY_LABELS[a.severity]}
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">{a.detail}</p>
@@ -191,13 +208,13 @@ function InsightsPanel() {
 
           {insight.reasons.length > 0 && (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Likely reasons
-              </div>
+              <div className="text-xs font-semibold text-muted-foreground mb-2">Likely reasons</div>
               <ul className="space-y-1.5">
                 {insight.reasons.map((r, i) => (
                   <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
-                    <span className="text-muted-foreground/60">—</span>
+                    <span className="text-muted-foreground/60" aria-hidden="true">
+                      —
+                    </span>
                     {r}
                   </li>
                 ))}
@@ -205,8 +222,8 @@ function InsightsPanel() {
             </div>
           )}
 
-          <div className="text-[11px] text-muted-foreground/70 pt-1 border-t">
-            Generated {new Date(insight.generated_at).toLocaleString()} via{" "}
+          <div className="text-xs text-muted-foreground pt-1 border-t">
+            Generated {formatDateTime(insight.generated_at)} using{" "}
             {insight.provider === "openai" ? "OpenAI" : "Gemini"}
           </div>
         </div>
@@ -239,21 +256,32 @@ function ChatPanel() {
     if (!trimmed || send.isPending) return;
     setDraft("");
     send.mutate(trimmed, {
-      onError: (err) => toast.error(errMsg(err, "Couldn't send that message")),
+      onError: (err) => {
+        setDraft(trimmed);
+        toast.error(errMsg(err, "Couldn't send that message"));
+      },
     });
   };
 
-  const runClear = () => {
+  const runClear = async () => {
+    const ok = await confirmDialog({
+      title: "Start a new conversation?",
+      description:
+        "This clears the current conversation with the water assistant. It can't be undone.",
+      confirmLabel: "Clear conversation",
+      destructive: true,
+    });
+    if (!ok) return;
     clear.mutate(undefined, {
       onError: (err) => toast.error(errMsg(err, "Couldn't clear the conversation")),
     });
   };
 
   return (
-    <div className="rounded-lg border bg-card flex flex-col h-[560px]">
+    <div className="rounded-lg border bg-card flex flex-col h-140">
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <div className="text-sm font-semibold flex items-center gap-1.5">
-          <Bot className="h-4 w-4 text-primary" /> Ask the water assistant
+          <Bot className="h-4 w-4 text-primary" aria-hidden="true" /> Ask the water assistant
         </div>
         {messages.length > 0 && (
           <Button
@@ -273,14 +301,20 @@ function ChatPanel() {
           <div className="py-10 flex justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           </div>
+        ) : historyQ.isError ? (
+          <LoadError
+            what="the conversation"
+            error={historyQ.error}
+            onRetry={() => historyQ.refetch()}
+          />
         ) : messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center gap-3 py-6">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary">
-              <Bot className="h-5 w-5 text-muted-foreground" />
+              <Bot className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
             </div>
             <p className="text-xs text-muted-foreground max-w-xs">
-              Ask about trends, losses, or specific zones — the assistant reads live dashboard,
-              trend, and zone-loss data before answering.
+              Ask about trends, losses or a particular zone. The assistant reads the latest
+              dashboard, trend and zone-loss figures before answering. Try one of these:
             </p>
             <div className="flex flex-col gap-1.5 w-full max-w-sm">
               {SUGGESTED_PROMPTS.map((p) => (
@@ -288,6 +322,7 @@ function ChatPanel() {
                   key={p}
                   type="button"
                   onClick={() => submit(p)}
+                  disabled={send.isPending}
                   className="text-xs text-left rounded-md border px-2.5 py-1.5 hover:bg-secondary/50 transition-colors"
                 >
                   {p}
@@ -303,7 +338,7 @@ function ChatPanel() {
             {send.isPending && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <div className="flex h-7 w-7 items-center justify-center rounded-full bg-secondary shrink-0">
-                  <Bot className="h-3.5 w-3.5" />
+                  <Bot className="h-3.5 w-3.5" aria-hidden="true" />
                 </div>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…
               </div>
@@ -313,7 +348,13 @@ function ChatPanel() {
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t p-3 flex items-end gap-2">
+      <form
+        className="border-t p-3 flex items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit(draft);
+        }}
+      >
         <Textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -324,18 +365,20 @@ function ChatPanel() {
             }
           }}
           placeholder="Ask a question about the water network…"
+          aria-label="Message to the water assistant"
           rows={1}
           className="min-h-9 max-h-32 resize-none text-sm"
         />
         <Button
+          type="submit"
           size="icon"
-          onClick={() => submit(draft)}
           disabled={!draft.trim() || send.isPending}
           className="h-9 w-9 shrink-0"
+          aria-label="Send message to the water assistant"
         >
           <Send className="h-4 w-4" />
         </Button>
-      </div>
+      </form>
     </div>
   );
 }
@@ -349,6 +392,7 @@ function ChatBubble({ message }: { message: WaterAiChatMessage }) {
           "flex h-7 w-7 items-center justify-center rounded-full shrink-0",
           isUser ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground",
         )}
+        aria-label={isUser ? "You" : "Water assistant"}
       >
         {isUser ? <UserIcon className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
       </div>

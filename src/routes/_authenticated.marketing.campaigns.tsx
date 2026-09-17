@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { confirmDialog } from "@/components/confirm-dialog";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   useCampaigns,
@@ -13,10 +12,16 @@ import {
   type CampaignRow,
   type CampaignStatus,
 } from "@/features/marketing/use-campaigns";
+import { PageHeader } from "@/components/app-shell";
+import { confirmDialog } from "@/components/confirm-dialog";
+import { FormField, RequiredNote } from "@/components/form-field";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { useAuth } from "@/lib/auth";
+import { formatDate } from "@/lib/format-date";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -37,6 +42,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -51,19 +57,21 @@ const currency = (n: number) => n.toLocaleString(undefined, { maximumFractionDig
 
 function RoiCell({ campaignId, hasBudget }: { campaignId: string; hasBudget: boolean }) {
   const roiQ = useCampaignRoi(campaignId);
-  if (roiQ.isLoading) return <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />;
+  if (roiQ.isLoading)
+    return (
+      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Loading" />
+    );
   const roi = roiQ.data;
   if (!roi) return <span className="text-muted-foreground">—</span>;
-  if (!hasBudget) {
-    return (
-      <span className="text-xs text-muted-foreground">
-        {roi.convertedCount}/{roi.leadsCount} converted · Ksh {currency(roi.revenue)} revenue
-      </span>
-    );
-  }
+  const detail = (
+    <span className="text-xs text-muted-foreground">
+      {roi.convertedCount} of {roi.leadsCount} leads converted · Ksh {currency(roi.revenue)} revenue
+    </span>
+  );
+  if (!hasBudget) return detail;
   const pct = roi.roi !== null ? Math.round(roi.roi * 100) : null;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Badge
         variant="secondary"
         className={
@@ -72,11 +80,9 @@ function RoiCell({ campaignId, hasBudget }: { campaignId: string; hasBudget: boo
             : "bg-destructive/15 text-destructive"
         }
       >
-        {pct !== null ? `${pct >= 0 ? "+" : ""}${pct}%` : "—"}
+        {pct !== null ? `Return ${pct >= 0 ? "+" : ""}${pct}%` : "—"}
       </Badge>
-      <span className="text-xs text-muted-foreground">
-        {roi.convertedCount}/{roi.leadsCount} converted · Ksh {currency(roi.revenue)} revenue
-      </span>
+      {detail}
     </div>
   );
 }
@@ -89,32 +95,52 @@ function Campaigns() {
   const [editing, setEditing] = useState<CampaignRow | "new" | null>(null);
   const campaigns = campaignsQ.data ?? [];
 
+  const remove = async (c: CampaignRow) => {
+    const ok = await confirmDialog({
+      title: `Delete campaign "${c.name}"?`,
+      description: "Leads stay, but they won't be linked to this campaign. This can't be undone.",
+      confirmLabel: "Delete campaign",
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteCampaign.mutate(c.id, {
+      onSuccess: () => toast.success("Campaign deleted"),
+      onError: (err) =>
+        toast.error(err instanceof Error ? err.message : "Couldn't delete the campaign"),
+    });
+  };
+
+  const newButton = (
+    <Button size="sm" onClick={() => setEditing("new")}>
+      <Plus className="mr-1 h-4 w-4" /> New campaign
+    </Button>
+  );
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Campaigns</h1>
-          <p className="text-xs text-muted-foreground">
-            Marketing spend against leads generated and revenue converted.
-          </p>
-        </div>
-        {canManage && (
-          <Button size="sm" onClick={() => setEditing("new")}>
-            <Plus className="h-4 w-4 mr-1" /> New campaign
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title="Campaigns"
+        description="What we spend on marketing, the leads each campaign brings in and the revenue they turn into."
+        actions={canManage ? newButton : undefined}
+      />
+      {!canManage && <ViewOnlyBanner area="campaigns" />}
 
-      {campaignsQ.isLoading ? (
-        <div className="py-12 flex justify-center">
+      {campaignsQ.isError ? (
+        <LoadError what="campaigns" error={campaignsQ.error} onRetry={() => campaignsQ.refetch()} />
+      ) : campaignsQ.isLoading ? (
+        <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
       ) : campaigns.length === 0 ? (
-        <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">
-          No campaigns yet.
+        <div className="rounded-lg border bg-card px-4 py-12 text-center">
+          <p className="text-sm font-medium">No campaigns yet</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Add a campaign, then link new leads to it to see what it brings in.
+          </p>
+          {canManage && <div className="mt-3">{newButton}</div>}
         </div>
       ) : (
-        <div className="rounded-lg border bg-card overflow-hidden">
+        <div className="overflow-hidden rounded-lg border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -122,8 +148,8 @@ function Campaigns() {
                 <TableHead>Channel</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Budget</TableHead>
-                <TableHead>ROI</TableHead>
-                <TableHead className="w-20" />
+                <TableHead>Results</TableHead>
+                {canManage && <TableHead className="w-20" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -131,8 +157,14 @@ function Campaigns() {
                 <TableRow key={c.id}>
                   <TableCell>
                     <div className="font-medium">{c.name}</div>
+                    {(c.startDate || c.endDate) && (
+                      <div className="text-xs text-muted-foreground">
+                        {formatDate(c.startDate, "No start date")} –{" "}
+                        {formatDate(c.endDate, "no end date")}
+                      </div>
+                    )}
                     {c.notes && (
-                      <div className="text-xs text-muted-foreground line-clamp-1">{c.notes}</div>
+                      <div className="line-clamp-1 text-xs text-muted-foreground">{c.notes}</div>
                     )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
@@ -143,42 +175,35 @@ function Campaigns() {
                       {CAMPAIGN_STATUS_LABELS[c.status]}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="whitespace-nowrap text-sm">
                     {c.budget !== null ? `Ksh ${currency(c.budget)}` : "—"}
                   </TableCell>
                   <TableCell>
                     <RoiCell campaignId={c.id} hasBudget={c.budget !== null} />
                   </TableCell>
-                  <TableCell>
-                    {canManage && (
+                  {canManage && (
+                    <TableCell>
                       <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => setEditing(c)}>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setEditing(c)}
+                          aria-label={`Edit campaign ${c.name}`}
+                        >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           size="icon"
                           variant="ghost"
-                          onClick={async () => {
-                            const ok = await confirmDialog({
-                              title: `Remove "${c.name}"?`,
-                              confirmLabel: "Remove",
-                              destructive: true,
-                              description: "This can't be undone.",
-                            });
-                            if (!ok) return;
-                            deleteCampaign.mutate(c.id, {
-                              onError: (err) =>
-                                toast.error(
-                                  err instanceof Error ? err.message : "Failed to delete",
-                                ),
-                            });
-                          }}
+                          disabled={deleteCampaign.isPending}
+                          onClick={() => remove(c)}
+                          aria-label={`Delete campaign ${c.name}`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
-                    )}
-                  </TableCell>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -198,47 +223,99 @@ function EditCampaignDialog({
   value: CampaignRow | "new" | null;
   onClose: () => void;
 }) {
+  const [dirty, setDirty] = useState(false);
+  const { guardClose } = useUnsavedChanges(!!value && dirty);
+  const close = () => {
+    setDirty(false);
+    onClose();
+  };
   return (
-    <Dialog open={!!value} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        {value && <EditCampaignForm value={value === "new" ? null : value} onDone={onClose} />}
+    <Dialog open={!!value} onOpenChange={(open) => !open && guardClose(close)}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        {value && (
+          <EditCampaignForm
+            key={value === "new" ? "new" : value.id}
+            value={value === "new" ? null : value}
+            onDirtyChange={setDirty}
+            onCancel={() => guardClose(close)}
+            onDone={close}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function EditCampaignForm({ value, onDone }: { value: CampaignRow | null; onDone: () => void }) {
+type CampaignForm = {
+  name: string;
+  channel: string;
+  status: CampaignStatus;
+  budget: string;
+  startDate: string;
+  endDate: string;
+  notes: string;
+};
+
+function EditCampaignForm({
+  value,
+  onDirtyChange,
+  onCancel,
+  onDone,
+}: {
+  value: CampaignRow | null;
+  onDirtyChange: (dirty: boolean) => void;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
   const save = useSaveCampaign();
-  const [name, setName] = useState(value?.name ?? "");
-  const [channel, setChannel] = useState(value?.channel ?? "");
-  const [status, setStatus] = useState<CampaignStatus>(value?.status ?? "planned");
-  const [budget, setBudget] = useState(value?.budget?.toString() ?? "");
-  const [startDate, setStartDate] = useState(value?.startDate?.slice(0, 10) ?? "");
-  const [endDate, setEndDate] = useState(value?.endDate?.slice(0, 10) ?? "");
-  const [notes, setNotes] = useState(value?.notes ?? "");
+  const [initial] = useState<CampaignForm>(() => ({
+    name: value?.name ?? "",
+    channel: value?.channel ?? "",
+    status: value?.status ?? "planned",
+    budget: value?.budget?.toString() ?? "",
+    startDate: value?.startDate?.slice(0, 10) ?? "",
+    endDate: value?.endDate?.slice(0, 10) ?? "",
+    notes: value?.notes ?? "",
+  }));
+  const [form, setForm] = useState<CampaignForm>(initial);
+  const [errors, setErrors] = useState<Partial<Record<keyof CampaignForm, string>>>({});
+
+  const set = <K extends keyof CampaignForm>(key: K, v: CampaignForm[K]) => {
+    const next = { ...form, [key]: v };
+    setForm(next);
+    setErrors((e) => ({ ...e, [key]: undefined }));
+    onDirtyChange(
+      (Object.keys(initial) as (keyof CampaignForm)[]).some((k) => next[k] !== initial[k]),
+    );
+  };
 
   const submit = () => {
-    if (!name.trim()) {
-      toast.error("Name is required");
-      return;
-    }
+    const next: typeof errors = {};
+    if (!form.name.trim()) next.name = "Enter the campaign name";
+    if (form.budget && (!Number.isFinite(Number(form.budget)) || Number(form.budget) < 0))
+      next.budget = "Enter a budget of 0 or more, or leave it empty";
+    if (form.startDate && form.endDate && form.endDate < form.startDate)
+      next.endDate = "The end date can't be before the start date";
+    setErrors(next);
+    if (Object.keys(next).length) return;
     save.mutate(
       {
         id: value?.id,
-        name: name.trim(),
-        channel: channel || undefined,
-        status,
-        budget: budget ? Number(budget) : undefined,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        notes: notes || undefined,
+        name: form.name.trim(),
+        channel: form.channel.trim() || undefined,
+        status: form.status,
+        budget: form.budget ? Number(form.budget) : undefined,
+        startDate: form.startDate || undefined,
+        endDate: form.endDate || undefined,
+        notes: form.notes.trim() || undefined,
       },
       {
         onSuccess: () => {
-          toast.success(value ? "Updated" : "Campaign added");
+          toast.success(value ? "Campaign saved" : "Campaign added");
           onDone();
         },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save"),
+        onError: (err) =>
+          toast.error(err instanceof Error ? err.message : "Couldn't save the campaign"),
       },
     );
   };
@@ -246,30 +323,39 @@ function EditCampaignForm({ value, onDone }: { value: CampaignRow | null; onDone
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{value ? "Edit campaign" : "New campaign"}</DialogTitle>
+        <DialogTitle>{value ? `Edit ${value.name}` : "New campaign"}</DialogTitle>
+        <DialogDescription>Link leads to this campaign when you add them.</DialogDescription>
       </DialogHeader>
-      <div className="space-y-3">
-        <div>
-          <Label>Name</Label>
+      <form
+        className="space-y-3"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <RequiredNote />
+        <FormField id="campaign-name" label="Name" required error={errors.name}>
           <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Q3 LinkedIn Push"
+            id="campaign-name"
+            value={form.name}
+            aria-invalid={!!errors.name}
+            onChange={(e) => set("name", e.target.value)}
+            placeholder="e.g. Q3 LinkedIn push"
           />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Channel</Label>
+        </FormField>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <FormField id="campaign-channel" label="Channel">
             <Input
-              value={channel}
-              onChange={(e) => setChannel(e.target.value)}
-              placeholder="LinkedIn, Email…"
+              id="campaign-channel"
+              value={form.channel}
+              onChange={(e) => set("channel", e.target.value)}
+              placeholder="LinkedIn, email…"
             />
-          </div>
-          <div>
-            <Label>Status</Label>
-            <Select value={status} onValueChange={(v) => setStatus(v as CampaignStatus)}>
-              <SelectTrigger>
+          </FormField>
+          <FormField id="campaign-status" label="Status">
+            <Select value={form.status} onValueChange={(v) => set("status", v as CampaignStatus)}>
+              <SelectTrigger id="campaign-status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -280,33 +366,57 @@ function EditCampaignForm({ value, onDone }: { value: CampaignRow | null; onDone
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </FormField>
         </div>
-        <div>
-          <Label>Budget (Ksh)</Label>
-          <Input type="number" min={0} value={budget} onChange={(e) => setBudget(e.target.value)} />
+        <FormField id="campaign-budget" label="Budget (Ksh)" error={errors.budget}>
+          <Input
+            id="campaign-budget"
+            type="number"
+            min={0}
+            inputMode="decimal"
+            value={form.budget}
+            aria-invalid={!!errors.budget}
+            onChange={(e) => set("budget", e.target.value)}
+          />
+        </FormField>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <FormField id="campaign-start" label="Start date">
+            <Input
+              id="campaign-start"
+              type="date"
+              value={form.startDate}
+              onChange={(e) => set("startDate", e.target.value)}
+            />
+          </FormField>
+          <FormField id="campaign-end" label="End date" error={errors.endDate}>
+            <Input
+              id="campaign-end"
+              type="date"
+              min={form.startDate || undefined}
+              value={form.endDate}
+              aria-invalid={!!errors.endDate}
+              onChange={(e) => set("endDate", e.target.value)}
+            />
+          </FormField>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Start date</Label>
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          </div>
-          <div>
-            <Label>End date</Label>
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-          </div>
-        </div>
-        <div>
-          <Label>Notes</Label>
-          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
-        </div>
-      </div>
-      <DialogFooter>
-        <Button onClick={submit} disabled={save.isPending}>
-          {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Save
-        </Button>
-      </DialogFooter>
+        <FormField id="campaign-notes" label="Notes">
+          <Textarea
+            id="campaign-notes"
+            rows={2}
+            value={form.notes}
+            onChange={(e) => set("notes", e.target.value)}
+          />
+        </FormField>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={save.isPending}>
+            {save.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+            {value ? "Save campaign" : "Add campaign"}
+          </Button>
+        </DialogFooter>
+      </form>
     </>
   );
 }

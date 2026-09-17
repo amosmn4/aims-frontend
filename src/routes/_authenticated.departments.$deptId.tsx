@@ -9,10 +9,11 @@ import {
   Users,
   FileText,
   FolderKanban,
-  ArrowRight,
   ShieldCheck,
+  Plus,
 } from "lucide-react";
 import {
+  useClientPermissions,
   useContracts,
   useDepartments,
   useProfilesLite,
@@ -23,24 +24,24 @@ import {
 } from "@/features/clients/use-clients-contracts";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
-import {
-  useProjects,
-  PROJECT_STATUS_LABELS,
-  type ProjectStatus,
-} from "@/features/projects/use-projects";
+import { useProjects } from "@/features/projects/use-projects";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { useAuth, departmentScopeFor } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
+import { ClientFormDialog } from "@/features/clients/client-form-dialog";
+import { NewProjectDialog } from "@/features/projects/new-project-dialog";
+import { ProjectCardGrid } from "@/features/projects/project-card-grid";
+import { matchesQuery } from "@/components/pipeline/board-search";
+import {
+  ContractFormDialog,
+  emptyContractDraft,
+  type ContractDraft,
+} from "@/features/clients/contract-form-dialog";
+import { useAuth, departmentScopeFor, type AppRole } from "@/lib/auth";
 import { PermissionDenied } from "@/components/require-role";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
+import { formatDate } from "@/lib/format-date";
 import { PermissionsPanel } from "@/features/permissions/permissions-panel";
-
-const PROJECT_STATUS_STYLES: Record<ProjectStatus, string> = {
-  planning: "bg-secondary text-secondary-foreground",
-  active: "bg-primary/10 text-primary",
-  on_hold: "bg-warning/15 text-warning",
-  completed: "bg-success/15 text-success",
-  cancelled: "bg-destructive/15 text-destructive",
-};
 
 export const Route = createFileRoute("/_authenticated/departments/$deptId")({
   component: DepartmentWorkspace,
@@ -63,7 +64,8 @@ export function DepartmentWorkspaceContent({
   deptId: string;
   scoped?: boolean;
 }) {
-  const { roles, hasRole, profile } = useAuth();
+  const { roles, hasRole, profile, isAdminOrCeo } = useAuth();
+  const { canCreateClient } = useClientPermissions();
   const scope = departmentScopeFor(roles);
   const isOwnDepartmentHead = hasRole("department_head") && profile?.departmentId === deptId;
   const deptsQ = useDepartments();
@@ -74,6 +76,8 @@ export function DepartmentWorkspaceContent({
   const projectsQ = useProjects({ departmentId: deptId });
   const [tab, setTab] = useState<"clients" | "contracts" | "projects">("contracts");
   const [search, setSearch] = useState("");
+  const [newClientOpen, setNewClientOpen] = useState(false);
+  const [contractDraft, setContractDraft] = useState<ContractDraft | null>(null);
 
   const dept = deptsQ.data?.find((d) => d.id === deptId);
   const clientMap = useMemo(
@@ -103,11 +107,12 @@ export function DepartmentWorkspaceContent({
     });
   }, [contracts, search, clientMap]);
 
-  // Clients in this department = clients that have at least one contract here
+  // Clients captured by this department, or linked through one of its contracts or projects.
   const deptClients = useMemo(() => {
     const ids = new Set(contracts.map((c) => c.client_id));
-    return (clientsQ.data ?? []).filter((c) => ids.has(c.id));
-  }, [contracts, clientsQ.data]);
+    for (const p of projectsQ.data ?? []) if (p.client_id) ids.add(p.client_id);
+    return (clientsQ.data ?? []).filter((c) => ids.has(c.id) || c.department_id === deptId);
+  }, [contracts, projectsQ.data, clientsQ.data, deptId]);
   const filteredClients = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return deptClients;
@@ -115,6 +120,10 @@ export function DepartmentWorkspaceContent({
       (c) => c.name.toLowerCase().includes(q) || (c.code ?? "").toLowerCase().includes(q),
     );
   }, [deptClients, search]);
+
+  const filteredProjects = (projectsQ.data ?? []).filter((p) =>
+    matchesQuery(search, p.name, p.client_name, p.service_line_name),
+  );
 
   // KPIs
   const kpi = useMemo(() => {
@@ -148,6 +157,9 @@ export function DepartmentWorkspaceContent({
       </div>
     );
   }
+  if (deptsQ.isError) {
+    return <LoadError what="departments" error={deptsQ.error} onRetry={() => deptsQ.refetch()} />;
+  }
   if (!dept) {
     return (
       <div className="p-6 text-sm text-muted-foreground">
@@ -167,6 +179,25 @@ export function DepartmentWorkspaceContent({
     return <PermissionDenied message="You do not have access to this department's workspace." />;
   }
 
+  const canCapture =
+    isAdminOrCeo ||
+    hasRole(dept.code as AppRole) ||
+    (hasRole(["department_head", "account_manager"]) && profile?.departmentId === deptId);
+  const canAddClient = canCapture && canCreateClient;
+  // Mirrors POST /contracts roles: Operations can capture clients but not contracts.
+  const canCreateContract =
+    canCapture &&
+    (isAdminOrCeo ||
+      hasRole([
+        "finance",
+        "hr",
+        "it",
+        "marketing",
+        "tender",
+        "department_head",
+        "account_manager",
+      ]));
+
   return (
     <div className="space-y-3">
       {!scoped && (
@@ -178,25 +209,60 @@ export function DepartmentWorkspaceContent({
         </Link>
       )}
 
-      <div>
-        <h1 className="text-lg font-semibold flex items-center gap-2">
-          <Briefcase className="h-4 w-4 text-primary" /> {dept.name} — Clients & Contracts
-        </h1>
-        <p className="text-xs text-muted-foreground">
-          {scoped ? (
-            `Clients and contracts belonging to ${dept.name}.`
-          ) : (
-            <>
-              Scoped view of the central clients & contracts module for the {dept.name} department.
-              Full CRUD is available from the{" "}
-              <Link to="/clients" className="text-primary hover:underline">
-                central module
-              </Link>
-              .
-            </>
-          )}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold flex items-center gap-2">
+            <Briefcase className="h-4 w-4 text-primary" /> {dept.name} — Clients & Contracts
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            {scoped ? (
+              `Clients, contracts and projects belonging to ${dept.name}.`
+            ) : (
+              <>
+                Clients, contracts and projects belonging to {dept.name}. Every department's clients
+                are in{" "}
+                <Link to="/clients" className="text-primary hover:underline">
+                  Clients & Contracts
+                </Link>
+                .
+              </>
+            )}
+          </p>
+        </div>
+        {canCapture && (
+          <div className="flex gap-2">
+            {canAddClient && (
+              <Button size="sm" variant="outline" onClick={() => setNewClientOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" /> New client
+              </Button>
+            )}
+            {canCreateContract && (
+              <Button
+                size="sm"
+                onClick={() => setContractDraft({ ...emptyContractDraft(), department_id: deptId })}
+              >
+                <Plus className="h-4 w-4 mr-1" /> New contract
+              </Button>
+            )}
+          </div>
+        )}
       </div>
+
+      {!canCapture && <ViewOnlyBanner area={`${dept.name}'s clients and contracts`} />}
+
+      <ClientFormDialog
+        open={newClientOpen}
+        onOpenChange={setNewClientOpen}
+        departmentId={deptId}
+        onSaved={() => setTab("clients")}
+      />
+      {contractDraft && (
+        <ContractFormDialog
+          key={contractDraft.id ?? "new"}
+          draft={contractDraft}
+          onClose={() => setContractDraft(null)}
+        />
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         <Kpi label="Clients" value={String(kpi.clientCount)} />
@@ -213,18 +279,24 @@ export function DepartmentWorkspaceContent({
       <div className="rounded-lg border bg-card p-3 flex gap-2 flex-wrap items-center">
         <div className="flex gap-1">
           <button
+            type="button"
+            aria-pressed={tab === "contracts"}
             onClick={() => setTab("contracts")}
             className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded border ${tab === "contracts" ? "bg-primary text-primary-foreground border-primary" : "bg-card"}`}
           >
             <FileText className="h-3 w-3" /> Contracts ({contracts.length})
           </button>
           <button
+            type="button"
+            aria-pressed={tab === "clients"}
             onClick={() => setTab("clients")}
             className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded border ${tab === "clients" ? "bg-primary text-primary-foreground border-primary" : "bg-card"}`}
           >
             <Users className="h-3 w-3" /> Clients ({deptClients.length})
           </button>
           <button
+            type="button"
+            aria-pressed={tab === "projects"}
             onClick={() => setTab("projects")}
             className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded border ${tab === "projects" ? "bg-primary text-primary-foreground border-primary" : "bg-card"}`}
           >
@@ -232,14 +304,20 @@ export function DepartmentWorkspaceContent({
           </button>
         </div>
         <div className="flex-1" />
-        {tab !== "projects" && (
-          <Input
-            placeholder={tab === "clients" ? "Search clients…" : "Search contracts…"}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="max-w-xs h-9"
-          />
-        )}
+        <Input
+          placeholder={
+            tab === "clients"
+              ? "Search clients…"
+              : tab === "contracts"
+                ? "Search contracts…"
+                : "Search projects…"
+          }
+          aria-label={`Search ${tab}`}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="max-w-xs h-9"
+        />
+        {tab === "projects" && canCapture && <NewProjectDialog fixedDepartmentId={deptId} />}
       </div>
 
       {tab === "projects" ? (
@@ -247,42 +325,30 @@ export function DepartmentWorkspaceContent({
           <div className="py-8 flex justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           </div>
-        ) : (projectsQ.data ?? []).length === 0 ? (
+        ) : projectsQ.isError ? (
+          <LoadError what="projects" error={projectsQ.error} onRetry={() => projectsQ.refetch()} />
+        ) : filteredProjects.length === 0 ? (
           <div className="rounded-lg border bg-card py-12 text-center text-sm text-muted-foreground">
-            No projects for this department yet.
+            {search.trim() ? (
+              <NoMatches onClear={() => setSearch("")} />
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <span>No projects for this department yet</span>
+                {canCapture && <NewProjectDialog fixedDepartmentId={deptId} />}
+              </div>
+            )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {(projectsQ.data ?? []).map((p) => (
-              <Link
-                key={p.id}
-                to="/projects/$projectId"
-                params={{ projectId: p.id }}
-                className="rounded-lg border bg-card p-4 flex flex-col gap-2 hover:border-primary/50 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="font-semibold text-sm">{p.name}</div>
-                  <Badge className={PROJECT_STATUS_STYLES[p.status]} variant="secondary">
-                    {PROJECT_STATUS_LABELS[p.status]}
-                  </Badge>
-                </div>
-                {p.client_name && (
-                  <div className="text-xs text-muted-foreground">Client: {p.client_name}</div>
-                )}
-                <div className="mt-auto pt-2 border-t flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">{p.task_count ?? 0} tasks</span>
-                  <span className="text-primary inline-flex items-center gap-1">
-                    Open <ArrowRight className="h-3 w-3" />
-                  </span>
-                </div>
-              </Link>
-            ))}
-          </div>
+          <ProjectCardGrid projects={filteredProjects} />
         )
-      ) : contractsQ.isLoading ? (
+      ) : contractsQ.isLoading || (tab === "clients" && clientsQ.isLoading) ? (
         <div className="py-8 flex justify-center">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
+      ) : contractsQ.isError ? (
+        <LoadError what="contracts" error={contractsQ.error} onRetry={() => contractsQ.refetch()} />
+      ) : tab === "clients" && clientsQ.isError ? (
+        <LoadError what="clients" error={clientsQ.error} onRetry={() => clientsQ.refetch()} />
       ) : tab === "contracts" ? (
         <div className="rounded-lg border bg-card overflow-hidden">
           <div className="overflow-x-auto">
@@ -304,7 +370,23 @@ export function DepartmentWorkspaceContent({
                 {filteredContracts.length === 0 && (
                   <tr>
                     <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground text-xs">
-                      No contracts for this department yet.
+                      {search.trim() ? (
+                        <NoMatches onClear={() => setSearch("")} />
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <span>No contracts for this department yet</span>
+                          {canCreateContract && (
+                            <Button
+                              size="sm"
+                              onClick={() =>
+                                setContractDraft({ ...emptyContractDraft(), department_id: deptId })
+                              }
+                            >
+                              <Plus className="h-4 w-4 mr-1" /> New contract
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -334,9 +416,9 @@ export function DepartmentWorkspaceContent({
                         {formatCurrency(Number(c.value))}
                       </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">
-                        <div>
-                          {c.start_date}
-                          {c.end_date ? ` → ${c.end_date}` : ""}
+                        <div className="whitespace-nowrap">
+                          {formatDate(c.start_date)}
+                          {c.end_date ? ` → ${formatDate(c.end_date)}` : ""}
                         </div>
                         {r.status !== "ok" && r.status !== "no_end" && (
                           <span
@@ -378,15 +460,26 @@ export function DepartmentWorkspaceContent({
                 {filteredClients.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground text-xs">
-                      No clients tied to contracts in this department.
+                      {search.trim() ? (
+                        <NoMatches onClear={() => setSearch("")} />
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <span>No clients for this department yet</span>
+                          {canAddClient && (
+                            <Button size="sm" onClick={() => setNewClientOpen(true)}>
+                              <Plus className="h-4 w-4 mr-1" /> New client
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )}
                 {filteredClients.map((c) => {
                   const rows = contracts.filter((x) => x.client_id === c.id);
                   const val = rows.reduce((s, x) => s + Number(x.value), 0);
-                  const ind = (c as unknown as { industry?: string | null }).industry ?? "";
-                  const seg = (c as unknown as { segment?: string | null }).segment ?? "";
+                  const ind = c.industry ?? "";
+                  const seg = c.segment ?? "";
                   return (
                     <tr key={c.id} className="border-t hover:bg-secondary/20">
                       <td className="px-3 py-2 font-medium">{c.name}</td>
@@ -416,10 +509,21 @@ export function DepartmentWorkspaceContent({
   );
 }
 
+function NoMatches({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="space-y-2">
+      <p>No matches</p>
+      <Button size="sm" variant="outline" onClick={onClear}>
+        Clear search
+      </Button>
+    </div>
+  );
+}
+
 function Kpi({ label, value, tone }: { label: string; value: string; tone?: "warn" }) {
   return (
     <div className={`rounded-lg border bg-card p-3 ${tone === "warn" ? "border-warning/40" : ""}`}>
-      <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div
         className={`text-base font-semibold tabular-nums ${tone === "warn" ? "text-warning" : ""}`}
       >

@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, useLocation } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   Building2,
@@ -9,53 +8,75 @@ import {
   FolderArchive,
   BarChart3,
   Shield,
-  LogOut,
   Menu,
-  Crown,
   ChevronDown,
   Clock,
   X,
-  PanelLeft,
-  PanelTop,
   Workflow,
-  Compass,
   CalendarClock,
   Laptop2,
   Droplets,
-  Settings,
+  CircleHelp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuth, homeRouteFor, departmentScopeFor, ROLE_LABELS, type AppRole } from "@/lib/auth";
-import { buildDepartmentNav } from "@/lib/department-nav";
-import { useLayoutPreference } from "@/lib/layout-preference";
-import { Button } from "@/components/ui/button";
+import {
+  useAuth,
+  homeRouteFor,
+  departmentScopeFor,
+  type AppRole,
+  type DepartmentCode,
+} from "@/lib/auth";
+import {
+  buildDepartmentNav,
+  buildSetupNav,
+  buildWaterNav,
+  DEPARTMENT_CODES,
+} from "@/lib/department-nav";
 import { NotificationBell } from "@/components/notification-bell";
 import { HeaderSearch } from "@/components/header-search";
+import { ViewAsBanner, ViewAsButton } from "@/components/view-as";
+import { UserMenu } from "@/components/nav/user-menu";
+import { useEffectiveLayout, useMediaQuery } from "@/components/nav/use-effective-layout";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export interface NavChild {
   to: string;
   label: string;
-  role?: AppRole;
+  /** Shown only to people who can read this department. */
+  department?: DepartmentCode;
+  exact?: boolean;
+  /** Draw a separator above this child. */
+  divider?: boolean;
 }
 
 export interface NavItem {
   to: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  /** Path prefixes that light this item up; the longest match across the menu wins. */
   match?: string[];
-  // Paths that should NOT count toward this item being "active" even though they'd otherwise
-  // match a `match` prefix — e.g. Inventory lives at /it/inventory for historical reasons, but
-  // it's its own top-level nav item, not part of the Departments/IT hub, so Departments shouldn't
-  // light up while you're on it.
   matchExclude?: string[];
+  /** Active only on exactly `to`. */
+  exact?: boolean;
   adminOnly?: boolean;
   extraRoles?: AppRole[];
   children?: NavChild[];
 }
 
+const PIPELINE_CHILDREN: NavChild[] = [
+  { to: "/pipeline/engagements", label: "Client requests" },
+  { to: "/pipeline/tenders", label: "Tenders" },
+  { to: "/pipeline/projects", label: "Projects board" },
+];
+
 const NAV: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
-  { to: "/guide", label: "How It Works", icon: Compass, match: ["/guide"] },
   {
     to: "/departments",
     label: "Departments",
@@ -63,38 +84,39 @@ const NAV: NavItem[] = [
     match: ["/departments", "/operations", "/finance", "/hr", "/it", "/marketing", "/tender"],
     matchExclude: ["/it/inventory"],
     children: [
-      { to: "/departments", label: "All Departments" },
-      { to: "/operations", label: "Operations", role: "operations" },
-      { to: "/finance", label: "Finance", role: "finance" },
-      { to: "/hr", label: "Human Resources", role: "hr" },
-      { to: "/it", label: "Information Technology", role: "it" },
-      { to: "/marketing", label: "Marketing", role: "marketing" },
-      { to: "/tender", label: "Tender", role: "tender" },
+      { to: "/departments", label: "All departments", exact: true },
+      { to: "/operations", label: "Operations", department: "operations" },
+      { to: "/finance", label: "Finance", department: "finance" },
+      { to: "/hr", label: "Human Resources", department: "hr" },
+      { to: "/it", label: "Information Technology", department: "it" },
+      { to: "/marketing", label: "Marketing", department: "marketing" },
+      { to: "/tender", label: "Tender", department: "tender" },
     ],
   },
   {
     to: "/pipeline",
-    label: "Pipeline",
+    label: "Pipelines",
     icon: Workflow,
-    match: ["/pipeline"],
+    match: ["/pipeline", "/requests", "/engagements"],
+    children: PIPELINE_CHILDREN,
   },
   {
     to: "/clients",
-    label: "Clients & Contracts",
+    label: "Clients & contracts",
     icon: Briefcase,
     children: [
-      { to: "/clients", label: "Clients" },
+      { to: "/clients", label: "Clients", exact: true },
       { to: "/clients/contracts", label: "Contracts" },
     ],
   },
   {
     to: "/projects",
-    label: "Projects & Tasks",
+    label: "Projects",
     icon: FolderKanban,
     children: [
-      { to: "/projects", label: "All Projects" },
-      { to: "/projects/mine", label: "My Tasks" },
-      { to: "/projects/department", label: "Department Board" },
+      { to: "/projects", label: "All projects", exact: true },
+      { to: "/projects/mine", label: "My tasks" },
+      { to: "/projects/department", label: "Department tasks" },
     ],
   },
   { to: "/documents", label: "Documents", icon: FolderArchive },
@@ -112,22 +134,14 @@ const NAV: NavItem[] = [
     to: "/reports",
     label: "Reports",
     icon: BarChart3,
-    match: ["/reports"],
+    match: ["/reports", "/department-reports"],
     children: [
-      {
-        to: "/reports/departments/finance",
-        label: "Finance — Financial Management",
-        role: "finance",
-      },
-      { to: "/reports/departments/hr", label: "Human Resources", role: "hr" },
-      { to: "/reports/departments/it", label: "Information Technology", role: "it" },
-      {
-        to: "/reports/departments/marketing",
-        label: "Marketing",
-        role: "marketing",
-      },
-      { to: "/reports/departments/tender", label: "Tender", role: "tender" },
-      { to: "/reports/projects", label: "Projects — All submissions" },
+      { to: "/reports/departments/finance", label: "Finance", department: "finance" },
+      { to: "/reports/departments/hr", label: "Human Resources", department: "hr" },
+      { to: "/reports/departments/it", label: "Information Technology", department: "it" },
+      { to: "/reports/departments/marketing", label: "Marketing", department: "marketing" },
+      { to: "/reports/departments/tender", label: "Tender", department: "tender" },
+      { to: "/reports/departments/operations", label: "Operations", department: "operations" },
     ],
   },
   {
@@ -137,15 +151,103 @@ const NAV: NavItem[] = [
     adminOnly: true,
     match: ["/admin"],
     children: [
-      { to: "/admin/users", label: "Users" },
+      { to: "/admin/users", label: "Staff" },
       { to: "/admin/permissions", label: "Permissions" },
       { to: "/admin/departments", label: "Departments" },
       { to: "/admin/audit", label: "Audit Log" },
+      { to: "/admin/company", label: "Company settings" },
     ],
   },
 ];
 
-function LiveClock() {
+const CEO_NAV: NavItem[] = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  {
+    to: "/pipeline",
+    label: "Pipelines",
+    icon: Workflow,
+    match: ["/pipeline", "/requests", "/tender", "/engagements"],
+    children: PIPELINE_CHILDREN,
+  },
+  {
+    to: "/projects",
+    label: "Projects & Work",
+    icon: FolderKanban,
+    match: ["/projects", "/water", "/it/inventory"],
+    children: [
+      { to: "/projects", label: "All projects", exact: true },
+      { to: "/water", label: "Water Project" },
+      { to: "/it/inventory", label: "Inventory" },
+    ],
+  },
+  {
+    to: "/clients",
+    label: "Clients & contracts",
+    icon: Briefcase,
+    children: [
+      { to: "/clients", label: "Clients", exact: true },
+      { to: "/clients/contracts", label: "Contracts" },
+    ],
+  },
+  {
+    to: "/reports",
+    label: "Reports & Analytics",
+    icon: BarChart3,
+    match: ["/reports", "/department-reports", "/finance/reports", "/water/reports"],
+    children: [
+      { to: "/reports", label: "All reports", exact: true },
+      { to: "/reports/departments/finance", label: "Finance" },
+      { to: "/reports/departments/hr", label: "Human Resources" },
+      { to: "/reports/departments/it", label: "Information Technology" },
+      { to: "/reports/departments/marketing", label: "Marketing" },
+      { to: "/reports/departments/tender", label: "Tender" },
+      { to: "/reports/departments/operations", label: "Operations" },
+      { to: "/water/reports", label: "Water Project" },
+    ],
+  },
+  {
+    to: "/admin/users",
+    label: "Admin",
+    icon: Shield,
+    match: ["/admin", "/settings"],
+    children: [
+      { to: "/admin/users", label: "Staff" },
+      { to: "/admin/permissions", label: "Roles & Permissions" },
+      { to: "/admin/departments", label: "Departments & Offices" },
+      { to: "/admin/audit", label: "Audit Log" },
+      { to: "/admin/company", label: "Company settings" },
+      { to: "/settings/profile", label: "My profile" },
+      { to: "/settings/notifications", label: "My notifications" },
+    ],
+  },
+];
+
+const pathHits = (pathname: string, p: string) => pathname === p || pathname.startsWith(p + "/");
+
+function navScore(item: NavItem, pathname: string): number {
+  if (item.matchExclude?.some((p) => pathHits(pathname, p))) return -1;
+  if (item.exact) {
+    return pathname === item.to || pathname === `${item.to}/` ? item.to.length + 0.5 : -1;
+  }
+  const hits = (item.match ?? [item.to]).filter((p) => pathHits(pathname, p));
+  return hits.length ? Math.max(...hits.map((p) => p.length)) : -1;
+}
+
+/** The one menu item for this page: the most specific match wins. */
+export function activeNavItem(items: NavItem[], pathname: string): NavItem | null {
+  let best: NavItem | null = null;
+  let bestScore = -1;
+  for (const item of items) {
+    const score = navScore(item, pathname);
+    if (score > bestScore) {
+      best = item;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function LiveClock({ className = "hidden xl:flex" }: { className?: string }) {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -155,7 +257,10 @@ function LiveClock() {
 
   return (
     <div
-      className="hidden xl:flex items-center gap-1.5 text-xs text-sidebar-foreground/80 tabular-nums shrink-0"
+      className={cn(
+        "items-center gap-1.5 text-xs text-sidebar-foreground/80 tabular-nums shrink-0",
+        className,
+      )}
       title={now.toLocaleDateString(undefined, {
         weekday: "long",
         year: "numeric",
@@ -163,7 +268,7 @@ function LiveClock() {
         day: "numeric",
       })}
     >
-      <Clock className="h-3.5 w-3.5" />
+      <Clock className="h-3.5 w-3.5" aria-hidden="true" />
       <span>
         {now.toLocaleTimeString(undefined, {
           hour: "2-digit",
@@ -175,214 +280,153 @@ function LiveClock() {
   );
 }
 
-// Renders its dropdown panel through a portal to document.body instead of a nested `absolute`
-// div. The top-nav's own `overflow-x-auto` (a horizontal-scroll safety net for in-between
-// window widths) forces `overflow-y` to `auto` too per the CSS overflow spec — coupling that
-// can't be undone by also setting `overflow-y-visible` — which was silently clipping every
-// dropdown panel below it even though the open/close state was working correctly. Portaling
-// escapes that clipping ancestor entirely. Close is debounced (not instant on mouseleave)
-// because the panel is no longer a DOM descendant of the trigger once portaled — moving the
-// mouse from the button down into the panel now crosses a real element boundary, so an instant
-// close would unmount the panel before the cursor ever reaches it.
-const NAV_DROPDOWN_CLOSE_DELAY_MS = 150;
-
 function TopNavDropdown({
   item,
   active,
-  open,
-  onOpenChange,
   visibleChildren,
   isChildActive,
+  compact,
 }: {
   item: NavItem;
   active: boolean;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   visibleChildren: NavChild[];
   isChildActive: (child: NavChild) => boolean;
+  compact: boolean;
 }) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const [rect, setRect] = useState<{ top: number; left: number } | null>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const Icon = item.icon;
-
-  const cancelClose = () => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  };
-  const scheduleClose = () => {
-    cancelClose();
-    closeTimer.current = setTimeout(() => onOpenChange(false), NAV_DROPDOWN_CLOSE_DELAY_MS);
-  };
-  const openNow = () => {
-    cancelClose();
-    if (wrapperRef.current) {
-      const r = wrapperRef.current.getBoundingClientRect();
-      setRect({ top: r.bottom + 4, left: r.left });
-    }
-    onOpenChange(true);
-  };
-
-  useEffect(() => cancelClose, []);
-
   return (
-    <div
-      ref={wrapperRef}
-      className="relative shrink-0"
-      onMouseEnter={openNow}
-      onMouseLeave={scheduleClose}
-    >
-      <button
-        className={cn(
-          "flex items-center gap-1.5 px-3 h-9 rounded-md text-sm transition-colors whitespace-nowrap",
-          active
-            ? "bg-accent text-accent-foreground font-medium"
-            : "text-sidebar-foreground/90 hover:bg-white/10",
-        )}
-        onClick={() => (open ? onOpenChange(false) : openNow())}
-      >
-        <Icon className="h-4 w-4" />
-        {item.label}
-        <ChevronDown className="h-3 w-3 opacity-60" />
-      </button>
-      {open &&
-        rect &&
-        createPortal(
-          <div
-            className="fixed min-w-65 rounded-md border bg-popover text-popover-foreground shadow-lg py-1 z-50"
-            style={{ top: rect.top, left: rect.left }}
-            onMouseEnter={cancelClose}
-            onMouseLeave={scheduleClose}
-          >
-            {visibleChildren.map((c) => (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-current={active ? "true" : undefined}
+          className={cn(
+            "flex shrink-0 items-center gap-1.5 h-9 rounded-md text-sm transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+            compact ? "px-2 min-[1600px]:px-3" : "px-3",
+            active
+              ? "bg-accent text-accent-foreground font-medium"
+              : "text-sidebar-foreground/90 hover:bg-white/10",
+          )}
+        >
+          <Icon className={cn("h-4 w-4", compact && "hidden min-[2100px]:block")} />
+          {item.label}
+          <ChevronDown className="h-3 w-3 opacity-70" aria-hidden="true" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-56">
+        {visibleChildren.map((c) => (
+          <Fragment key={c.to}>
+            {c.divider && <DropdownMenuSeparator />}
+            <DropdownMenuItem asChild className="cursor-pointer">
               <Link
-                key={c.to}
                 to={c.to}
-                onClick={() => onOpenChange(false)}
-                className={cn(
-                  "block px-3 py-2 text-sm hover:bg-secondary",
-                  isChildActive(c) && "bg-secondary font-medium text-primary",
-                )}
+                aria-current={isChildActive(c) ? "page" : undefined}
+                className={cn(isChildActive(c) && "font-semibold")}
               >
                 {c.label}
               </Link>
-            ))}
-          </div>,
-          document.body,
-        )}
-    </div>
+            </DropdownMenuItem>
+          </Fragment>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function HelpButton() {
+  return (
+    <Link
+      to="/guide"
+      aria-label="Help"
+      title="Help"
+      className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-full text-sidebar-foreground hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+    >
+      <CircleHelp className="h-4 w-4" aria-hidden="true" />
+    </Link>
+  );
+}
+
+function ShellLogo({
+  to,
+  className,
+  textClassName = "block",
+}: {
+  to: string;
+  className?: string;
+  textClassName?: string;
+}) {
+  return (
+    <Link to={to} className={cn("flex items-center gap-2 shrink-0", className)}>
+      <div className="h-8 w-8 rounded-md bg-white p-1 flex items-center justify-center">
+        <img src="/amsol-logo.png" alt="" className="h-full w-full object-contain" />
+      </div>
+      <div className={textClassName}>
+        <div className="font-semibold text-sm leading-tight">AIMS</div>
+        <div className="text-xs text-sidebar-foreground/70 leading-tight">Amsol</div>
+      </div>
+      <span className="sr-only">Go to your home page</span>
+    </Link>
   );
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // Ctrl/Cmd+K is handled inside HeaderSearch.
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const { profile, roles, signOut, isAdminOrCeo, hasRole } = useAuth();
-  const { mode, setMode } = useLayoutPreference();
-  const navigate = useNavigate();
+  const { roles, isAdminOrCeo, hasRole, isCeo, isSystemAdmin, viewAs, canReadDepartment } =
+    useAuth();
+  const { mode, setMode } = useEffectiveLayout(!isCeo);
+  const isLarge = useMediaQuery("(min-width: 1024px)");
   const location = useLocation();
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-      }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, []);
+  const home = homeRouteFor(roles);
 
   const visibleChildren = (item: NavItem) =>
-    (item.children ?? []).filter((c) => !c.role || isAdminOrCeo || hasRole(c.role));
+    (item.children ?? []).filter((c) => !c.department || canReadDepartment(c.department));
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate({ to: "/auth" });
-  };
-
-  const primaryRoleLabel = roles[0] ? ROLE_LABELS[roles[0]] : "Staff";
-  const isActive = (item: NavItem) => {
-    const matchesPath = (p: string) =>
-      location.pathname === p || location.pathname.startsWith(p + "/");
-    if (item.matchExclude?.some(matchesPath)) return false;
-    const paths = item.match ?? [item.to];
-    return paths.some(matchesPath);
-  };
-  const isChildActive = (child: NavChild) =>
-    location.pathname === child.to || location.pathname.startsWith(child.to + "/");
-
-  // A user scoped to exactly one department (not admin/CEO) gets that department's own nav —
-  // Dashboard/domain-dropdown/Reports/Projects & Tasks/Calendar/Clients & Contracts/Documents,
-  // every item already scoped to just that department — instead of the global/central nav.
-  // Admin/CEO and anyone spanning multiple departments (or none) keep the nav below unchanged.
   const departmentScope = departmentScopeFor(roles);
-  const visibleNav = departmentScope
-    ? buildDepartmentNav(departmentScope, hasRole("water"))
-    : NAV.filter(
-        (i) => !i.adminOnly || isAdminOrCeo || (i.extraRoles ? hasRole(i.extraRoles) : false),
-      );
+  const hasAnyDepartment = isAdminOrCeo || DEPARTMENT_CODES.some((c) => canReadDepartment(c));
+  const visibleNav = isCeo
+    ? CEO_NAV
+    : departmentScope
+      ? buildDepartmentNav(departmentScope, hasRole("water"))
+      : home === "/water"
+        ? buildWaterNav()
+        : !hasAnyDepartment
+          ? buildSetupNav()
+          : NAV.filter(
+              (i) => !i.adminOnly || isAdminOrCeo || (i.extraRoles ? hasRole(i.extraRoles) : false),
+            );
 
-  const LayoutToggle = (
-    <button
-      onClick={() => setMode(mode === "top" ? "sidebar" : "top")}
-      className="hidden lg:flex shrink-0 items-center gap-1.5 px-2 py-1 rounded text-[0.6875rem] bg-white/10 hover:bg-white/20 text-sidebar-foreground"
-      title={`Switch to ${mode === "top" ? "sidebar" : "top"} layout`}
-    >
-      {mode === "top" ? (
-        <PanelLeft className="h-3.5 w-3.5" />
-      ) : (
-        <PanelTop className="h-3.5 w-3.5" />
-      )}
-      <span>{mode === "top" ? "Sidebar" : "Top nav"}</span>
-    </button>
-  );
+  const activeItem = activeNavItem(visibleNav, location.pathname);
+  const isActive = (item: NavItem) => item === activeItem;
+  const isChildActive = (child: NavChild) =>
+    location.pathname === child.to ||
+    (!child.exact && location.pathname.startsWith(child.to + "/"));
+  const isExpanded = (item: NavItem) => expanded[item.to] ?? isActive(item);
 
-  // Search/clock/layout-toggle/full-name only show once there's room for them — same breakpoint
-  // the sidebar/top-nav switch and inline nav use, so this block never has to compete with the
-  // nav links for space. Notifications and sign-out stay compact but always visible at every
-  // width (shrink-0 so they're never the thing that gets squeezed off-screen).
+  // Seven items fit a 1280px laptop; longer menus need 1536px.
+  const compactNav = visibleNav.length <= 7;
+  const tightHeader = compactNav && mode === "top";
+
+  useEffect(() => setMobileOpen(false), [location.pathname]);
+
   const UserBlock = (
     <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-      <HeaderSearch inputRef={searchInputRef} />
-      <LiveClock />
-      <div className="shrink-0">
-        <NotificationBell />
-      </div>
-      <Link
-        to="/settings/notifications"
-        className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-md text-sidebar-foreground/80 hover:bg-white/10 hover:text-sidebar-foreground"
-        title="Notification settings"
-      >
-        <Settings className="h-4 w-4" />
-      </Link>
-      {LayoutToggle}
-      <div className="hidden lg:flex items-center gap-2 text-xs text-sidebar-foreground/80 shrink-0 max-w-40 xl:max-w-56">
-        <div className="h-7 w-7 shrink-0 rounded-full bg-accent flex items-center justify-center text-accent-foreground font-semibold">
-          {(profile?.fullName || profile?.email || "?").charAt(0).toUpperCase()}
-        </div>
-        <div className="leading-tight min-w-0">
-          <div className="font-medium text-sidebar-foreground truncate">
-            {profile?.fullName || profile?.email}
-          </div>
-          <div className="flex items-center gap-1 truncate">
-            {roles.includes("ceo") && <Crown className="h-3 w-3 shrink-0 text-accent" />}
-            <span className="truncate">{primaryRoleLabel}</span>
-          </div>
-        </div>
-      </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="shrink-0 text-sidebar-foreground hover:bg-white/10"
-        onClick={handleSignOut}
-      >
-        <LogOut className="h-4 w-4 md:mr-2" />
-        <span className="hidden md:inline">Sign out</span>
-      </Button>
+      <HeaderSearch
+        inputRef={searchInputRef}
+        className={tightHeader ? "xl:w-36 2xl:w-56" : undefined}
+      />
+      <LiveClock className={tightHeader ? "hidden min-[1700px]:flex" : undefined} />
+      <NotificationBell />
+      <HelpButton />
+      {isSystemAdmin && !viewAs && <ViewAsButton />}
+      <UserMenu
+        layoutMode={mode}
+        onLayoutChange={setMode}
+        showLayoutSwitch={isLarge}
+        nameClassName={tightHeader ? "hidden min-[1600px]:inline" : "hidden lg:inline"}
+      />
     </div>
   );
 
@@ -391,49 +435,68 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <div className="min-h-screen flex bg-secondary/40">
         <aside className="hidden lg:flex flex-col w-60 bg-sidebar text-sidebar-foreground border-r border-sidebar-border sticky top-0 h-screen">
-          <Link
-            to={homeRouteFor(roles)}
-            className="flex items-center gap-2 h-14 px-4 border-b border-sidebar-border"
-          >
-            <div className="h-8 w-8 rounded-md bg-white p-1 flex items-center justify-center">
-              <img src="/amsol-logo.png" alt="Amsol" className="h-full w-full object-contain" />
-            </div>
-            <div>
-              <div className="font-semibold text-sm leading-tight">AIMS</div>
-              <div className="text-[0.625rem] text-sidebar-foreground/70 leading-tight">Amsol</div>
-            </div>
-          </Link>
-          <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+          <ShellLogo to={home} className="h-14 px-4 border-b border-sidebar-border" />
+          <nav aria-label="Main menu" className="flex-1 overflow-y-auto p-2 space-y-0.5">
             {visibleNav.map((item) => {
               const Icon = item.icon;
               const active = isActive(item);
-              return (
-                <div key={item.to}>
+              const kids = visibleChildren(item);
+              const rowClass = cn(
+                "flex w-full items-center gap-2 px-3 py-2 rounded-md text-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+                active
+                  ? "bg-accent text-accent-foreground font-medium"
+                  : "hover:bg-white/10 text-sidebar-foreground/90",
+              );
+              if (kids.length === 0) {
+                return (
                   <Link
+                    key={item.to}
                     to={item.to}
-                    className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-md text-sm",
-                      active
-                        ? "bg-accent text-accent-foreground font-medium"
-                        : "hover:bg-white/10 text-sidebar-foreground/90",
-                    )}
+                    aria-current={active ? "page" : undefined}
+                    className={rowClass}
                   >
                     <Icon className="h-4 w-4" />
                     {item.label}
                   </Link>
-                  {active && visibleChildren(item).length > 0 && (
-                    <div className="ml-6 mt-1 space-y-0.5">
-                      {visibleChildren(item).map((c) => (
-                        <Link
-                          key={c.to}
-                          to={c.to}
-                          className={cn(
-                            "block px-3 py-1.5 rounded text-xs text-sidebar-foreground/80 hover:bg-white/10",
-                            isChildActive(c) && "bg-white/10 font-medium text-sidebar-foreground",
+                );
+              }
+              const open = isExpanded(item);
+              const groupId = `nav-group-${item.to.replace(/\W+/g, "-")}`;
+              return (
+                <div key={item.to}>
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    aria-controls={groupId}
+                    onClick={() => setExpanded((s) => ({ ...s, [item.to]: !open }))}
+                    className={rowClass}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="flex-1">{item.label}</span>
+                    <ChevronDown
+                      className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")}
+                      aria-hidden="true"
+                    />
+                  </button>
+                  {open && (
+                    <div id={groupId} className="ml-6 mt-1 mb-1 space-y-0.5">
+                      {kids.map((c) => (
+                        <Fragment key={c.to}>
+                          {c.divider && (
+                            <div className="my-1 mx-3 h-px bg-white/15" aria-hidden="true" />
                           )}
-                        >
-                          {c.label}
-                        </Link>
+                          <Link
+                            to={c.to}
+                            aria-current={isChildActive(c) ? "page" : undefined}
+                            className={cn(
+                              "block px-3 py-1.5 rounded text-sm text-sidebar-foreground/85 hover:bg-white/10",
+                              isChildActive(c) &&
+                                "bg-white/15 font-semibold text-sidebar-foreground",
+                            )}
+                          >
+                            {c.label}
+                          </Link>
+                        </Fragment>
                       ))}
                     </div>
                   )}
@@ -445,20 +508,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="flex-1 flex flex-col min-w-0">
           <header className="sticky top-0 z-30 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
+            <ViewAsBanner />
             <div className="flex items-center gap-2 h-14 px-4 md:px-6">
               <button
+                type="button"
                 className="lg:hidden p-2 -ml-2 rounded hover:bg-white/10"
                 onClick={() => setMobileOpen(true)}
                 aria-label="Open menu"
               >
                 <Menu className="h-5 w-5" />
               </button>
-              <Link to={homeRouteFor(roles)} className="lg:hidden flex items-center gap-2">
-                <div className="h-8 w-8 rounded-md bg-white p-1 flex items-center justify-center">
-                  <img src="/amsol-logo.png" alt="Amsol" className="h-full w-full object-contain" />
-                </div>
-                <div className="font-semibold text-sm">AIMS</div>
-              </Link>
+              <ShellLogo to={home} className="lg:hidden" />
               <div className="ml-auto">{UserBlock}</div>
             </div>
           </header>
@@ -467,6 +527,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               onClose={() => setMobileOpen(false)}
               items={visibleNav}
               isActive={isActive}
+              isChildActive={isChildActive}
+              visibleChildren={visibleChildren}
+              hiddenFrom="lg:hidden"
             />
           )}
           <main className="flex-1 p-4 md:p-6 w-full">{children}</main>
@@ -475,47 +538,46 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  /* ---------------- TOP NAV MODE (default) ---------------- */
+  /* ---------------- TOP NAV MODE ---------------- */
   return (
     <div className="min-h-screen flex flex-col bg-secondary/40">
       <header className="sticky top-0 z-30 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
+        <ViewAsBanner />
         <div className="flex items-center gap-2 h-14 px-4 md:px-6">
           <button
-            className="2xl:hidden p-2 -ml-2 rounded hover:bg-white/10 shrink-0"
+            type="button"
+            className={cn(
+              "p-2 -ml-2 rounded hover:bg-white/10 shrink-0",
+              compactNav ? "xl:hidden" : "2xl:hidden",
+            )}
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <Link to={homeRouteFor(roles)} className="flex items-center gap-2 mr-4 shrink-0">
-            <div className="h-8 w-8 rounded-md bg-white p-1 flex items-center justify-center">
-              <img src="/amsol-logo.png" alt="Amsol" className="h-full w-full object-contain" />
-            </div>
-            <div className="hidden sm:block">
-              <div className="font-semibold text-sm leading-tight">AIMS</div>
-              <div className="text-[0.625rem] text-sidebar-foreground/70 leading-tight">Amsol</div>
-            </div>
-          </Link>
+          <ShellLogo to={home} className="mr-4" textClassName="hidden sm:block" />
 
-          {/* Only shown once there's genuinely room for every top-level item (2xl+) — below that,
-              the hamburger + MobileDrawer below covers the exact same links. The overflow-x-auto
-              here is just a safety net for in-between widths (e.g. a maximized-but-not-huge
-              browser window at exactly 2xl): nav scrolls within its own strip instead of ever
-              pushing notifications/sign-out off the right edge of the screen. */}
-          <nav className="hidden 2xl:flex items-center gap-0.5 ml-2 flex-1 min-w-0 overflow-x-auto">
+          {/* overflow-x-auto only guards in-between widths; dropdowns portal out of it. */}
+          <nav
+            aria-label="Main menu"
+            className={cn(
+              "hidden items-center gap-0.5 ml-2 flex-1 min-w-0 overflow-x-auto",
+              compactNav ? "xl:flex" : "2xl:flex",
+            )}
+          >
             {visibleNav.map((item) => {
               const active = isActive(item);
               const Icon = item.icon;
-              if (item.children) {
+              const kids = visibleChildren(item);
+              if (kids.length > 0) {
                 return (
                   <TopNavDropdown
                     key={item.to}
                     item={item}
                     active={active}
-                    open={openMenu === item.to}
-                    onOpenChange={(v) => setOpenMenu(v ? item.to : null)}
-                    visibleChildren={visibleChildren(item)}
+                    visibleChildren={kids}
                     isChildActive={isChildActive}
+                    compact={compactNav}
                   />
                 );
               }
@@ -523,14 +585,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Link
                   key={item.to}
                   to={item.to}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex shrink-0 items-center gap-1.5 px-3 h-9 rounded-md text-sm whitespace-nowrap transition-colors",
+                    "flex shrink-0 items-center gap-1.5 h-9 rounded-md text-sm whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70",
+                    compactNav ? "px-2 min-[1600px]:px-3" : "px-3",
                     active
                       ? "bg-accent text-accent-foreground font-medium"
                       : "text-sidebar-foreground/90 hover:bg-white/10",
                   )}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className={cn("h-4 w-4", compactNav && "hidden min-[2100px]:block")} />
                   {item.label}
                 </Link>
               );
@@ -542,7 +606,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       {mobileOpen && (
-        <MobileDrawer onClose={() => setMobileOpen(false)} items={visibleNav} isActive={isActive} />
+        <MobileDrawer
+          onClose={() => setMobileOpen(false)}
+          items={visibleNav}
+          isActive={isActive}
+          isChildActive={isChildActive}
+          visibleChildren={visibleChildren}
+          hiddenFrom={compactNav ? "xl:hidden" : "2xl:hidden"}
+        />
       )}
 
       <main className="flex-1 p-4 md:p-6 max-w-[1600px] 2xl:max-w-[1800px] 3xl:max-w-[2400px] w-full mx-auto">
@@ -556,56 +627,95 @@ function MobileDrawer({
   onClose,
   items,
   isActive,
+  isChildActive,
+  visibleChildren,
+  hiddenFrom,
 }: {
   onClose: () => void;
   items: NavItem[];
   isActive: (i: NavItem) => boolean;
+  isChildActive: (c: NavChild) => boolean;
+  visibleChildren: (i: NavItem) => NavChild[];
+  hiddenFrom: string;
 }) {
-  const { isAdminOrCeo, hasRole } = useAuth();
-  const location = useLocation();
-  const visibleChildren = (item: NavItem) =>
-    (item.children ?? []).filter((c) => !c.role || isAdminOrCeo || hasRole(c.role));
-  const isChildActive = (child: NavChild) =>
-    location.pathname === child.to || location.pathname.startsWith(child.to + "/");
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCloseRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
-    <div className="fixed inset-0 z-40 2xl:hidden">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] bg-sidebar text-sidebar-foreground p-4 overflow-y-auto">
+    <div className={cn("fixed inset-0 z-40", hiddenFrom)}>
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu"
+        className="absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] bg-sidebar text-sidebar-foreground p-4 overflow-y-auto"
+      >
         <div className="flex items-center justify-between mb-4">
           <div className="font-semibold">Menu</div>
-          <button onClick={onClose}>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Close menu"
+            title="Close menu"
+            className="p-1 -mr-1 rounded hover:bg-white/10"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
-        <nav className="space-y-1">
+        <nav aria-label="Main menu" className="space-y-1">
           {items.map((item) => {
             const Icon = item.icon;
+            const kids = visibleChildren(item);
             return (
               <div key={item.to}>
-                <Link
-                  to={item.to}
-                  onClick={onClose}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-md text-sm",
-                    isActive(item)
-                      ? "bg-accent text-accent-foreground font-medium"
-                      : "hover:bg-white/10",
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-                {visibleChildren(item).length > 0 && (
+                {kids.length === 0 ? (
+                  <Link
+                    to={item.to}
+                    onClick={onClose}
+                    aria-current={isActive(item) ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 rounded-md text-sm",
+                      isActive(item)
+                        ? "bg-accent text-accent-foreground font-medium"
+                        : "hover:bg-white/10",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                ) : (
+                  <div
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium",
+                      isActive(item) && "bg-white/10",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </div>
+                )}
+                {kids.length > 0 && (
                   <div className="ml-6 mt-1 space-y-0.5">
-                    {visibleChildren(item).map((c) => (
+                    {kids.map((c) => (
                       <Link
                         key={c.to}
                         to={c.to}
                         onClick={onClose}
+                        aria-current={isChildActive(c) ? "page" : undefined}
                         className={cn(
-                          "block px-3 py-1.5 rounded text-xs text-sidebar-foreground/80 hover:bg-white/10",
-                          isChildActive(c) && "bg-white/10 font-medium text-sidebar-foreground",
+                          "block px-3 py-1.5 rounded text-sm text-sidebar-foreground/85 hover:bg-white/10",
+                          isChildActive(c) && "bg-white/15 font-semibold text-sidebar-foreground",
                         )}
                       >
                         {c.label}

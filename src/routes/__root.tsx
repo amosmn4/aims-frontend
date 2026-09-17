@@ -14,6 +14,7 @@ import { AuthProvider } from "@/lib/auth";
 import { LayoutPreferenceProvider } from "@/lib/layout-preference";
 import { Toaster } from "@/components/ui/sonner";
 import { ConfirmDialogHost } from "@/components/confirm-dialog";
+import { PromptDialogHost } from "@/components/prompt-dialog";
 
 function NotFoundComponent() {
   return (
@@ -154,6 +155,7 @@ function RootComponent() {
           <Outlet />
           <Toaster richColors position="top-right" />
           <ConfirmDialogHost />
+          <PromptDialogHost />
         </LayoutPreferenceProvider>
       </AuthProvider>
     </QueryClientProvider>

@@ -1,4 +1,10 @@
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import { apiFetch, apiJson } from "@/lib/api-client";
 import { useAuth, type AppRole } from "@/lib/auth";
 import type { PaginatedResponse } from "@/hooks/use-pagination";
@@ -21,6 +27,30 @@ export const CONTRACT_STATUS_STYLES: Record<ContractStatus, string> = {
   expired: "bg-muted text-muted-foreground",
   terminated: "bg-destructive/15 text-destructive",
 };
+
+/** Currencies offered in client and contract forms. */
+export const CURRENCY_CODES = ["KES", "USD", "EUR", "GBP", "UGX", "TZS", "RWF"] as const;
+
+// Mirror the backend @Roles() on POST and PATCH /clients.
+const CLIENT_CREATE_ROLES: AppRole[] = [
+  "finance",
+  "hr",
+  "it",
+  "marketing",
+  "tender",
+  "operations",
+  "department_head",
+  "account_manager",
+];
+const CLIENT_EDIT_ROLES: AppRole[] = ["finance", "hr"];
+
+export function useClientPermissions() {
+  const { isAdminOrCeo, hasRole } = useAuth();
+  return {
+    canCreateClient: isAdminOrCeo || hasRole(CLIENT_CREATE_ROLES),
+    canEditClient: isAdminOrCeo || hasRole(CLIENT_EDIT_ROLES),
+  };
+}
 
 export const BILLING_LABELS: Record<BillingFrequency, string> = {
   one_off: "One-off",
@@ -148,6 +178,10 @@ export interface ContractRow {
   client_request_title: string | null;
   project_ids: { id: string; name: string }[];
   invoice_count: number | null;
+  // Money totals from the contract's invoices (void invoices excluded).
+  invoiced_total: number;
+  paid_total: number;
+  outstanding_total: number;
 }
 
 export interface ContractDocumentRow {
@@ -203,6 +237,10 @@ type BackendContract = {
   clientRequest?: { id: string; referenceNumber: string | null; title: string } | null;
   projects?: { id: string; name: string }[];
   _count?: { invoices: number };
+  invoicedTotal?: number | string;
+  paidTotal?: number | string;
+  outstandingTotal?: number | string;
+  invoiceCount?: number;
 };
 
 const toDateOnly = (iso: string) => iso.slice(0, 10);
@@ -236,7 +274,10 @@ function mapContract(c: BackendContract): ContractRow {
       ? (c.clientRequest.referenceNumber ?? c.clientRequest.title)
       : null,
     project_ids: c.projects ?? [],
-    invoice_count: c._count?.invoices ?? null,
+    invoice_count: c.invoiceCount ?? c._count?.invoices ?? null,
+    invoiced_total: Number(c.invoicedTotal ?? 0),
+    paid_total: Number(c.paidTotal ?? 0),
+    outstanding_total: Number(c.outstandingTotal ?? 0),
   };
 }
 
@@ -298,7 +339,13 @@ function mapDocument(d: BackendDocument): ContractDocumentRow {
 
 /* ---------- Queries ---------- */
 
-type ContractFilters = { departmentId?: string | null; status?: ContractStatus; q?: string };
+type ContractFilters = {
+  departmentId?: string | null;
+  clientId?: string | null;
+  status?: ContractStatus;
+  q?: string;
+  enabled?: boolean;
+};
 
 // See useTenders' matching overload comment (features/tender/use-tender.ts) — same reasoning.
 export function useContracts(filters?: ContractFilters): UseQueryResult<ContractRow[]>;
@@ -312,9 +359,13 @@ export function useContracts(
 ) {
   return useQuery({
     queryKey: ["contracts", filters, pagination],
+    enabled: filters.enabled ?? true,
+    // Paged lists keep showing the last page while the next search loads.
+    placeholderData: pagination.page ? keepPreviousData : undefined,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.departmentId) params.set("departmentId", filters.departmentId);
+      if (filters.clientId) params.set("clientId", filters.clientId);
       if (filters.status) params.set("status", filters.status);
       if (filters.q) params.set("q", filters.q);
       if (pagination.page) params.set("page", String(pagination.page));
@@ -342,6 +393,7 @@ export function useContractsSummary(
 ) {
   return useQuery({
     queryKey: ["contracts", "summary", filters],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.departmentId) params.set("departmentId", filters.departmentId);
@@ -457,6 +509,9 @@ export function useSaveClient() {
       industry?: string | null;
       segment?: string | null;
       account_manager_id?: string | null;
+      department_id?: string | null;
+      contact_email?: string | null;
+      contact_phone?: string | null;
     }) => {
       const body = {
         name: input.name,
@@ -466,13 +521,22 @@ export function useSaveClient() {
         isActive: input.is_active,
         industry: input.industry || undefined,
         segment: input.segment || undefined,
-        accountManagerId: input.account_manager_id || undefined,
+        accountManagerId: input.account_manager_id || (input.id ? null : undefined),
+        // On edit, send null so a cleared field is actually cleared.
+        departmentId: input.department_id || (input.id ? null : undefined),
+        contactEmail: input.contact_email || (input.id ? null : undefined),
+        contactPhone: input.contact_phone || (input.id ? null : undefined),
       };
-      if (input.id) {
-        await apiJson(`/clients/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });
-      } else {
-        await apiJson("/clients", { method: "POST", body: JSON.stringify(body) });
-      }
+      const saved = input.id
+        ? await apiJson<{ id: string; name: string }>(`/clients/${input.id}`, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          })
+        : await apiJson<{ id: string; name: string }>("/clients", {
+            method: "POST",
+            body: JSON.stringify(body),
+          });
+      return { id: saved?.id ?? input.id ?? "", name: saved?.name ?? input.name };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "clients"] }),
   });
@@ -534,14 +598,16 @@ export function useSaveContract() {
     mutationFn: async (
       input: Partial<ContractRow> & { title: string; client_id: string; start_date: string },
     ) => {
+      // On edit, null clears an emptied optional field.
+      const clear = input.id ? null : undefined;
       const body = {
         contractNumber: input.contract_number ?? undefined,
         title: input.title,
-        description: input.description ?? undefined,
+        description: input.description ?? clear,
         clientId: input.client_id,
-        departmentId: input.department_id ?? undefined,
-        serviceLineId: input.service_line_id ?? undefined,
-        accountManagerId: input.account_manager_id ?? undefined,
+        departmentId: input.department_id ?? clear,
+        serviceLineId: input.service_line_id ?? clear,
+        accountManagerId: input.account_manager_id ?? clear,
         status: input.status,
         billingFrequency: input.billing_frequency,
         startDate: input.start_date,
@@ -550,7 +616,7 @@ export function useSaveContract() {
         currency: input.currency,
         nextInvoiceDate: input.next_invoice_date ?? undefined,
         autoRenew: input.auto_renew,
-        notes: input.notes ?? undefined,
+        notes: input.notes ?? clear,
       };
       if (input.id) {
         await apiJson(`/contracts/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });

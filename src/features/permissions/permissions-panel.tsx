@@ -1,18 +1,20 @@
 import { toast } from "sonner";
-import { Loader2, Eye, Pencil } from "lucide-react";
+import { Check, Eye, Loader2, Pencil, X } from "lucide-react";
 import {
   useDepartmentCapabilities,
+  useRoleCapabilities,
   useSetPermissionOverride,
   type PermissionAction,
 } from "@/features/permissions/use-permissions";
+import { describeAccess } from "@/features/permissions/access-summary";
+import { LoadError } from "@/components/load-error";
 import { cn } from "@/lib/utils";
 
 function errMsg(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
-// One toggle per (user, action) — three states: role default (dim, unset), explicitly granted,
-// explicitly denied. Clicking cycles grant -> deny -> back to role default.
+// Three states per person and action: role default, allowed just for them, blocked just for them.
 function CapabilityToggle({
   effective,
   source,
@@ -20,6 +22,7 @@ function CapabilityToggle({
   disabled,
   icon: Icon,
   label,
+  personName,
 }: {
   effective: boolean;
   source: "role" | "override";
@@ -27,34 +30,40 @@ function CapabilityToggle({
   disabled: boolean;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
+  personName: string;
 }) {
+  const hint =
+    source === "override"
+      ? `${label} access for ${personName}: ${effective ? "allowed" : "blocked"} just for them. Click to go back to what their role allows.`
+      : `${label} access for ${personName}: ${effective ? "allowed" : "not allowed"} by their role. Click to change it just for them.`;
+  const Mark = effective ? Check : X;
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onCycle}
-      title={
-        source === "override"
-          ? `${label}: explicitly ${effective ? "granted" : "denied"} — click to revert to role default`
-          : `${label}: ${effective ? "granted" : "denied"} by role — click to override`
-      }
+      title={hint}
+      aria-label={hint}
       className={cn(
-        "flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+        "flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
         effective
           ? "border-success/40 bg-success/10 text-success"
           : "border-destructive/30 bg-destructive/5 text-destructive",
-        source === "override" && "ring-1 ring-offset-1 ring-primary/50",
+        source === "override" && "ring-1 ring-primary/50 ring-offset-1",
       )}
     >
       <Icon className="h-3 w-3" />
       {label}
-      {source === "override" && <span className="text-[9px] opacity-70">•</span>}
+      <Mark className="h-3 w-3" aria-hidden="true" />
+      {effective ? "Allowed" : "Blocked"}
+      {source === "override" && <span className="font-normal opacity-80">(just them)</span>}
     </button>
   );
 }
 
 export function PermissionsPanel({ departmentId }: { departmentId: string | undefined }) {
   const capsQ = useDepartmentCapabilities(departmentId);
+  const matrixQ = useRoleCapabilities();
   const setOverride = useSetPermissionOverride();
 
   const cycle = (
@@ -68,63 +77,98 @@ export function PermissionsPanel({ departmentId }: { departmentId: string | unde
       current.source === "role" ? (current.effective ? "deny" : "grant") : "clear";
     setOverride.mutate(
       { userId, departmentId, action, effect: next },
-      { onError: (err) => toast.error(errMsg(err, "Couldn't update permission")) },
+      {
+        onSuccess: () => toast.success("Access updated"),
+        onError: (err) => toast.error(errMsg(err, "Couldn't update access")),
+      },
     );
   };
 
   if (!departmentId) {
-    return <div className="text-xs text-muted-foreground py-6 text-center">Pick a department.</div>;
+    return (
+      <p className="py-6 text-center text-xs text-muted-foreground">
+        Choose a department to see who can do what in it.
+      </p>
+    );
+  }
+
+  if (capsQ.isError) {
+    return (
+      <LoadError
+        what="access for this department"
+        error={capsQ.error}
+        onRetry={() => capsQ.refetch()}
+      />
+    );
   }
 
   if (capsQ.isLoading) {
     return (
-      <div className="py-8 flex justify-center">
+      <div className="flex justify-center py-8">
         <Loader2 className="h-5 w-5 animate-spin text-primary" />
       </div>
     );
   }
 
-  const staff = capsQ.data?.staff ?? [];
+  const department = capsQ.data?.department;
+  const staff = (capsQ.data?.staff ?? []).filter((s) => !s.roles.includes("system_admin"));
 
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">
-        Read/write shown per person for this department. A dot marks an explicit override; click a
-        toggle to grant, deny, then revert to their role's default.
+        Each person starts with what their role allows. Click View or Edit to change it just for
+        them; click again to go back to their role.
       </p>
-      {staff.length === 0 ? (
-        <div className="text-xs text-muted-foreground py-6 text-center">
-          No staff tied to this department yet.
-        </div>
+      {staff.length === 0 || !department ? (
+        <p className="py-6 text-center text-xs text-muted-foreground">
+          Nobody belongs to this department yet. Set each person's department on the Staff page.
+        </p>
       ) : (
-        <div className="rounded-lg border divide-y">
-          {staff.map((s) => (
-            <div key={s.user_id} className="flex items-center justify-between gap-3 px-3 py-2">
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{s.full_name ?? s.email}</div>
-                <div className="text-xs text-muted-foreground truncate">{s.email}</div>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <CapabilityToggle
-                  effective={s.capabilities.read.effective}
-                  source={s.capabilities.read.source}
-                  disabled={setOverride.isPending}
-                  onCycle={() => cycle(s.user_id, "read", s.capabilities.read)}
-                  icon={Eye}
-                  label="Read"
-                />
-                <CapabilityToggle
-                  effective={s.capabilities.write.effective}
-                  source={s.capabilities.write.source}
-                  disabled={setOverride.isPending}
-                  onCycle={() => cycle(s.user_id, "write", s.capabilities.write)}
-                  icon={Pencil}
-                  label="Write"
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+        <ul className="divide-y rounded-lg border">
+          {staff.map((s) => {
+            const name = s.full_name ?? s.email;
+            return (
+              <li
+                key={s.user_id}
+                className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 px-3 py-2.5"
+              >
+                <div className="min-w-0 flex-1 basis-64">
+                  <div className="truncate text-sm font-medium">
+                    {name}
+                    {s.full_name && (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        {s.email}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {describeAccess(s, department, matrixQ.data)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                  <CapabilityToggle
+                    effective={s.capabilities.read.effective}
+                    source={s.capabilities.read.source}
+                    disabled={setOverride.isPending}
+                    onCycle={() => cycle(s.user_id, "read", s.capabilities.read)}
+                    icon={Eye}
+                    label="View"
+                    personName={name}
+                  />
+                  <CapabilityToggle
+                    effective={s.capabilities.write.effective}
+                    source={s.capabilities.write.source}
+                    disabled={setOverride.isPending}
+                    onCycle={() => cycle(s.user_id, "write", s.capabilities.write)}
+                    icon={Pencil}
+                    label="Edit"
+                    personName={name}
+                  />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

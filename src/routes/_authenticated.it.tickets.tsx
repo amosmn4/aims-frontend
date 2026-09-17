@@ -1,25 +1,29 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { z } from "zod";
 import { toast } from "sonner";
-import { Loader2, Plus } from "lucide-react";
+import { LifeBuoy, Loader2, Plus, Search } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 import {
-  useTickets,
-  useSaveTicket,
-  useUpdateTicketStatus,
   TICKET_STATUSES,
   TICKET_STATUS_LABELS,
-  TICKET_PRIORITY_LABELS,
-  TICKET_PRIORITY_STYLES,
-  TICKET_SOURCE_LABELS,
+  personName,
+  useTickets,
+  useUpdateTicket,
+  useUpdateTicketStatus,
+  type TicketRow,
   type TicketStatus,
-  type TicketPriority,
 } from "@/features/it/use-tickets";
-import { useAuth } from "@/lib/auth";
+import { TicketBoard } from "@/features/it/tickets/ticket-board";
+import { TicketList } from "@/features/it/tickets/ticket-list";
+import { TicketDetailSheet } from "@/features/it/tickets/ticket-detail-sheet";
+import { TicketFormDialog } from "@/features/it/tickets/ticket-form-dialog";
+import { PageHeader } from "@/components/app-shell";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -27,196 +31,253 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 
-export const Route = createFileRoute("/_authenticated/it/tickets")({
-  head: () => ({ meta: [{ title: "Tickets — AIMS" }] }),
-  component: TicketsBoard,
+const searchSchema = z.object({
+  ticket: z.string().optional().catch(undefined),
+  view: z.enum(["board", "list"]).optional().catch(undefined),
+  new: z.literal(1).optional().catch(undefined),
 });
 
-function TicketsBoard() {
-  const { isAdminOrCeo, hasRole } = useAuth();
-  const canManage = isAdminOrCeo || hasRole("it");
-  const ticketsQ = useTickets();
-  const updateStatus = useUpdateTicketStatus();
-  const [newOpen, setNewOpen] = useState(false);
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [dragOverStatus, setDragOverStatus] = useState<TicketStatus | null>(null);
+export const Route = createFileRoute("/_authenticated/it/tickets")({
+  head: () => ({ meta: [{ title: "IT tickets — AIMS" }] }),
+  validateSearch: searchSchema,
+  component: ItTickets,
+});
 
-  const tickets = ticketsQ.data ?? [];
+type Assigned = "me" | "anyone" | "unassigned";
 
-  const move = (id: string, status: TicketStatus) => {
-    updateStatus.mutate(
-      { id, status },
-      {
-        onSuccess: () => toast.success(`Moved to ${TICKET_STATUS_LABELS[status]}`),
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Move failed"),
-      },
-    );
-  };
-
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: [T, string][];
+  onChange: (v: T) => void;
+}) {
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Tickets</h1>
-          <p className="text-xs text-muted-foreground">
-            IT support requests — internal and from HRMS-licensed clients.
-          </p>
-        </div>
-        {canManage && (
-          <Dialog open={newOpen} onOpenChange={setNewOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="h-4 w-4 mr-1" /> New ticket
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <NewTicketForm onDone={() => setNewOpen(false)} />
-            </DialogContent>
-          </Dialog>
-        )}
-      </div>
-
-      {ticketsQ.isLoading ? (
-        <div className="py-12 flex justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 overflow-x-auto sm:grid-cols-2 lg:grid-cols-4">
-          {TICKET_STATUSES.map((status) => {
-            const columnTickets = tickets.filter((t) => t.status === status);
-            return (
-              <div
-                key={status}
-                className={`rounded-lg border bg-muted/30 p-2 min-h-[200px] ${
-                  dragOverStatus === status ? "border-primary bg-primary/5" : ""
-                }`}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOverStatus(status);
-                }}
-                onDragLeave={() => setDragOverStatus((cur) => (cur === status ? null : cur))}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOverStatus(null);
-                  if (dragId) move(dragId, status);
-                  setDragId(null);
-                }}
-              >
-                <div className="flex items-center justify-between px-1 pb-2 text-xs font-semibold">
-                  <span>{TICKET_STATUS_LABELS[status]}</span>
-                  <span className="rounded-full bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                    {columnTickets.length}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {columnTickets.length === 0 ? (
-                    <div className="py-6 text-center text-[11px] text-muted-foreground">No tickets</div>
-                  ) : (
-                    columnTickets.map((t) => (
-                      <div
-                        key={t.id}
-                        draggable={canManage}
-                        onDragStart={() => setDragId(t.id)}
-                        onDragEnd={() => setDragId(null)}
-                        className={`rounded-lg border bg-card p-2.5 shadow-sm ${
-                          dragId === t.id ? "opacity-50" : ""
-                        }`}
-                      >
-                        <div className="text-[13px] font-medium leading-snug">{t.title}</div>
-                        {t.description && (
-                          <div className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">
-                            {t.description}
-                          </div>
-                        )}
-                        <div className="mt-1.5 flex items-center justify-between">
-                          <Badge className={TICKET_PRIORITY_STYLES[t.priority]} variant="secondary">
-                            {TICKET_PRIORITY_LABELS[t.priority]}
-                          </Badge>
-                          <span className="text-[10px] text-muted-foreground">
-                            {TICKET_SOURCE_LABELS[t.source]}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+    <div role="group" aria-label={label} className="inline-flex rounded-lg border bg-card p-0.5">
+      {options.map(([v, text]) => (
+        <button
+          key={v}
+          type="button"
+          aria-pressed={value === v}
+          onClick={() => onChange(v)}
+          className={cn(
+            "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+            value === v
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {text}
+        </button>
+      ))}
     </div>
   );
 }
 
-function NewTicketForm({ onDone }: { onDone: () => void }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState<TicketPriority>("medium");
-  const save = useSaveTicket();
+function ItTickets() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const { user, canWriteDepartment } = useAuth();
+  const canManage = canWriteDepartment("it");
+  const ticketsQ = useTickets();
+  const updateStatus = useUpdateTicketStatus();
+  const update = useUpdateTicket();
 
-  const submit = () => {
-    if (!title.trim()) {
-      toast.error("Title is required");
-      return;
-    }
-    save.mutate(
-      { title: title.trim(), description: description || undefined, priority },
-      {
-        onSuccess: () => {
-          toast.success("Ticket created");
-          onDone();
-        },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to save"),
-      },
-    );
+  const view = search.view ?? "board";
+  const [newOpen, setNewOpen] = useState(false);
+  const [status, setStatus] = useState<TicketStatus | "all">("all");
+  const [assigned, setAssigned] = useState<Assigned>("anyone");
+  const [q, setQ] = useState("");
+
+  const setSearch = (patch: Partial<z.infer<typeof searchSchema>>) =>
+    navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
+
+  // ?new=1 opens the form once, then drops the flag.
+  useEffect(() => {
+    if (search.new !== 1) return;
+    if (canManage) setNewOpen(true);
+    navigate({ search: (prev) => ({ ...prev, new: undefined }), replace: true });
+  }, [search.new, canManage, navigate]);
+
+  const tickets = useMemo(() => ticketsQ.data ?? [], [ticketsQ.data]);
+  const mineCount = tickets.filter((t) => t.assigneeId && t.assigneeId === user?.id).length;
+  const unassignedCount = tickets.filter((t) => !t.assigneeId).length;
+
+  const statusFilter = view === "list" ? status : "all";
+  const needle = q.trim().toLowerCase();
+  const filtered = useMemo(
+    () =>
+      tickets.filter(
+        (t) =>
+          (statusFilter === "all" || t.status === statusFilter) &&
+          (assigned === "anyone" ||
+            (assigned === "me" ? t.assigneeId === user?.id : !t.assigneeId)) &&
+          (!needle ||
+            t.title.toLowerCase().includes(needle) ||
+            (t.description ?? "").toLowerCase().includes(needle) ||
+            personName(t.requester, "").toLowerCase().includes(needle) ||
+            (t.system?.name ?? "").toLowerCase().includes(needle)),
+      ),
+    [tickets, statusFilter, assigned, needle, user?.id],
+  );
+  const isFiltered = statusFilter !== "all" || assigned !== "anyone" || !!needle;
+  const clearFilters = () => {
+    setStatus("all");
+    setAssigned("anyone");
+    setQ("");
   };
 
+  const actions = {
+    canManage,
+    currentUserId: user?.id,
+    onOpen: (t: TicketRow) => setSearch({ ticket: t.id }),
+    onMove: (t: TicketRow, next: TicketStatus) =>
+      updateStatus.mutate(
+        { id: t.id, status: next },
+        {
+          onSuccess: () => toast.success(`"${t.title}" moved to ${TICKET_STATUS_LABELS[next]}`),
+          onError: (err) =>
+            toast.error(err instanceof Error ? err.message : "Couldn't move the ticket"),
+        },
+      ),
+    onAssignToMe: (t: TicketRow) =>
+      user &&
+      update.mutate(
+        { id: t.id, assigneeId: user.id },
+        {
+          onSuccess: () => toast.success(`"${t.title}" assigned to you`),
+          onError: (err) =>
+            toast.error(err instanceof Error ? err.message : "Couldn't assign the ticket"),
+        },
+      ),
+  };
+
+  const newTicketButton = (
+    <Button onClick={() => setNewOpen(true)}>
+      <Plus className="mr-1 h-4 w-4" /> New ticket
+    </Button>
+  );
+
   return (
-    <div>
-      <DialogHeader>
-        <DialogTitle>New ticket</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-3 py-2">
-        <div>
-          <Label>Title</Label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What's broken?" />
+    <div className="space-y-4">
+      <PageHeader
+        title="IT tickets"
+        description="Problems staff and clients report to IT. Open a ticket to reply, assign it or move it along."
+        actions={
+          canManage ? (
+            newTicketButton
+          ) : (
+            <Button asChild>
+              <Link to="/it-help" search={{ new: 1 }}>
+                <LifeBuoy className="mr-1 h-4 w-4" /> Ask IT for help
+              </Link>
+            </Button>
+          )
+        }
+      />
+
+      {!canManage && (
+        <ViewOnlyBanner area="your IT tickets" action="move, assign or delete tickets" />
+      )}
+
+      {ticketsQ.isLoading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" aria-label="Loading tickets" />
         </div>
-        <div>
-          <Label>Priority</Label>
-          <Select value={priority} onValueChange={(v) => setPriority(v as TicketPriority)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(TICKET_PRIORITY_LABELS).map(([v, label]) => (
-                <SelectItem key={v} value={v}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      ) : ticketsQ.isError ? (
+        <LoadError what="tickets" error={ticketsQ.error} onRetry={() => ticketsQ.refetch()} />
+      ) : tickets.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-lg border bg-card py-12 text-sm text-muted-foreground">
+          <span>No tickets yet</span>
+          {canManage && newTicketButton}
         </div>
-        <div>
-          <Label>Description</Label>
-          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-        </div>
-      </div>
-      <DialogFooter>
-        <Button onClick={submit} disabled={save.isPending}>
-          {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Save
-        </Button>
-      </DialogFooter>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <Segmented
+              label="View"
+              value={view}
+              onChange={(v) => setSearch({ view: v })}
+              options={[
+                ["board", "Board"],
+                ["list", "List"],
+              ]}
+            />
+            <div className="relative w-full sm:w-64">
+              <Search
+                className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search tickets"
+                className="pl-8"
+                aria-label="Search tickets by title, details, person or system"
+              />
+            </div>
+            <Segmented<Assigned>
+              label="Assigned to"
+              value={assigned}
+              onChange={setAssigned}
+              options={[
+                ["me", `Me (${mineCount})`],
+                ["anyone", "Anyone"],
+                ["unassigned", `Not assigned (${unassignedCount})`],
+              ]}
+            />
+            {view === "list" && (
+              <Select value={status} onValueChange={(v) => setStatus(v as TicketStatus | "all")}>
+                <SelectTrigger className="h-9 w-40" aria-label="Filter by status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {TICKET_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {TICKET_STATUS_LABELS[s]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {isFiltered && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            )}
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-lg border bg-card py-12 text-sm text-muted-foreground">
+              <span>No matches</span>
+              <Button size="sm" variant="outline" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            </div>
+          ) : view === "list" ? (
+            <TicketList tickets={filtered} {...actions} />
+          ) : (
+            <TicketBoard tickets={filtered} {...actions} />
+          )}
+        </>
+      )}
+
+      <TicketFormDialog
+        open={newOpen}
+        mode="new"
+        onClose={() => setNewOpen(false)}
+        onSaved={(id) => setSearch({ ticket: id })}
+      />
+      <TicketDetailSheet
+        ticketId={search.ticket ?? null}
+        onClose={() => setSearch({ ticket: undefined })}
+      />
     </div>
   );
 }

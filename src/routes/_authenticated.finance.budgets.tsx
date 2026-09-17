@@ -1,8 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/app-shell";
 import { confirmDialog } from "@/components/confirm-dialog";
+import { FormField, RequiredNote } from "@/components/form-field";
+import { ActionHint } from "@/components/help-link";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
 import {
   Table,
   TableBody,
@@ -13,15 +18,14 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -30,220 +34,455 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useBudgets, useCreateBudget, useDeleteBudget } from "@/features/finance/use-budgets";
-import { useDepartments } from "@/features/clients/use-clients-contracts";
-import { formatCurrency } from "@/features/finance/finance";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { formatDate } from "@/lib/format-date";
+import {
+  useBudgets,
+  useCreateBudget,
+  useDeleteBudget,
+  type Budget,
+} from "@/features/finance/use-budgets";
+import {
+  CURRENCY_CODES,
+  useContracts,
+  useDepartments,
+  type ContractRow,
+  type DepartmentRow,
+} from "@/features/clients/use-clients-contracts";
+import { useInvoices } from "@/features/finance/use-finance-data";
+import { formatCurrency, isBilledInvoice, type InvoiceRow } from "@/features/finance/finance";
+import { formatTotals, useCompanyCurrency, useFinanceAccess } from "@/features/finance/money";
 
 export const Route = createFileRoute("/_authenticated/finance/budgets")({
   head: () => ({ meta: [{ title: "Budgets — AIMS Finance" }] }),
   component: BudgetsPage,
 });
 
+const errorMessage = (err: unknown) =>
+  err instanceof Error ? err.message : "Something went wrong. Please try again.";
+
+// Invoiced amounts for a budget, split into its own currency and the rest.
+function invoicedFor(b: Budget, invoices: InvoiceRow[], contracts: Map<string, ContractRow>) {
+  let same = 0;
+  const others = new Map<string, number>();
+  for (const inv of invoices) {
+    if (!isBilledInvoice(inv) || !inv.contract_id) continue;
+    if (inv.issue_date < b.period_start || inv.issue_date > b.period_end) continue;
+    if (
+      b.contract_id
+        ? inv.contract_id !== b.contract_id
+        : contracts.get(inv.contract_id)?.department_id !== b.department_id
+    )
+      continue;
+    if (inv.currency_code === b.currency) same += Number(inv.total);
+    else others.set(inv.currency_code, (others.get(inv.currency_code) ?? 0) + Number(inv.total));
+  }
+  return { same, others };
+}
+
 function BudgetsPage() {
   const budgetsQ = useBudgets();
   const departmentsQ = useDepartments();
+  const contractsQ = useContracts();
+  const invoicesQ = useInvoices();
   const deleteBudget = useDeleteBudget();
+  const { canWrite } = useFinanceAccess();
+  const [creating, setCreating] = useState(false);
 
-  const handleDelete = async (id: string) => {
-    const ok = await confirmDialog({ description: "Delete this budget?", destructive: true });
+  const contractMap = useMemo(
+    () => new Map((contractsQ.data ?? []).map((c) => [c.id, c])),
+    [contractsQ.data],
+  );
+  const canSplit = !!invoicesQ.data && !!contractsQ.data;
+
+  const handleDelete = async (b: Budget) => {
+    const target = b.department_name ?? b.contract_title ?? "this target";
+    const ok = await confirmDialog({
+      title: `Delete the budget for ${target}?`,
+      description: `The budget for ${formatDate(b.period_start)} – ${formatDate(b.period_end)} is removed. Invoices are not affected.`,
+      confirmLabel: "Delete budget",
+      destructive: true,
+    });
     if (!ok) return;
     try {
-      await deleteBudget.mutateAsync(id);
+      await deleteBudget.mutateAsync(b.id);
       toast.success("Budget deleted");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      toast.error(errorMessage(err));
     }
   };
 
+  const budgets = budgetsQ.data ?? [];
+
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border bg-card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="font-semibold">Department & project budgets</h2>
-            <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
-              Actuals are computed live from invoices — nothing here is a duplicated figure, so
-              budget-vs-actual can never drift out of sync with what's actually been invoiced.
-              Contract/project-level budgets will populate once Clients & Contracts moves to AIMS;
-              only department budgets can be created here today.
-            </p>
-          </div>
-          <NewBudgetDialog
-            departments={departmentsQ.data ?? []}
-            onCreated={() => budgetsQ.refetch()}
-          />
-        </div>
+      <PageHeader
+        title="Budgets"
+        description="Set a billing budget for a department or contract over a period, and compare it with what has been invoiced."
+        actions={
+          canWrite ? (
+            <Button onClick={() => setCreating(true)}>
+              <Plus className="mr-1 h-4 w-4" /> New budget
+            </Button>
+          ) : undefined
+        }
+      />
+      {!canWrite && <ViewOnlyBanner area="budgets" action="add or delete budgets" />}
+      <ActionHint topic="budgets">
+        Only invoices linked to a contract count against a budget.
+      </ActionHint>
 
+      <div className="overflow-hidden rounded-lg border bg-card">
         {budgetsQ.isLoading ? (
-          <div className="py-10 flex justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" aria-label="Loading budgets" />
           </div>
-        ) : (budgetsQ.data ?? []).length === 0 ? (
-          <div className="py-10 text-center text-sm text-muted-foreground">
-            No budgets yet. Create one to start tracking budget vs actual.
+        ) : budgetsQ.isError ? (
+          <LoadError
+            what="budgets"
+            error={budgetsQ.error}
+            onRetry={() => budgetsQ.refetch()}
+            className="m-3"
+          />
+        ) : budgets.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-10 text-sm text-muted-foreground">
+            <span>No budgets yet</span>
+            {canWrite && (
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <Plus className="mr-1 h-4 w-4" /> New budget
+              </Button>
+            )}
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Target</TableHead>
-                <TableHead>Period</TableHead>
-                <TableHead className="text-right">Budgeted</TableHead>
-                <TableHead className="text-right">Actual</TableHead>
-                <TableHead className="text-right">Variance</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(budgetsQ.data ?? []).map((b) => {
-                const variance = b.actual - b.budgeted_amount;
-                const variancePct =
-                  b.budgeted_amount > 0 ? (variance / b.budgeted_amount) * 100 : 0;
-                return (
-                  <TableRow key={b.id}>
-                    <TableCell>
-                      <div className="font-medium">
-                        {b.department_name ?? b.contract_title ?? "—"}
-                      </div>
-                      <Badge variant="secondary" className="mt-0.5">
-                        {b.department_id ? "Department" : "Contract"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {b.period_start} → {b.period_end}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatCurrency(b.budgeted_amount, b.currency)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatCurrency(b.actual, b.currency)}
-                    </TableCell>
-                    <TableCell
-                      className={`text-right tabular-nums font-medium ${
-                        variance > 0 ? "text-destructive" : "text-success"
-                      }`}
-                    >
-                      {variance >= 0 ? "+" : ""}
-                      {variancePct.toFixed(1)}%
-                    </TableCell>
-                    <TableCell>
-                      <Button size="sm" variant="ghost" onClick={() => handleDelete(b.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Budget for</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead className="text-right">Budget</TableHead>
+                  <TableHead className="text-right">Invoiced</TableHead>
+                  <TableHead className="text-right">Difference</TableHead>
+                  {canWrite && <TableHead className="text-right">Actions</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {budgets.map((b) => {
+                  const split = canSplit ? invoicedFor(b, invoicesQ.data!, contractMap) : null;
+                  const actual = split ? split.same : b.actual;
+                  const diff = actual - b.budgeted_amount;
+                  const pct = b.budgeted_amount > 0 ? (diff / b.budgeted_amount) * 100 : null;
+                  const target = b.department_name ?? b.contract_title ?? "—";
+                  return (
+                    <TableRow key={b.id}>
+                      <TableCell>
+                        <div className="font-medium">{target}</div>
+                        <Badge variant="secondary" className="mt-0.5">
+                          {b.department_id ? "Department" : "Contract"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-xs">
+                        {formatDate(b.period_start)} – {formatDate(b.period_end)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-right tabular-nums">
+                        {formatCurrency(b.budgeted_amount, b.currency)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
+                        {formatCurrency(actual, b.currency)}
+                        {split && split.others.size > 0 && (
+                          <div className="text-xs font-normal text-muted-foreground">
+                            Not counted: {formatTotals(split.others, b.currency)}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-right text-xs tabular-nums">
+                        {pct === null
+                          ? "—"
+                          : Math.abs(pct) < 0.05
+                            ? "On budget"
+                            : `${Math.abs(pct).toFixed(1)}% ${pct > 0 ? "over" : "under"}`}
+                      </TableCell>
+                      {canWrite && (
+                        <TableCell className="text-right">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => handleDelete(b)}
+                            disabled={deleteBudget.isPending}
+                            title={`Delete budget for ${target}`}
+                            aria-label={`Delete budget for ${target}, ${formatDate(b.period_start)} to ${formatDate(b.period_end)}`}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            <p className="border-t px-4 py-2 text-xs text-muted-foreground">
+              Invoiced = sent invoices (including VAT) dated inside the period and linked to the
+              contract, or to a contract of the department. Invoices in another currency are shown
+              but not counted.
+            </p>
+          </div>
         )}
       </div>
+
+      {creating && (
+        <NewBudgetDialog
+          departments={departmentsQ.data ?? []}
+          contracts={contractsQ.data ?? []}
+          onClose={() => setCreating(false)}
+        />
+      )}
     </div>
   );
 }
 
+type BudgetDraft = {
+  target: "department" | "contract";
+  departmentId: string;
+  contractId: string;
+  periodStart: string;
+  periodEnd: string;
+  amount: string;
+  currency: string;
+  notes: string;
+};
+type BudgetErrors = Partial<Record<keyof BudgetDraft | "form", string>>;
+
+const localIso = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 function NewBudgetDialog({
   departments,
-  onCreated,
+  contracts,
+  onClose,
 }: {
-  departments: { id: string; name: string }[];
-  onCreated: () => void;
+  departments: DepartmentRow[];
+  contracts: ContractRow[];
+  onClose: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [departmentId, setDepartmentId] = useState("");
-  const [periodStart, setPeriodStart] = useState(new Date().toISOString().slice(0, 10));
-  const [periodEnd, setPeriodEnd] = useState(
-    new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10),
-  );
-  const [amount, setAmount] = useState("");
-  const [notes, setNotes] = useState("");
+  const companyCurrency = useCompanyCurrency();
+  const [initial] = useState<BudgetDraft>(() => {
+    const now = new Date();
+    return {
+      target: "department",
+      departmentId: "",
+      contractId: "",
+      periodStart: localIso(new Date(now.getFullYear(), now.getMonth(), 1)),
+      periodEnd: localIso(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
+      amount: "",
+      currency: "",
+      notes: "",
+    };
+  });
+  const [draft, setDraft] = useState<BudgetDraft>(initial);
+  const [errors, setErrors] = useState<BudgetErrors>({});
   const createBudget = useCreateBudget();
+  const { guardClose } = useUnsavedChanges(JSON.stringify(draft) !== JSON.stringify(initial));
+
+  const contract = contracts.find((c) => c.id === draft.contractId);
+  const currency = draft.currency || contract?.currency || companyCurrency;
+  const currencyOptions = CURRENCY_CODES.includes(currency as (typeof CURRENCY_CODES)[number])
+    ? [...CURRENCY_CODES]
+    : [currency, ...CURRENCY_CODES];
+
+  const update = (patch: Partial<BudgetDraft>) => {
+    setDraft((d) => ({ ...d, ...patch }));
+    setErrors((e) => {
+      const next = { ...e, form: undefined };
+      for (const k of Object.keys(patch)) delete next[k as keyof BudgetDraft];
+      return next;
+    });
+  };
 
   const handleSave = async () => {
-    if (!departmentId || !amount) {
-      toast.error("Department and budgeted amount are required");
-      return;
-    }
+    const found: BudgetErrors = {};
+    if (draft.target === "department" && !draft.departmentId)
+      found.departmentId = "Choose the department";
+    if (draft.target === "contract" && !draft.contractId) found.contractId = "Choose the contract";
+    if (!draft.periodStart) found.periodStart = "Choose the start date";
+    if (!draft.periodEnd) found.periodEnd = "Choose the end date";
+    else if (draft.periodStart && draft.periodEnd < draft.periodStart)
+      found.periodEnd = "The end date can't be before the start date";
+    const amount = Number(draft.amount);
+    if (!draft.amount.trim() || !Number.isFinite(amount) || amount < 0)
+      found.amount = "Enter the budget amount (0 or more)";
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
     try {
       await createBudget.mutateAsync({
-        departmentId,
-        periodStart,
-        periodEnd,
-        budgetedAmount: Number(amount),
-        notes: notes || undefined,
+        departmentId: draft.target === "department" ? draft.departmentId : undefined,
+        contractId: draft.target === "contract" ? draft.contractId : undefined,
+        periodStart: draft.periodStart,
+        periodEnd: draft.periodEnd,
+        budgetedAmount: amount,
+        currency,
+        notes: draft.notes.trim() || undefined,
       });
       toast.success("Budget created");
-      setDepartmentId("");
-      setAmount("");
-      setNotes("");
-      setOpen(false);
-      onCreated();
+      onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+      const message = errorMessage(err);
+      setErrors({ form: message });
+      toast.error(message);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Plus className="h-4 w-4 mr-1" /> New budget
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
+    <Dialog open onOpenChange={(o) => !o && guardClose(onClose)}>
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New department budget</DialogTitle>
+          <DialogTitle>New budget</DialogTitle>
+          <DialogDescription>
+            Only invoices linked to a contract count against a budget.
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label className="text-xs">Department</Label>
-            <Select value={departmentId} onValueChange={setDepartmentId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select department" />
-              </SelectTrigger>
-              <SelectContent>
-                {departments.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <RequiredNote />
+        <form
+          className="space-y-3"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleSave();
+          }}
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FormField id="budget-target" label="Budget for" required>
+              <Select
+                value={draft.target}
+                onValueChange={(v) => update({ target: v as BudgetDraft["target"] })}
+              >
+                <SelectTrigger id="budget-target">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="department">A department</SelectItem>
+                  <SelectItem value="contract">A contract</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+            {draft.target === "department" ? (
+              <FormField
+                id="budget-department"
+                label="Department"
+                required
+                error={errors.departmentId}
+              >
+                <Select
+                  value={draft.departmentId}
+                  onValueChange={(v) => update({ departmentId: v })}
+                >
+                  <SelectTrigger id="budget-department" aria-invalid={!!errors.departmentId}>
+                    <SelectValue placeholder="Choose a department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            ) : (
+              <FormField id="budget-contract" label="Contract" required error={errors.contractId}>
+                <Select value={draft.contractId} onValueChange={(v) => update({ contractId: v })}>
+                  <SelectTrigger id="budget-contract" aria-invalid={!!errors.contractId}>
+                    <SelectValue placeholder="Choose a contract" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {contracts.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.contract_number ? `${c.contract_number} — ${c.title}` : c.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Period start</Label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FormField id="budget-start" label="Period start" required error={errors.periodStart}>
               <Input
+                id="budget-start"
                 type="date"
-                value={periodStart}
-                onChange={(e) => setPeriodStart(e.target.value)}
+                value={draft.periodStart}
+                aria-invalid={!!errors.periodStart}
+                onChange={(e) => update({ periodStart: e.target.value })}
               />
-            </div>
-            <div>
-              <Label className="text-xs">Period end</Label>
-              <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
-            </div>
+            </FormField>
+            <FormField id="budget-end" label="Period end" required error={errors.periodEnd}>
+              <Input
+                id="budget-end"
+                type="date"
+                value={draft.periodEnd}
+                min={draft.periodStart || undefined}
+                aria-invalid={!!errors.periodEnd}
+                onChange={(e) => update({ periodEnd: e.target.value })}
+              />
+            </FormField>
           </div>
-          <div>
-            <Label className="text-xs">Budgeted amount</Label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <FormField
+              id="budget-amount"
+              label={`Budget amount (${currency})`}
+              required
+              error={errors.amount}
+              className="sm:col-span-2"
+            >
+              <Input
+                id="budget-amount"
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={draft.amount}
+                aria-invalid={!!errors.amount}
+                onChange={(e) => update({ amount: e.target.value })}
+              />
+            </FormField>
+            <FormField id="budget-currency" label="Currency">
+              <Select value={currency} onValueChange={(v) => update({ currency: v })}>
+                <SelectTrigger id="budget-currency">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {currencyOptions.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+          </div>
+          <FormField id="budget-notes" label="Notes">
             <Input
-              type="number"
-              step="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              id="budget-notes"
+              value={draft.notes}
+              onChange={(e) => update({ notes: e.target.value })}
             />
-          </div>
-          <div>
-            <Label className="text-xs">Notes</Label>
-            <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={handleSave} disabled={createBudget.isPending}>
-            {createBudget.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Create budget
-          </Button>
-        </DialogFooter>
+          </FormField>
+          {errors.form && (
+            <p role="alert" className="text-sm text-destructive">
+              {errors.form}
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => guardClose(onClose)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createBudget.isPending}>
+              {createBudget.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Create budget
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
