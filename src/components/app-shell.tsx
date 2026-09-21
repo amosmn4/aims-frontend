@@ -400,7 +400,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const visibleNav = isCeo
     ? CEO_NAV
     : departmentScope
-      ? buildDepartmentNav(departmentScope, hasRole("water"))
+      ? buildDepartmentNav(departmentScope, hasRole("water"), hasRole("department_head"))
       : workspace === "water" || home === "/water"
         ? buildWaterNav()
         : !hasAnyDepartment
@@ -759,7 +759,7 @@ export function PageHeader({
         <h1 className="text-lg font-semibold text-foreground">{title}</h1>
         {description && <p className="text-xs text-muted-foreground max-w-3xl">{description}</p>}
       </div>
-      {actions && <div className="flex gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
   );
 }

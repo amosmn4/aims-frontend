@@ -1,16 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useId, useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, Upload } from "lucide-react";
+import { Loader2, Plus, Upload, X } from "lucide-react";
 import { usePermissions } from "@/lib/permissions";
 import {
   useDocuments,
-  useUploadDocument,
   useDeleteDocument,
-  DOCUMENT_ACCEPT,
-  MAX_DOCUMENT_BYTES,
+  fileProblem,
+  formatFileSize,
   type DocumentRow,
 } from "@/features/documents/use-documents";
+import { useDocumentUploads } from "@/features/documents/use-document-uploads";
+import { DocumentDropZone, UploadProgressList } from "@/features/documents/document-drop-zone";
 import { DocumentList } from "@/features/documents/document-list";
 import { DocumentVersionHistoryDialog } from "@/features/documents/document-version-history-dialog";
 import { DepartmentDocumentsPage } from "@/features/documents/documents-library";
@@ -18,6 +19,7 @@ import { FormField, RequiredNote } from "@/components/form-field";
 import { LoadError } from "@/components/load-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -82,8 +84,16 @@ function MandatoryDocumentsLibrary() {
       </div>
 
       {libraryQ.isLoading ? (
-        <div className="py-8 flex justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+        <div className="space-y-2 rounded-lg border bg-card p-4">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="h-8 w-8 rounded-md" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-1/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : libraryQ.isError ? (
         <LoadError
@@ -98,6 +108,10 @@ function MandatoryDocumentsLibrary() {
           emptyState={
             <div className="rounded-lg border bg-card px-6 py-12 text-center">
               <p className="text-sm font-medium">No mandatory documents yet</p>
+              <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
+                Add the files tenders usually ask for once, and tick them on any tender that needs
+                them.
+              </p>
               {canManage && (
                 <div className="mt-3 flex justify-center">
                   <MandatoryUploadDialog />
@@ -138,45 +152,47 @@ function MandatoryUploadDialog() {
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string>();
   const [submitError, setSubmitError] = useState<string>();
-  const upload = useUploadDocument();
+  const uploads = useDocumentUploads();
 
   const reset = () => {
     setTitle("");
     setFile(null);
     setFileError(undefined);
     setSubmitError(undefined);
+    uploads.clear();
   };
 
-  const submit = (e: FormEvent) => {
+  const chooseFile = (files: File[]) => {
+    const chosen = files[0];
+    if (!chosen) return;
+    const problem = fileProblem(chosen);
+    setFileError(problem ?? undefined);
+    setFile(problem ? null : chosen);
+  };
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!file) {
       setFileError("Choose a file to upload");
       return;
     }
-    if (file.size > MAX_DOCUMENT_BYTES) {
-      setFileError("This file is bigger than 25 MB. Choose a smaller file.");
-      return;
-    }
     setSubmitError(undefined);
-    upload.mutate(
+    const result = await uploads.upload(
+      [file],
       {
-        file,
         resourceType: "tender_document_library",
         resourceId: LIBRARY_RESOURCE_ID,
         title: title.trim() || undefined,
       },
-      {
-        onSuccess: (doc) => {
-          toast.success(`Added "${doc.title}" to mandatory documents`);
-          setOpen(false);
-          reset();
-        },
-        onError: (err) =>
-          setSubmitError(
-            err instanceof Error ? err.message : "Couldn't upload the file. Try again.",
-          ),
-      },
+      { silent: true },
     );
+    if (result.uploaded === 0) {
+      setSubmitError("Couldn't upload the file. See the message above.");
+      return;
+    }
+    toast.success(`Added "${title.trim() || file.name}" to mandatory documents`);
+    setOpen(false);
+    reset();
   };
 
   return (
@@ -193,29 +209,43 @@ function MandatoryUploadDialog() {
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <form onSubmit={submit} noValidate className="space-y-4">
+        <form onSubmit={(e) => void submit(e)} noValidate className="space-y-4">
           <DialogHeader>
             <DialogTitle>Add a mandatory document</DialogTitle>
             <RequiredNote />
           </DialogHeader>
-          <FormField
-            id={`${uid}-file`}
-            label="File"
-            required
-            error={fileError}
-            hint="PDF, Word, Excel, PowerPoint, images, text or zip — up to 25 MB"
-          >
-            <Input
-              id={`${uid}-file`}
-              type="file"
-              accept={DOCUMENT_ACCEPT}
-              aria-invalid={!!fileError}
-              onChange={(e) => {
-                setFile(e.target.files?.[0] ?? null);
-                setFileError(undefined);
-              }}
+          <div className="space-y-2">
+            <DocumentDropZone
+              onFiles={chooseFile}
+              multiple={false}
+              disabled={uploads.uploading}
+              label="Drag the file here, or choose it"
             />
-          </FormField>
+            {file && (
+              <div className="flex items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2 text-xs">
+                <span className="min-w-0 truncate">
+                  <span className="font-medium">{file.name}</span>{" "}
+                  <span className="text-muted-foreground">{formatFileSize(file.size)}</span>
+                </span>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  aria-label={`Remove ${file.name}`}
+                  onClick={() => setFile(null)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+            {fileError && (
+              <p role="alert" className="text-xs text-destructive">
+                {fileError}
+              </p>
+            )}
+            <UploadProgressList items={uploads.items} />
+          </div>
           <FormField id={`${uid}-title`} label="Title" hint="Leave blank to use the file name">
             <Input
               id={`${uid}-title`}
@@ -243,8 +273,8 @@ function MandatoryUploadDialog() {
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={upload.isPending}>
-              {upload.isPending ? (
+            <Button type="submit" disabled={uploads.uploading}>
+              {uploads.uploading ? (
                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />
               ) : (
                 <Upload className="h-4 w-4 mr-1" />

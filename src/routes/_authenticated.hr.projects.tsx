@@ -84,7 +84,10 @@ function HrProjects() {
   const view = search.view ?? "list";
   const noClient = search.noClient === true;
   const setSearch = (patch: Partial<z.infer<typeof searchSchema>>) =>
-    navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
+    navigate({
+      search: (prev: z.infer<typeof searchSchema>) => ({ ...prev, ...patch }),
+      replace: true,
+    });
   const notLineName = lines.find((l) => l.code === notLine)?.name ?? notLine;
 
   // The board groups by status itself, so the status filter applies to the list only.

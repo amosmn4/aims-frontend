@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
 
-export type AccessGrantResource = "tenders" | "client-requests";
+export type AccessGrantResource = "tenders" | "client-requests" | "projects";
 
 export interface AccessGrantRow {
   id: string;

@@ -159,8 +159,9 @@ export function useSaveBlogPost() {
       );
     },
     onSuccess: (post) => {
+      // Seed the post first so the page shows the saved text before the refetch lands.
+      qc.setQueryData(["blog-posts", post.id], post);
       qc.invalidateQueries({ queryKey: ["blog-posts"] });
-      qc.invalidateQueries({ queryKey: ["blog-posts", post.id] });
     },
   });
 }

@@ -21,7 +21,21 @@ import {
   type WaterMeterReadingRow,
 } from "@/features/water/use-water";
 import { ReadingFormDialog, type ReadingFormValue } from "@/features/water/reading-form-dialog";
-import { ListEmpty, ListNoMatches, TermsHint, formatPeriodKey } from "@/features/water/water-ui";
+import { ListEmpty, ListNoMatches, TermsHint } from "@/features/water/water-ui";
+import {
+  GRANULARITY_WORD,
+  periodKeyOf,
+  periodLabel,
+  readingDomain,
+  ZONE_COLORS,
+  type ChartGranularity,
+} from "@/features/water/chart-periods";
+import {
+  ChartCaption,
+  ChartState,
+  GranularityToggle,
+  PeriodTooltip,
+} from "@/features/water/water-charts";
 import { RowActions } from "@/components/row-actions";
 import { confirmDeleteReading, deleteErrorToast } from "@/features/water/water-delete";
 import { PageHeader } from "@/components/app-shell";
@@ -65,6 +79,7 @@ function WaterReadingsPage() {
   const [meterType, setMeterType] = useState<ReadingMeterType | "">("");
   const [zoneId, setZoneId] = useState("");
   const [range, setRange] = useState<DateRange>({});
+  const [granularity, setGranularity] = useState<ChartGranularity>("month");
   // Bumped on "Clear filters" so the period dropdown resets too.
   const [rangeKey, setRangeKey] = useState(0);
   const [editing, setEditing] = useState<ReadingFormValue | "new" | null>(null);
@@ -96,23 +111,44 @@ function WaterReadingsPage() {
     setPage(1);
   };
 
-  // One row per date, one column per meter, for the reading history chart.
-  const byMeter = new Map<string, { number: string; type: string }>();
-  for (const r of chartReadings)
-    byMeter.set(r.meter_id, { number: r.meter_number, type: r.meter_type });
-  const meterIds = [...byMeter.keys()];
+  // One row per week or month, one column per meter, for the reading history chart.
+  const byMeter = new Map<string, { number: string; count: number }>();
+  for (const r of chartReadings) {
+    const seen = byMeter.get(r.meter_id);
+    byMeter.set(r.meter_id, { number: r.meter_number, count: (seen?.count ?? 0) + 1 });
+  }
+  const meterIds = [...byMeter.keys()]
+    .sort((a, b) => byMeter.get(b)!.count - byMeter.get(a)!.count)
+    .slice(0, ZONE_COLORS.length);
+  const hiddenMeters = byMeter.size - meterIds.length;
 
-  const dates = [...new Set(chartReadings.map((r) => r.reading_date.slice(0, 10)))].sort();
-  const chartData = dates.map((date) => {
-    const row: Record<string, string | number> = { date: formatPeriodKey(date) };
+  // The dial at the end of each period — the latest reading inside it.
+  const latest = new Map<string, Map<string, number>>();
+  for (const r of chartReadings) {
+    const bucket = periodKeyOf(r.reading_date, granularity);
+    const perMeter = latest.get(bucket) ?? new Map<string, number>();
+    const seenAt = perMeter.get(`${r.meter_id}:at`);
+    const at = new Date(r.reading_date).getTime();
+    if (seenAt === undefined || at >= seenAt) {
+      perMeter.set(`${r.meter_id}:at`, at);
+      perMeter.set(r.meter_id, r.value);
+    }
+    latest.set(bucket, perMeter);
+  }
+
+  const chartData = [...latest.keys()].sort().map((bucket) => {
+    const row: Record<string, string | number> = { period: periodLabel(bucket, granularity) };
     for (const id of meterIds) {
-      const match = chartReadings.find(
-        (r) => r.meter_id === id && r.reading_date.slice(0, 10) === date,
-      );
-      if (match) row[byMeter.get(id)!.number] = match.value;
+      const value = latest.get(bucket)!.get(id);
+      if (value !== undefined) row[byMeter.get(id)!.number] = value;
     }
     return row;
   });
+  const readingValues = chartData.flatMap((row) =>
+    meterIds
+      .map((id) => row[byMeter.get(id)!.number])
+      .filter((v): v is number => typeof v === "number"),
+  );
 
   const handleDelete = async (r: WaterMeterReadingRow) => {
     if (!(await confirmDeleteReading(r))) return;
@@ -204,41 +240,68 @@ function WaterReadingsPage() {
       </div>
 
       <div className="rounded-lg border bg-card p-4">
-        <div className="text-sm font-semibold mb-2">Reading history (m³ on the dial)</div>
-        {chartReadingsQ.isLoading ? (
-          <div className="py-8 flex justify-center">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Meter reading (running total)</div>
+            <ChartCaption>
+              The number on the dial at the end of each {GRANULARITY_WORD[granularity]}. It only
+              ever goes up, so the chart starts near the readings themselves — a small rise is still
+              a real one.
+            </ChartCaption>
           </div>
-        ) : chartReadingsQ.isError ? (
-          <LoadError
-            what="the reading history"
-            error={chartReadingsQ.error}
-            onRetry={() => chartReadingsQ.refetch()}
-          />
-        ) : chartData.length === 0 ? (
-          <div className="text-xs text-muted-foreground py-8 text-center">
-            {hasFilters ? "No matches" : "No readings yet"}
-          </div>
-        ) : (
+          <GranularityToggle value={granularity} onChange={setGranularity} />
+        </div>
+        <ChartState
+          isLoading={chartReadingsQ.isLoading}
+          isError={chartReadingsQ.isError}
+          error={chartReadingsQ.error}
+          onRetry={() => chartReadingsQ.refetch()}
+          what="the reading history"
+          isEmpty={chartData.length === 0}
+          emptyMessage={
+            hasFilters ? "No readings match these filters." : "No readings recorded yet."
+          }
+          height={260}
+        >
           <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={chartData} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
+            <LineChart data={chartData} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 12 }} tickLine={false} />
-              <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+              <XAxis
+                dataKey="period"
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                width={62}
+                domain={readingDomain(readingValues)}
+                allowDataOverflow={false}
+                tickFormatter={(v: number) => Math.round(v).toLocaleString()}
+              />
+              <Tooltip content={<PeriodTooltip rows={chartData} />} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               {meterIds.map((id, i) => (
                 <Line
                   key={id}
                   type="monotone"
                   dataKey={byMeter.get(id)!.number}
-                  stroke={["#0F7A78", "#B9762A", "#D4953F", "#8C5A1E", "#2E9E4F"][i % 5]}
+                  stroke={ZONE_COLORS[i]}
                   strokeWidth={2}
+                  dot={{ r: 3 }}
                   connectNulls
                 />
               ))}
             </LineChart>
           </ResponsiveContainer>
+        </ChartState>
+        {hiddenMeters > 0 && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Showing the {meterIds.length} meters with the most readings. Filter by zone or meter
+            type to see the other {hiddenMeters}.
+          </p>
         )}
       </div>
 

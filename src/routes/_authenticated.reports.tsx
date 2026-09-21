@@ -5,7 +5,10 @@ import { useAuth } from "@/lib/auth";
 
 const TABS = [
   { to: "/reports", label: "Overview", exact: true },
+  { to: "/reports/mine", label: "My report", match: "/reports/mine" },
   { to: "/reports/departments", label: "Departments", match: "/reports/departments" },
+  { to: "/reports/projects", label: "Projects", match: "/reports/projects" },
+  { to: "/reports/team", label: "My team", match: "/reports/team", headsOnly: true },
 ];
 
 export const Route = createFileRoute("/_authenticated/reports")({
@@ -15,7 +18,8 @@ export const Route = createFileRoute("/_authenticated/reports")({
 
 function ReportsLayout() {
   const location = useLocation();
-  const { isCeo } = useAuth();
+  const { isCeo, isAdminOrCeo, hasRole } = useAuth();
+  const tabs = TABS.filter((t) => !t.headsOnly || isAdminOrCeo || hasRole("department_head"));
   return (
     <div>
       <PageHeader
@@ -27,7 +31,7 @@ function ReportsLayout() {
         }
       />
       <nav aria-label="Reports pages" className="border-b mb-4 flex gap-1 overflow-x-auto">
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const active = t.exact
             ? location.pathname === t.to
             : location.pathname.startsWith(t.match ?? t.to);

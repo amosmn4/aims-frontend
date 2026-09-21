@@ -7,6 +7,7 @@ import { useTenders } from "@/features/tender/use-tender";
 import { useClientRequests } from "@/features/client-requests/use-client-requests";
 import { useFinanceReports } from "@/features/finance/use-finance-reports";
 import { useDepartmentReports } from "@/features/reports/use-department-reports";
+import { useItSystems } from "@/features/it/use-it-systems";
 import { useAuth } from "@/lib/auth";
 
 const linkClass = "font-medium text-foreground hover:text-primary hover:underline";
@@ -42,7 +43,22 @@ export function DocumentLocation({ doc }: { doc: DocumentRow }) {
       return <FinanceReportLocation id={id} />;
     case "contract":
       return <ContractLocation id={id} />;
+    case "it_system":
+      return <SystemLocation id={id} />;
   }
+}
+
+function SystemLocation({ id }: { id: string }) {
+  const { canReadDepartment } = useAuth();
+  const name = useItSystems().data?.find((s) => s.id === id)?.name;
+  if (!canReadDepartment("it")) return <Where kind="System or site">{name}</Where>;
+  return (
+    <Where kind="System or site">
+      <Link to="/it/systems-sites/$systemId" params={{ systemId: id }} className={linkClass}>
+        {name ?? "Open system or site"}
+      </Link>
+    </Where>
+  );
 }
 
 function LibraryLocation({ id }: { id: string }) {
@@ -112,7 +128,7 @@ function DepartmentReportLocation({ id }: { id: string }) {
   const report = useDepartmentReports().data?.find((r) => r.id === id);
   return (
     <Where kind="Report">
-      <Link to="/department-reports/$reportId" params={{ reportId: id }} className={linkClass}>
+      <Link to="/reports/$reportId" params={{ reportId: id }} className={linkClass}>
         {report?.title ?? "Open report"}
       </Link>
     </Where>

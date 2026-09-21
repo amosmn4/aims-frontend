@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, Search, Upload, X } from "lucide-react";
+import { Plus, Search, Upload, X } from "lucide-react";
 import {
   useDocuments,
   useDeleteDocument,
@@ -17,15 +17,18 @@ import { DocumentVersionHistoryDialog } from "@/features/documents/document-vers
 import { DocumentAccessDialog } from "@/features/documents/document-access-picker";
 import { PageHeader } from "@/components/app-shell";
 import { LoadError } from "@/components/load-error";
+import { PaginationBar } from "@/components/pagination-bar";
 import { ViewOnlyBanner } from "@/components/view-only-banner";
 import { WithDepartment } from "@/components/nav/with-department";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { usePagination } from "@/hooks/use-pagination";
 import { useAuth, type DepartmentCode } from "@/lib/auth";
 import { DEPARTMENT_NAMES } from "@/lib/department-nav";
 import { usePermissions } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -322,11 +325,13 @@ function DocumentsBrowser({
 }) {
   const [q, setQ] = useState("");
   const [place, setPlace] = useState<DocumentPlace | "all">("all");
+  const [label, setLabel] = useState("all");
   const debouncedQ = useDebouncedValue(q.trim());
   const documentsQ = useDocuments({ ...filters, q: debouncedQ || undefined });
   const deleteDocument = useDeleteDocument();
   const [versionsDoc, setVersionsDoc] = useState<DocumentRow | null>(null);
   const [accessDoc, setAccessDoc] = useState<DocumentRow | null>(null);
+  const { page, pageSize, setPage, setPageSize } = usePagination();
 
   const rows = (documentsQ.data ?? []).filter((d) => !include || include(d));
   const counts = new Map<DocumentPlace, number>();
@@ -334,16 +339,29 @@ function DocumentsBrowser({
     const p = documentPlace(d.resource_type);
     counts.set(p, (counts.get(p) ?? 0) + 1);
   }
-  const shown =
-    place === "all" ? rows : rows.filter((d) => documentPlace(d.resource_type) === place);
-  const hasFilters = q.trim() !== "" || place !== "all" || extraFilterActive;
+  const labels = [...new Set(rows.flatMap((d) => d.tags ?? []))].sort();
+  const shown = rows.filter(
+    (d) =>
+      (place === "all" || documentPlace(d.resource_type) === place) &&
+      (label === "all" || (d.tags ?? []).includes(label)),
+  );
+  const hasFilters = q.trim() !== "" || place !== "all" || label !== "all" || extraFilterActive;
   const places = DOCUMENT_PLACES.filter(
     (p) => p.value !== "contracts" || (counts.get("contracts") ?? 0) > 0 || place === "contracts",
   );
 
+  // Back to the first page whenever the list underneath changes.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQ, place, label, extraFilterActive, setPage]);
+
+  const pageRows = shown.slice((page - 1) * pageSize, page * pageSize);
+  const showPagination = shown.length > 25 || page > 1 || pageSize !== 25;
+
   const clearFilters = () => {
     setQ("");
     setPlace("all");
+    setLabel("all");
     onClearExtraFilter?.();
   };
 
@@ -364,6 +382,21 @@ function DocumentsBrowser({
               className="pl-7"
             />
           </div>
+          {labels.length > 0 && (
+            <Select value={label} onValueChange={setLabel}>
+              <SelectTrigger className="w-full sm:w-44" aria-label="Label">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All labels</SelectItem>
+                {labels.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {extraFilter}
         </div>
         <div
@@ -394,8 +427,16 @@ function DocumentsBrowser({
       </div>
 
       {documentsQ.isLoading ? (
-        <div className="py-12 flex justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <div className="space-y-2 rounded-lg border bg-card p-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="h-8 w-8 rounded-md" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-1/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : documentsQ.isError ? (
         <LoadError what={what} error={documentsQ.error} onRetry={() => documentsQ.refetch()} />
@@ -414,9 +455,20 @@ function DocumentsBrowser({
         )
       ) : (
         <DocumentList
-          documents={shown}
+          documents={pageRows}
           canManage={canManage}
           showResourceType
+          footer={
+            showPagination ? (
+              <PaginationBar
+                page={page}
+                pageSize={pageSize}
+                total={shown.length}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+              />
+            ) : undefined
+          }
           onDelete={(doc) =>
             deleteDocument
               .mutateAsync(doc.id)

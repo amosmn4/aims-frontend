@@ -47,7 +47,10 @@ function ItHelp() {
   useEffect(() => {
     if (search.new !== 1) return;
     setFormOpen(true);
-    navigate({ search: (prev) => ({ ...prev, new: undefined }), replace: true });
+    navigate({
+      search: (prev: z.infer<typeof searchSchema>) => ({ ...prev, new: undefined }),
+      replace: true,
+    });
   }, [search.new, navigate]);
 
   const { mine, givenToMe } = useMemo(() => {
@@ -122,7 +125,10 @@ function ItHelp() {
       <TicketDetailSheet
         ticketId={search.ticket ?? null}
         onClose={() =>
-          navigate({ search: (prev) => ({ ...prev, ticket: undefined }), replace: true })
+          navigate({
+            search: (prev: z.infer<typeof searchSchema>) => ({ ...prev, ticket: undefined }),
+            replace: true,
+          })
         }
       />
     </div>

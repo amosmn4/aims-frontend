@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowUpRight, Loader2 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -24,10 +24,29 @@ import {
   type WaterMeterType,
 } from "@/features/water/use-water";
 import { TermsHint, WithTerm, formatPeriodKey } from "@/features/water/water-ui";
+import {
+  GRANULARITY_WORD,
+  TREND_PERIODS,
+  periodLabel,
+  recentPeriods,
+  resolvePeriod,
+  topSlices,
+  WATER_SERIES,
+  WATER_SERIES_DASH,
+  type ChartGranularity,
+} from "@/features/water/chart-periods";
+import {
+  ChartCaption,
+  ChartState,
+  GranularityToggle,
+  PeriodPicker,
+  PeriodTooltip,
+  ZoneDonut,
+} from "@/features/water/water-charts";
 import { PageHeader } from "@/components/app-shell";
 import { LoadError } from "@/components/load-error";
 import { DateRangeFilter, type DateRange } from "@/components/date-range-filter";
-import { formatDateTime } from "@/lib/format-date";
+import { formatDateTime, formatMonth, formatWeekRange } from "@/lib/format-date";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -97,22 +116,40 @@ function unitsDelta(curr: number, prev: number): string | null {
 
 function WaterReportsPage() {
   const [month, setMonth] = useState(currentMonth());
+  const [granularity, setGranularity] = useState<ChartGranularity>("month");
+  const [weekKey, setWeekKey] = useState("");
+
+  const weeks = useMemo(() => recentPeriods("week"), []);
+  const week = resolvePeriod(weeks, weekKey);
+  // Weekly charts cover the chosen week; monthly charts follow the Month box above.
+  const chartWindow =
+    granularity === "week"
+      ? { dateFrom: week.dateFrom, dateTo: week.dateTo }
+      : { month: month || currentMonth() };
+  const windowLabel = granularity === "week" ? week.label : formatMonth(month || currentMonth());
+
   const summaryQ = useWaterReportSummary({ month });
-  const trendQ = useWaterTrend({ months: 6 });
-  const zoneCompQ = useWaterZoneComparison({ month });
+  const trendQ = useWaterTrend({ granularity, periods: TREND_PERIODS[granularity] });
+  const zoneCompQ = useWaterZoneComparison(chartWindow);
   const s = summaryQ.data;
 
   const trendData = (trendQ.data ?? []).map((p) => ({
-    month: formatPeriodKey(p.month),
+    period: periodLabel(p.period, granularity),
     Main: p.main_total,
-    "Zone bulk total": p.bulk_total,
-    "Household total": p.household_total,
+    "Zone bulk": p.bulk_total,
+    Households: p.household_total,
   }));
   const zoneCompData = (zoneCompQ.data ?? []).map((z) => ({
     zone: z.zone_name,
     "Bulk meter (m³)": z.bulk_total,
     "Household meters (m³)": z.household_total,
   }));
+  const zoneSlices = topSlices(
+    zoneCompQ.data ?? [],
+    (z) => z.household_total,
+    (z) => z.zone_name,
+  );
+  const zoneSliceTotal = zoneSlices.reduce((sum, sl) => sum + sl.value, 0);
 
   return (
     <div className="space-y-4">
@@ -319,77 +356,159 @@ function WaterReportsPage() {
             )}
           </div>
 
+          <div className="flex flex-wrap items-end justify-between gap-3 pt-1">
+            <div>
+              <div className="text-sm font-semibold">Charts and graphs</div>
+              <p className="text-xs text-muted-foreground">
+                Switch every chart below between weekly and monthly.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <GranularityToggle value={granularity} onChange={setGranularity} />
+              {granularity === "week" && (
+                <PeriodPicker
+                  id="report-chart-week"
+                  label="Week shown"
+                  periods={weeks}
+                  value={week.key}
+                  onChange={setWeekKey}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-card p-4">
+            <div className="text-sm font-semibold">
+              Water through the network — last {TREND_PERIODS[granularity]}{" "}
+              {GRANULARITY_WORD[granularity]}s
+            </div>
+            <ChartCaption>
+              Water used in each {GRANULARITY_WORD[granularity]} (m³) — not the running total on the
+              dial.
+            </ChartCaption>
+            <ChartState
+              isLoading={trendQ.isLoading}
+              isError={trendQ.isError}
+              error={trendQ.error}
+              onRetry={() => trendQ.refetch()}
+              what="the trend"
+              isEmpty={trendData.length === 0}
+              emptyMessage="No readings recorded yet, so there is nothing to chart."
+            >
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={trendData} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="period"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={56}
+                    tickFormatter={(v: number) => v.toLocaleString()}
+                  />
+                  <Tooltip content={<PeriodTooltip rows={trendData} />} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="Main"
+                    stroke={WATER_SERIES.main}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="Zone bulk"
+                    stroke={WATER_SERIES.bulk}
+                    strokeDasharray={WATER_SERIES_DASH.bulk}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="Households"
+                    stroke={WATER_SERIES.household}
+                    strokeDasharray={WATER_SERIES_DASH.household}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartState>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div className="rounded-lg border bg-card p-4">
-              <div className="text-sm font-semibold mb-2">
-                Last 6 months — main vs zone bulk vs household (m³)
-              </div>
-              {trendQ.isLoading ? (
-                <div className="py-8 flex justify-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                </div>
-              ) : trendQ.isError ? (
-                <LoadError what="the trend" error={trendQ.error} onRetry={() => trendQ.refetch()} />
-              ) : trendData.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-8 text-center">No data yet.</div>
-              ) : (
+              <div className="text-sm font-semibold">Zone comparison — {windowLabel}</div>
+              <ChartCaption>
+                What each zone&apos;s bulk meter measured against what its households paid for (m³).
+              </ChartCaption>
+              <ChartState
+                isLoading={zoneCompQ.isLoading}
+                isError={zoneCompQ.isError}
+                error={zoneCompQ.error}
+                onRetry={() => zoneCompQ.refetch()}
+                what="the zone comparison"
+                isEmpty={zoneCompData.length === 0}
+                emptyMessage="No zone figures for this period."
+              >
                 <ResponsiveContainer width="100%" height={230}>
-                  <LineChart data={trendData} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
+                  <BarChart data={zoneCompData} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} />
-                    <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <XAxis dataKey="zone" tick={{ fontSize: 11 }} tickLine={false} />
+                    <YAxis
+                      tick={{ fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={56}
+                      tickFormatter={(v: number) => v.toLocaleString()}
+                    />
+                    <Tooltip
+                      content={<PeriodTooltip rows={zoneCompData} xKey="zone" showChange={false} />}
+                    />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line type="monotone" dataKey="Main" stroke="#0F7A78" strokeWidth={2} />
-                    <Line
-                      type="monotone"
-                      dataKey="Zone bulk total"
-                      stroke="#B9762A"
-                      strokeWidth={2}
+                    <Bar
+                      dataKey="Bulk meter (m³)"
+                      fill={WATER_SERIES.main}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={28}
                     />
-                    <Line
-                      type="monotone"
-                      dataKey="Household total"
-                      stroke="#2E8B57"
-                      strokeWidth={2}
+                    <Bar
+                      dataKey="Household meters (m³)"
+                      fill={WATER_SERIES.household}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={28}
                     />
-                  </LineChart>
+                  </BarChart>
                 </ResponsiveContainer>
-              )}
+              </ChartState>
             </div>
 
             <div className="rounded-lg border bg-card p-4">
-              <div className="text-sm font-semibold mb-2">
-                Zone comparison — bulk meter vs household meters (m³)
-              </div>
-              {zoneCompQ.isLoading ? (
-                <div className="py-8 flex justify-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                </div>
-              ) : zoneCompQ.isError ? (
-                <LoadError
-                  what="the zone comparison"
-                  error={zoneCompQ.error}
-                  onRetry={() => zoneCompQ.refetch()}
+              <div className="text-sm font-semibold">Share of water paid for — {windowLabel}</div>
+              <ChartCaption>
+                How the {GRANULARITY_WORD[granularity]}&apos;s household water splits across zones.
+              </ChartCaption>
+              <ChartState
+                isLoading={zoneCompQ.isLoading}
+                isError={zoneCompQ.isError}
+                error={zoneCompQ.error}
+                onRetry={() => zoneCompQ.refetch()}
+                what="the zone breakdown"
+                isEmpty={zoneSlices.length === 0}
+                emptyMessage="No household water recorded in this period."
+                height={190}
+              >
+                <ZoneDonut
+                  slices={zoneSlices}
+                  total={zoneSliceTotal}
+                  centreLabel={`m³ paid for this ${GRANULARITY_WORD[granularity]}`}
                 />
-              ) : zoneCompData.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-8 text-center">No zones yet.</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={230}>
-                  <BarChart
-                    data={zoneCompData}
-                    margin={{ top: 8, right: 12, left: -18, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="zone" tick={{ fontSize: 12 }} tickLine={false} />
-                    <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="Bulk meter (m³)" fill="#0F7A78" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Household meters (m³)" fill="#2E8B57" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
+              </ChartState>
             </div>
           </div>
 
@@ -494,7 +613,12 @@ function MeterReadingComparison() {
 
   const series = seriesQ.data ?? [];
   const chartData = series.map((p) => ({
-    period: bucket === "week" ? `Week of ${formatPeriodKey(p.period)}` : formatPeriodKey(p.period),
+    period:
+      bucket === "week"
+        ? formatWeekRange(p.period)
+        : bucket === "month"
+          ? formatMonth(p.period)
+          : formatPeriodKey(p.period),
     "Used (m³)": p.usage,
   }));
   const totalUsage = series.reduce((sum, p) => sum + p.usage, 0);
@@ -574,31 +698,42 @@ function MeterReadingComparison() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
-          {seriesQ.isLoading ? (
-            <div className="py-12 flex justify-center">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            </div>
-          ) : seriesQ.isError ? (
-            <LoadError
-              what="the reading comparison"
-              error={seriesQ.error}
-              onRetry={() => seriesQ.refetch()}
-            />
-          ) : chartData.length === 0 ? (
-            <div className="text-xs text-muted-foreground py-12 text-center">
-              No readings in this period.
-            </div>
-          ) : (
+          <ChartState
+            isLoading={seriesQ.isLoading}
+            isError={seriesQ.isError}
+            error={seriesQ.error}
+            onRetry={() => seriesQ.refetch()}
+            what="the reading comparison"
+            isEmpty={chartData.length === 0}
+            emptyMessage="No readings in this period."
+            height={240}
+          >
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={chartData} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
+              <BarChart data={chartData} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="period" tick={{ fontSize: 12 }} tickLine={false} />
-                <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                <Bar dataKey="Used (m³)" fill="#0F7A78" radius={[3, 3, 0, 0]} />
+                <XAxis
+                  dataKey="period"
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={56}
+                  tickFormatter={(v: number) => v.toLocaleString()}
+                />
+                <Tooltip content={<PeriodTooltip rows={chartData} />} cursor={{ opacity: 0.1 }} />
+                <Bar
+                  dataKey="Used (m³)"
+                  fill={WATER_SERIES.main}
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={36}
+                />
               </BarChart>
             </ResponsiveContainer>
-          )}
+          </ChartState>
         </div>
         <div className="rounded-md bg-secondary/40 p-3 flex flex-col justify-center">
           <div className="text-xs text-muted-foreground">Total used in this period</div>

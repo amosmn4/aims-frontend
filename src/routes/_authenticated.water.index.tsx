@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -27,7 +27,27 @@ import {
   useWaterAllZones,
   useCanManageWater,
 } from "@/features/water/use-water";
-import { TermInfo, WithTerm, formatPeriodKey } from "@/features/water/water-ui";
+import { TermInfo, WithTerm } from "@/features/water/water-ui";
+import {
+  GRANULARITY_WORD,
+  TREND_PERIODS,
+  periodLabel,
+  recentPeriods,
+  resolvePeriod,
+  topSlices,
+  WATER_SERIES,
+  WATER_SERIES_DASH,
+  type ChartGranularity,
+} from "@/features/water/chart-periods";
+import {
+  ChartCaption,
+  ChartState,
+  GranularityToggle,
+  PeriodPicker,
+  PeriodTooltip,
+  ZoneDonut,
+} from "@/features/water/water-charts";
+import { formatMonth } from "@/lib/format-date";
 import { PageHeader } from "@/components/app-shell";
 import { LoadError } from "@/components/load-error";
 import { ViewOnlyBanner } from "@/components/view-only-banner";
@@ -72,24 +92,45 @@ function WaterDashboardPage() {
   const canManage = useCanManageWater();
   const [month, setMonth] = useState(currentMonth());
   const [zoneId, setZoneId] = useState("");
+  const [granularity, setGranularity] = useState<ChartGranularity>("month");
+  const [weekKey, setWeekKey] = useState("");
+
+  const weeks = useMemo(() => recentPeriods("week"), []);
+  const week = resolvePeriod(weeks, weekKey);
+  // Weekly charts cover the chosen week; monthly charts follow the Period box above.
+  const chartWindow =
+    granularity === "week"
+      ? { dateFrom: week.dateFrom, dateTo: week.dateTo }
+      : { month: month || currentMonth() };
+  const windowLabel = granularity === "week" ? week.label : formatMonth(month || currentMonth());
 
   const allZonesQ = useWaterAllZones();
   const dashboardQ = useWaterDashboard({ zoneId: zoneId || undefined, month });
-  const trendQ = useWaterTrend({ zoneId: zoneId || undefined, months: 6 });
-  const zoneCompQ = useWaterZoneComparison({ month });
+  const trendQ = useWaterTrend({
+    zoneId: zoneId || undefined,
+    granularity,
+    periods: TREND_PERIODS[granularity],
+  });
+  const zoneCompQ = useWaterZoneComparison(chartWindow);
 
   const d = dashboardQ.data;
   const trendData = (trendQ.data ?? []).map((p) => ({
-    month: formatPeriodKey(p.month),
+    period: periodLabel(p.period, granularity),
     Main: p.main_total,
-    "Zone bulk total": p.bulk_total,
-    "Household total": p.household_total,
+    "Zone bulk": p.bulk_total,
+    Households: p.household_total,
   }));
   const zoneCompData = (zoneCompQ.data ?? []).map((z) => ({
     zone: z.zone_name,
     "Bulk meter (m³)": z.bulk_total,
     "Household meters (m³)": z.household_total,
   }));
+  const zoneSlices = topSlices(
+    zoneCompQ.data ?? [],
+    (z) => z.household_total,
+    (z) => z.zone_name,
+  );
+  const zoneSliceTotal = zoneSlices.reduce((sum, s) => sum + s.value, 0);
 
   return (
     <div className="space-y-4">
@@ -118,7 +159,7 @@ function WaterDashboardPage() {
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <Label htmlFor="water-period" className="text-xs">
-              Period
+              Month
             </Label>
             <Input
               id="water-period"
@@ -222,84 +263,166 @@ function WaterDashboardPage() {
             />
           </div>
 
+          <div className="flex flex-wrap items-end justify-between gap-3 pt-1">
+            <div>
+              <div className="text-sm font-semibold">Charts and graphs</div>
+              <p className="text-xs text-muted-foreground">
+                Switch every chart below between weekly and monthly.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <GranularityToggle value={granularity} onChange={setGranularity} />
+              {granularity === "week" && (
+                <PeriodPicker
+                  id="water-chart-week"
+                  label="Week shown"
+                  periods={weeks}
+                  value={week.key}
+                  onChange={setWeekKey}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-card p-4">
+            <div className="text-sm font-semibold">
+              Water through the network — last {TREND_PERIODS[granularity]}{" "}
+              {GRANULARITY_WORD[granularity]}s
+            </div>
+            <ChartCaption>
+              Water used in each {GRANULARITY_WORD[granularity]} (m³) — not the running total on the
+              dial, so a busy {GRANULARITY_WORD[granularity]} stands out.
+            </ChartCaption>
+            <ChartState
+              isLoading={trendQ.isLoading}
+              isError={trendQ.isError}
+              error={trendQ.error}
+              onRetry={() => trendQ.refetch()}
+              what="the trend"
+              isEmpty={trendData.length === 0}
+              emptyMessage="No readings recorded yet, so there is nothing to chart."
+            >
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={trendData} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="period"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={56}
+                    tickFormatter={(v: number) => v.toLocaleString()}
+                  />
+                  <Tooltip content={<PeriodTooltip rows={trendData} />} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="Main"
+                    stroke={WATER_SERIES.main}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="Zone bulk"
+                    stroke={WATER_SERIES.bulk}
+                    strokeDasharray={WATER_SERIES_DASH.bulk}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="Households"
+                    stroke={WATER_SERIES.household}
+                    strokeDasharray={WATER_SERIES_DASH.household}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartState>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div className="rounded-lg border bg-card p-4">
-              <div className="text-sm font-semibold mb-2">
-                Last 6 months — main vs zone bulk vs household (m³)
-              </div>
-              {trendQ.isLoading ? (
-                <div className="py-8 flex justify-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                </div>
-              ) : trendQ.isError ? (
-                <LoadError what="the trend" error={trendQ.error} onRetry={() => trendQ.refetch()} />
-              ) : trendData.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-8 text-center">No data yet.</div>
-              ) : (
+              <div className="text-sm font-semibold">Zone comparison — {windowLabel}</div>
+              <ChartCaption>
+                What each zone&apos;s bulk meter measured against what its households paid for (m³).
+              </ChartCaption>
+              <ChartState
+                isLoading={zoneCompQ.isLoading}
+                isError={zoneCompQ.isError}
+                error={zoneCompQ.error}
+                onRetry={() => zoneCompQ.refetch()}
+                what="the zone comparison"
+                isEmpty={zoneCompData.length === 0}
+                emptyMessage="No zone figures for this period."
+              >
                 <ResponsiveContainer width="100%" height={230}>
-                  <LineChart data={trendData} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
+                  <BarChart data={zoneCompData} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} />
-                    <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <XAxis dataKey="zone" tick={{ fontSize: 11 }} tickLine={false} />
+                    <YAxis
+                      tick={{ fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={56}
+                      tickFormatter={(v: number) => v.toLocaleString()}
+                    />
+                    <Tooltip
+                      content={<PeriodTooltip rows={zoneCompData} xKey="zone" showChange={false} />}
+                    />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line type="monotone" dataKey="Main" stroke="#0F7A78" strokeWidth={2} />
-                    <Line
-                      type="monotone"
-                      dataKey="Zone bulk total"
-                      stroke="#B9762A"
-                      strokeWidth={2}
+                    <Bar
+                      dataKey="Bulk meter (m³)"
+                      fill={WATER_SERIES.main}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={28}
                     />
-                    <Line
-                      type="monotone"
-                      dataKey="Household total"
-                      stroke="#2E8B57"
-                      strokeWidth={2}
+                    <Bar
+                      dataKey="Household meters (m³)"
+                      fill={WATER_SERIES.household}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={28}
                     />
-                  </LineChart>
+                  </BarChart>
                 </ResponsiveContainer>
+              </ChartState>
+              {zoneCompData.length === 0 && canManage && (
+                <div className="flex justify-center pt-2">
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to="/water/zones">Go to Zones</Link>
+                  </Button>
+                </div>
               )}
             </div>
 
             <div className="rounded-lg border bg-card p-4">
-              <div className="text-sm font-semibold mb-2">
-                Zone comparison — bulk meter vs household meters (m³)
-              </div>
-              {zoneCompQ.isLoading ? (
-                <div className="py-8 flex justify-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                </div>
-              ) : zoneCompQ.isError ? (
-                <LoadError
-                  what="the zone comparison"
-                  error={zoneCompQ.error}
-                  onRetry={() => zoneCompQ.refetch()}
+              <div className="text-sm font-semibold">Share of water paid for — {windowLabel}</div>
+              <ChartCaption>
+                How the {GRANULARITY_WORD[granularity]}&apos;s household water splits across zones.
+              </ChartCaption>
+              <ChartState
+                isLoading={zoneCompQ.isLoading}
+                isError={zoneCompQ.isError}
+                error={zoneCompQ.error}
+                onRetry={() => zoneCompQ.refetch()}
+                what="the zone breakdown"
+                isEmpty={zoneSlices.length === 0}
+                emptyMessage="No household water recorded in this period."
+                height={190}
+              >
+                <ZoneDonut
+                  slices={zoneSlices}
+                  total={zoneSliceTotal}
+                  centreLabel={`m³ paid for this ${GRANULARITY_WORD[granularity]}`}
                 />
-              ) : zoneCompData.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 py-8 text-center text-xs text-muted-foreground">
-                  <span>No zones yet</span>
-                  {canManage && (
-                    <Button size="sm" variant="outline" asChild>
-                      <Link to="/water/zones">Go to Zones</Link>
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={230}>
-                  <BarChart
-                    data={zoneCompData}
-                    margin={{ top: 8, right: 12, left: -18, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="zone" tick={{ fontSize: 12 }} tickLine={false} />
-                    <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="Bulk meter (m³)" fill="#0F7A78" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="Household meters (m³)" fill="#2E8B57" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
+              </ChartState>
             </div>
           </div>
         </>

@@ -204,7 +204,7 @@ export function notificationLink(row: NotificationRow): string | null {
     case "client_request":
       return `/requests/${id}`;
     case "department_report":
-      return `/department-reports/${id}`;
+      return `/reports/${id}`;
     case "finance_report":
       return `/finance/reports/${id}`;
     case "department_reports":

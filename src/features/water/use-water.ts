@@ -154,7 +154,12 @@ export interface WaterDashboard {
 }
 
 export interface WaterTrendPoint {
+  /** Week start date, or the month key — whichever the view asked for. */
+  period: string;
+  granularity: "week" | "month";
   month: string;
+  period_start: string | null;
+  period_end: string | null;
   main_total: number;
   bulk_total: number;
   household_total: number;
@@ -883,15 +888,37 @@ export function useWaterDashboard(filters: { zoneId?: string; month?: string } =
   });
 }
 
-export function useWaterTrend(filters: { zoneId?: string; months?: number } = {}) {
+type BackendTrendPoint = {
+  period?: string;
+  granularity?: "week" | "month";
+  month: string;
+  periodStart?: string;
+  periodEnd?: string;
+  mainTotal: number;
+  bulkTotal: number;
+  householdTotal: number;
+};
+
+/** Per-period water volumes — by week or by month, oldest first. */
+export function useWaterTrend(
+  filters: {
+    zoneId?: string;
+    months?: number;
+    granularity?: "week" | "month";
+    periods?: number;
+  } = {},
+) {
   return useQuery({
     queryKey: ["water", "trend", filters],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
-      const raw = await apiJson<
-        { month: string; mainTotal: number; bulkTotal: number; householdTotal: number }[]
-      >(`/water/trend${buildQuery(filters)}`);
+      const raw = await apiJson<BackendTrendPoint[]>(`/water/trend${buildQuery(filters)}`);
       return raw.map((r): WaterTrendPoint => ({
+        period: r.period ?? r.month,
+        granularity: r.granularity ?? "month",
         month: r.month,
+        period_start: r.periodStart ?? null,
+        period_end: r.periodEnd ?? null,
         main_total: r.mainTotal,
         bulk_total: r.bulkTotal,
         household_total: r.householdTotal,
@@ -922,9 +949,13 @@ function mapZoneComparisonRow(r: BackendZoneComparisonRow): WaterZoneComparisonR
   };
 }
 
-export function useWaterZoneComparison(filters: { month?: string } = {}) {
+/** Pass a month, or a dateFrom/dateTo window for a single week. */
+export function useWaterZoneComparison(
+  filters: { month?: string; dateFrom?: string; dateTo?: string } = {},
+) {
   return useQuery({
     queryKey: ["water", "zone-comparison", filters],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const raw = await apiJson<BackendZoneComparisonRow[]>(
         `/water/zone-comparison${buildQuery(filters)}`,

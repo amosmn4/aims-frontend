@@ -120,7 +120,13 @@ function InvoicesPage() {
   useEffect(() => {
     if (debouncedQuery === (urlSearch.q ?? "")) return;
     writtenQuery.current = debouncedQuery;
-    navigate({ search: (prev) => ({ ...prev, q: debouncedQuery || undefined }), replace: true });
+    navigate({
+      search: (prev: z.infer<typeof invoiceSearchSchema>) => ({
+        ...prev,
+        q: debouncedQuery || undefined,
+      }),
+      replace: true,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to typing
   }, [debouncedQuery]);
 
@@ -135,12 +141,15 @@ function InvoicesPage() {
   useEffect(() => {
     if (urlSearch.new !== 1) return;
     if (canInvoice) setFormTarget("new");
-    navigate({ search: (prev) => ({ ...prev, new: undefined }), replace: true });
+    navigate({
+      search: (prev: z.infer<typeof invoiceSearchSchema>) => ({ ...prev, new: undefined }),
+      replace: true,
+    });
   }, [urlSearch.new, canInvoice, navigate]);
 
   const setStatusFilter = (value: string) =>
     navigate({
-      search: (prev) => ({
+      search: (prev: z.infer<typeof invoiceSearchSchema>) => ({
         ...prev,
         status: value === "all" ? undefined : (value as (typeof INVOICE_STATUSES)[number]),
       }),

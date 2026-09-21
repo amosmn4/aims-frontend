@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Info, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { formatDate } from "@/lib/format-date";
+import { formatDate, formatMonth } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 
 /** Plain-words meaning of each technical water term shown in the UI. */
@@ -135,12 +135,6 @@ export function ListNoMatches({ onClear, className }: { onClear: () => void; cla
 
 /** "Sep 2026" from "2026-09", "6 Sep 2026" from "2026-09-06"; other values pass through. */
 export function formatPeriodKey(key: string): string {
-  const m = /^(\d{4})-(\d{2})$/.exec(key);
-  if (m) {
-    return new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString("en-GB", {
-      month: "short",
-      year: "numeric",
-    });
-  }
+  if (/^\d{4}-\d{2}$/.test(key)) return formatMonth(key);
   return /^\d{4}-\d{2}-\d{2}$/.test(key) ? formatDate(key) : key;
 }

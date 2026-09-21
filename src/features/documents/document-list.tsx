@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { confirmDialog } from "@/components/confirm-dialog";
 import {
   Download,
+  Eye,
   File,
   FileImage,
   FileSpreadsheet,
@@ -18,6 +19,7 @@ import {
   type DocumentRow,
 } from "@/features/documents/use-documents";
 import { DocumentLocation } from "@/features/documents/document-location";
+import { DocumentPreviewDialog } from "@/features/documents/document-preview-dialog";
 import { useDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
 import { formatDate } from "@/lib/format-date";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +36,7 @@ export function DocumentList({
   onShowAccess,
   emptyState,
   deleteCopy,
+  footer,
 }: {
   documents: DocumentRow[];
   canManage: (doc: DocumentRow) => boolean;
@@ -44,11 +47,14 @@ export function DocumentList({
   onShowAccess?: (doc: DocumentRow) => void;
   emptyState?: ReactNode;
   deleteCopy?: (doc: DocumentRow) => ConfirmCopy;
+  /** Shown under the list, inside the same box — used for paging. */
+  footer?: ReactNode;
 }) {
   const profilesQ = useProfilesLite();
   const departmentsQ = useDepartments();
   const profileMap = new Map((profilesQ.data ?? []).map((p) => [p.id, p.full_name ?? p.email]));
   const departmentMap = new Map((departmentsQ.data ?? []).map((d) => [d.id, d.name]));
+  const [previewDoc, setPreviewDoc] = useState<DocumentRow | null>(null);
 
   if (documents.length === 0) {
     return (
@@ -61,22 +67,35 @@ export function DocumentList({
   }
 
   return (
-    <ul className="rounded-lg border bg-card divide-y">
-      {documents.map((doc) => (
-        <DocumentRowItem
-          key={doc.id}
-          doc={doc}
-          uploaderName={doc.created_by ? profileMap.get(doc.created_by) : undefined}
-          visibleTo={visibleToText(doc, departmentMap)}
-          canManage={canManage(doc)}
-          showLocation={showResourceType}
-          onDelete={onDelete}
-          onShowVersions={onShowVersions}
-          onShowAccess={onShowAccess}
-          deleteCopy={deleteCopy}
-        />
-      ))}
-    </ul>
+    <>
+      <div className="rounded-lg border bg-card">
+        <ul className="divide-y">
+          {documents.map((doc) => (
+            <DocumentRowItem
+              key={doc.id}
+              doc={doc}
+              uploaderName={doc.created_by ? profileMap.get(doc.created_by) : undefined}
+              visibleTo={visibleToText(doc, departmentMap)}
+              canManage={canManage(doc)}
+              showLocation={showResourceType}
+              onOpen={setPreviewDoc}
+              onDelete={onDelete}
+              onShowVersions={onShowVersions}
+              onShowAccess={onShowAccess}
+              deleteCopy={deleteCopy}
+            />
+          ))}
+        </ul>
+        {footer}
+      </div>
+      <DocumentPreviewDialog
+        doc={previewDoc}
+        canManage={!!previewDoc && canManage(previewDoc)}
+        onDelete={onDelete}
+        deleteCopy={deleteCopy}
+        onClose={() => setPreviewDoc(null)}
+      />
+    </>
   );
 }
 
@@ -113,6 +132,7 @@ function DocumentRowItem({
   visibleTo,
   canManage,
   showLocation,
+  onOpen,
   onDelete,
   onShowVersions,
   onShowAccess,
@@ -123,6 +143,7 @@ function DocumentRowItem({
   visibleTo?: string;
   canManage: boolean;
   showLocation: boolean;
+  onOpen: (doc: DocumentRow) => void;
   onDelete: (doc: DocumentRow) => Promise<unknown> | void;
   onShowVersions: (doc: DocumentRow) => void;
   onShowAccess?: (doc: DocumentRow) => void;
@@ -155,6 +176,7 @@ function DocumentRowItem({
     }
   };
 
+  const showFileName = !!version && version.file_name !== doc.title;
   const meta = [
     type,
     version ? formatFileSize(version.size_bytes) : null,
@@ -171,7 +193,7 @@ function DocumentRowItem({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={handleDownload}
+              onClick={() => onOpen(doc)}
               className="min-w-0 truncate text-left text-sm font-medium hover:text-primary hover:underline"
               title={`Open ${doc.title}`}
             >
@@ -182,7 +204,15 @@ function DocumentRowItem({
                 {doc.category}
               </Badge>
             )}
+            {(doc.tags ?? []).map((tag) => (
+              <Badge key={tag} variant="outline" className="text-xs">
+                {tag}
+              </Badge>
+            ))}
           </div>
+          {showFileName && (
+            <div className="mt-0.5 truncate text-xs text-muted-foreground">{version.file_name}</div>
+          )}
           <div className="mt-0.5 text-xs text-muted-foreground">{meta.join(" · ")}</div>
           {(showLocation || visibleTo) && (
             <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
@@ -198,6 +228,15 @@ function DocumentRowItem({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 self-end sm:self-start">
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => onOpen(doc)}
+          title="Open"
+          aria-label={`Open ${doc.title}`}
+        >
+          <Eye className="h-4 w-4" />
+        </Button>
         <Button
           size="icon"
           variant="ghost"

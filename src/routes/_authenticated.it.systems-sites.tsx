@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -6,14 +6,12 @@ import { Activity, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { confirmDialog } from "@/components/confirm-dialog";
 import {
   useItSystems,
-  useSaveItSystem,
   useDeleteItSystem,
   IT_SYSTEM_TYPE_LABELS,
   IT_SYSTEM_STATUS_LABELS,
   IT_SYSTEM_STATUS_STYLES,
+  SDLC_STEP_LABELS,
   type ItSystemRow,
-  type ItSystemType,
-  type ItSystemStatus,
 } from "@/features/it/use-it-systems";
 import {
   useLatestUptimes,
@@ -22,16 +20,13 @@ import {
   type LatestUptime,
 } from "@/features/it/use-uptime";
 import { UptimeDialog } from "@/features/it/uptime-dialog";
+import { SystemFormDialog } from "@/features/it/systems/system-form-dialog";
 import { PageHeader } from "@/components/app-shell";
-import { FormField, RequiredNote } from "@/components/form-field";
 import { LoadError } from "@/components/load-error";
 import { ViewOnlyBanner } from "@/components/view-only-banner";
-import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -40,21 +35,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_authenticated/it/systems-sites")({
   head: () => ({ meta: [{ title: "Systems & Sites — AIMS" }] }),
@@ -84,7 +64,7 @@ function SystemsSites() {
   const handleDelete = async (s: ItSystemRow) => {
     const ok = await confirmDialog({
       title: `Delete "${s.name}"?`,
-      description: `${s.name} and all of its recorded uptime will be removed from Systems & Sites. This can't be undone.`,
+      description: `${s.name} and everything recorded against it — steps, features, uptime and files — will be removed. This can't be undone.`,
       confirmLabel: "Delete system",
       destructive: true,
     });
@@ -105,7 +85,7 @@ function SystemsSites() {
     <div className="space-y-4">
       <PageHeader
         title="Systems & Sites"
-        description="What IT builds and looks after — websites, internal systems and integrations — and how reliably each one runs."
+        description="What IT builds and looks after — websites, internal systems and integrations. Open one to see what it does, how it's built and how far along it is."
         actions={canManage ? addButton : undefined}
       />
       {!canManage && <ViewOnlyBanner area="Systems & Sites" />}
@@ -135,6 +115,7 @@ function SystemsSites() {
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Owner</TableHead>
+                  <TableHead>Progress</TableHead>
                   <TableHead>Latest uptime</TableHead>
                   <TableHead className="w-44">
                     <span className="sr-only">Actions</span>
@@ -145,15 +126,17 @@ function SystemsSites() {
                 {systems.map((s) => (
                   <TableRow key={s.id}>
                     <TableCell>
-                      <button
-                        type="button"
-                        onClick={() => setEditing(s)}
+                      <Link
+                        to="/it/systems-sites/$systemId"
+                        params={{ systemId: s.id }}
                         className="text-left font-medium text-primary hover:underline"
                       >
                         {s.name}
-                      </button>
-                      {s.notes && (
-                        <div className="text-xs text-muted-foreground line-clamp-1">{s.notes}</div>
+                      </Link>
+                      {s.purpose && (
+                        <div className="text-xs text-muted-foreground line-clamp-1">
+                          {s.purpose}
+                        </div>
                       )}
                     </TableCell>
                     <TableCell className="text-sm">{IT_SYSTEM_TYPE_LABELS[s.type]}</TableCell>
@@ -164,6 +147,9 @@ function SystemsSites() {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {s.owner ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-sm whitespace-nowrap">
+                      <ProgressCell system={s} />
                     </TableCell>
                     <TableCell className="text-sm whitespace-nowrap">
                       <UptimeCell entry={latestUptime[s.id]} />
@@ -211,9 +197,30 @@ function SystemsSites() {
         </div>
       )}
 
-      <EditSystemDialog value={editing} readOnly={!canManage} onClose={() => setEditing(null)} />
+      <SystemFormDialog
+        value={editing}
+        onClose={() => setEditing(null)}
+        onSaved={(id) => {
+          if (editing === "new")
+            navigate({ to: "/it/systems-sites/$systemId", params: { systemId: id } });
+        }}
+      />
       <UptimeDialog system={uptimeFor} canManage={canManage} onClose={() => setUptimeFor(null)} />
     </div>
+  );
+}
+
+function ProgressCell({ system }: { system: ItSystemRow }) {
+  if (system.currentStage == null && system.progressPercent == null) {
+    return <span className="text-muted-foreground">Not tracked</span>;
+  }
+  return (
+    <span>
+      {system.currentStage ? SDLC_STEP_LABELS[system.currentStage] : "In progress"}
+      {system.progressPercent != null && (
+        <span className="text-muted-foreground tabular-nums"> · {system.progressPercent}%</span>
+      )}
+    </span>
   );
 }
 
@@ -233,208 +240,5 @@ function UptimeCell({ entry }: { entry?: LatestUptime }) {
       {formatUptimePercent(entry.record.uptimePercent)}
       <span className="text-muted-foreground"> · {formatUptimeMonth(entry.record.month)}</span>
     </span>
-  );
-}
-
-function EditSystemDialog({
-  value,
-  readOnly,
-  onClose,
-}: {
-  value: ItSystemRow | "new" | null;
-  readOnly: boolean;
-  onClose: () => void;
-}) {
-  const [dirty, setDirty] = useState(false);
-  const { guardClose } = useUnsavedChanges(dirty);
-  const close = () => {
-    setDirty(false);
-    onClose();
-  };
-  return (
-    <Dialog open={!!value} onOpenChange={(open) => !open && guardClose(close)}>
-      <DialogContent>
-        {value && (
-          <EditSystemForm
-            value={value === "new" ? null : value}
-            readOnly={readOnly}
-            onDirtyChange={setDirty}
-            onCancel={() => guardClose(close)}
-            onDone={close}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function EditSystemForm({
-  value,
-  readOnly,
-  onDirtyChange,
-  onCancel,
-  onDone,
-}: {
-  value: ItSystemRow | null;
-  readOnly: boolean;
-  onDirtyChange: (dirty: boolean) => void;
-  onCancel: () => void;
-  onDone: () => void;
-}) {
-  const save = useSaveItSystem();
-  const [name, setName] = useState(value?.name ?? "");
-  const [type, setType] = useState<ItSystemType>(value?.type ?? "website");
-  const [status, setStatus] = useState<ItSystemStatus>(value?.status ?? "active");
-  const [owner, setOwner] = useState(value?.owner ?? "");
-  const [notes, setNotes] = useState(value?.notes ?? "");
-  const [nameError, setNameError] = useState<string>();
-
-  const dirty =
-    !readOnly &&
-    (name !== (value?.name ?? "") ||
-      type !== (value?.type ?? "website") ||
-      status !== (value?.status ?? "active") ||
-      owner !== (value?.owner ?? "") ||
-      notes !== (value?.notes ?? ""));
-  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
-
-  const submit = () => {
-    if (!name.trim()) {
-      setNameError("Enter the name of the system or site");
-      return;
-    }
-    save.mutate(
-      {
-        id: value?.id,
-        name: name.trim(),
-        type,
-        status,
-        owner: owner || undefined,
-        notes: notes || undefined,
-      },
-      {
-        onSuccess: () => {
-          toast.success(value ? `${name.trim()} updated` : `${name.trim()} added`);
-          onDone();
-        },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Couldn't save it"),
-      },
-    );
-  };
-
-  return (
-    <form
-      className="space-y-4"
-      noValidate
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!readOnly) submit();
-      }}
-    >
-      <DialogHeader>
-        <DialogTitle>
-          {readOnly
-            ? (value?.name ?? "System or site")
-            : value
-              ? `Edit ${value.name}`
-              : "New system or site"}
-        </DialogTitle>
-        <DialogDescription>
-          {readOnly
-            ? "Details of this system or site."
-            : "A website, internal system or integration that IT looks after."}
-        </DialogDescription>
-      </DialogHeader>
-      {!readOnly && <RequiredNote />}
-      <div className="space-y-3">
-        <FormField id="system-name" label="Name" required={!readOnly} error={nameError}>
-          <Input
-            id="system-name"
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              setNameError(undefined);
-            }}
-            placeholder="e.g. amsol.com"
-            disabled={readOnly}
-            aria-invalid={!!nameError}
-            aria-describedby={nameError ? "system-name-error" : undefined}
-          />
-        </FormField>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FormField id="system-type" label="Type" required={!readOnly}>
-            <Select
-              value={type}
-              onValueChange={(v) => setType(v as ItSystemType)}
-              disabled={readOnly}
-            >
-              <SelectTrigger id="system-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(IT_SYSTEM_TYPE_LABELS).map(([v, label]) => (
-                  <SelectItem key={v} value={v}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-          <FormField id="system-status" label="Status" required={!readOnly}>
-            <Select
-              value={status}
-              onValueChange={(v) => setStatus(v as ItSystemStatus)}
-              disabled={readOnly}
-            >
-              <SelectTrigger id="system-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(IT_SYSTEM_STATUS_LABELS).map(([v, label]) => (
-                  <SelectItem key={v} value={v}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-        </div>
-        <FormField id="system-owner" label="Owner (optional)">
-          <Input
-            id="system-owner"
-            value={owner}
-            onChange={(e) => setOwner(e.target.value)}
-            placeholder="Who's responsible for this"
-            disabled={readOnly}
-          />
-        </FormField>
-        <FormField id="system-notes" label="Notes (optional)">
-          <Textarea
-            id="system-notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
-            disabled={readOnly}
-          />
-        </FormField>
-      </div>
-      <DialogFooter className="gap-2">
-        {readOnly ? (
-          <Button type="button" variant="outline" onClick={onDone}>
-            Close
-          </Button>
-        ) : (
-          <>
-            <Button type="button" variant="outline" onClick={onCancel} disabled={save.isPending}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={save.isPending}>
-              {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {value ? "Save system" : "Add system or site"}
-            </Button>
-          </>
-        )}
-      </DialogFooter>
-    </form>
   );
 }

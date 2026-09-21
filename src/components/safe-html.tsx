@@ -6,8 +6,12 @@ const CONFIG: Config = {
   ALLOWED_TAGS: [
     "p",
     "br",
+    "h1",
     "h2",
     "h3",
+    "h4",
+    "h5",
+    "h6",
     "blockquote",
     "strong",
     "em",

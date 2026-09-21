@@ -9,7 +9,8 @@ export type DocumentResourceType =
   | "tender"
   | "client_request"
   | "tender_document_library"
-  | "department";
+  | "department"
+  | "it_system";
 export type LibraryResourceType = DocumentResourceType | "contract";
 export type DocumentAccessType = "everyone" | "department" | "user";
 
@@ -23,6 +24,7 @@ export const RESOURCE_TYPE_LABELS: Record<LibraryResourceType, string> = {
   contract: "Contract",
   tender_document_library: "Mandatory documents library",
   department: "Department library",
+  it_system: "System or site",
 };
 
 export const ACCESS_TYPE_LABELS: Record<DocumentAccessType, string> = {
@@ -33,7 +35,7 @@ export const ACCESS_TYPE_LABELS: Record<DocumentAccessType, string> = {
 
 /** Where a file is attached, grouped the way people look for it. */
 export type DocumentPlace =
-  "library" | "projects" | "client_requests" | "tenders" | "reports" | "contracts";
+  "library" | "projects" | "client_requests" | "tenders" | "reports" | "contracts" | "systems";
 
 export const DOCUMENT_PLACES: { value: DocumentPlace; label: string }[] = [
   { value: "library", label: "Library" },
@@ -42,6 +44,7 @@ export const DOCUMENT_PLACES: { value: DocumentPlace; label: string }[] = [
   { value: "tenders", label: "Tenders" },
   { value: "reports", label: "Reports" },
   { value: "contracts", label: "Contracts" },
+  { value: "systems", label: "Systems and sites" },
 ];
 
 export function documentPlace(type: LibraryResourceType): DocumentPlace {
@@ -61,6 +64,8 @@ export function documentPlace(type: LibraryResourceType): DocumentPlace {
       return "reports";
     case "contract":
       return "contracts";
+    case "it_system":
+      return "systems";
   }
 }
 
@@ -68,6 +73,28 @@ export function documentPlace(type: LibraryResourceType): DocumentPlace {
 export const DOCUMENT_ACCEPT =
   ".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.png,.jpg,.jpeg,.txt,.zip";
 export const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
+
+/** One line people can read before choosing a file. */
+export const DOCUMENT_ACCEPT_HINT =
+  "PDF, Word, Excel, PowerPoint, images, text or zip — up to 25 MB each";
+
+const ACCEPTED_EXTENSIONS = DOCUMENT_ACCEPT.split(",").map((e) => e.trim().toLowerCase());
+
+function extensionOf(fileName: string): string {
+  return fileName.includes(".") ? `.${(fileName.split(".").pop() ?? "").toLowerCase()}` : "";
+}
+
+/** A plain message naming the file, or null when it can be uploaded. */
+export function fileProblem(file: File): string | null {
+  if (!ACCEPTED_EXTENSIONS.includes(extensionOf(file.name))) {
+    return `"${file.name}" isn't a file type we accept. ${DOCUMENT_ACCEPT_HINT}.`;
+  }
+  if (file.size > MAX_DOCUMENT_BYTES) {
+    return `"${file.name}" is ${formatFileSize(file.size)} — bigger than the 25 MB limit.`;
+  }
+  if (file.size === 0) return `"${file.name}" is empty, so there is nothing to upload.`;
+  return null;
+}
 
 /** "PDF", "Word document", "Excel sheet", "Image", else the extension. */
 export function fileTypeLabel(
@@ -394,13 +421,37 @@ export function useSetDocumentAccess() {
   });
 }
 
-/** Opens the file through a blob URL; contract files come from the older /contracts endpoint. */
-export async function downloadDocument(doc: DocumentRow, versionId?: string): Promise<void> {
-  const path =
-    doc.resource_type === "contract"
-      ? `/contracts/documents/${doc.id}/download`
-      : `/documents/${doc.id}/download${versionId ? `?versionId=${versionId}` : ""}`;
-  const res = await apiFetch(path);
+/* ---------- Opening files ---------- */
+
+/** What the browser can show in the app; anything else is offered as a download. */
+export type DocumentPreviewKind = "pdf" | "image" | "text" | "unsupported";
+
+export function previewKind(
+  version: Pick<DocumentVersionRow, "file_name" | "mime_type"> | null,
+): DocumentPreviewKind {
+  if (!version) return "unsupported";
+  const mime = (version.mime_type ?? "").toLowerCase();
+  const ext = extensionOf(version.file_name ?? "").replace(".", "");
+  if (mime === "application/pdf" || ext === "pdf") return "pdf";
+  if (mime.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext))
+    return "image";
+  if (mime.startsWith("text/") || ["txt", "csv", "md", "log"].includes(ext)) return "text";
+  return "unsupported";
+}
+
+// Contract files still live behind the older /contracts endpoint.
+function filePath(doc: DocumentRow, mode: "preview" | "download", versionId?: string): string {
+  if (doc.resource_type === "contract") return `/contracts/documents/${doc.id}/download`;
+  return `/documents/${doc.id}/${mode}${versionId ? `?versionId=${versionId}` : ""}`;
+}
+
+/** Fetches the file itself, with the signed-in user's token attached. */
+export async function fetchDocumentFile(
+  doc: DocumentRow,
+  mode: "preview" | "download" = "preview",
+  versionId?: string,
+): Promise<Blob> {
+  const res = await apiFetch(filePath(doc, mode, versionId));
   if (!res.ok) {
     throw new Error(
       res.status === 403
@@ -410,8 +461,22 @@ export async function downloadDocument(doc: DocumentRow, versionId?: string): Pr
           : "Couldn't open the file. Try again.",
     );
   }
-  const blob = await res.blob();
+  return res.blob();
+}
+
+/** Saves the file to the person's computer, keeping its real file name. */
+export async function downloadDocument(
+  doc: DocumentRow,
+  versionId?: string,
+  fileName?: string,
+): Promise<void> {
+  const blob = await fetchDocumentFile(doc, "download", versionId);
   const url = URL.createObjectURL(blob);
-  window.open(url, "_blank", "noopener,noreferrer");
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName ?? doc.latest_version?.file_name ?? doc.title;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }

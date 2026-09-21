@@ -100,7 +100,7 @@ export const PERIOD_TYPE_LABEL: Record<ReportPeriodType, string> = {
 };
 
 export function reportLink(kind: InboxItem["kind"], id: string) {
-  return kind === "finance_report" ? `/finance/reports/${id}` : `/department-reports/${id}`;
+  return kind === "finance_report" ? `/finance/reports/${id}` : `/reports/${id}`;
 }
 
 export function formatPeriod(start: string, end: string) {

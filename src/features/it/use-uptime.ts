@@ -63,7 +63,10 @@ export function useRecordUptime(systemId: string) {
   return useMutation({
     mutationFn: (input: { month: string; uptimePercent: number; notes?: string }) =>
       apiJson(`/it-systems/${systemId}/uptime`, { method: "PUT", body: JSON.stringify(input) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: uptimeKey(systemId) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: uptimeKey(systemId) });
+      void qc.invalidateQueries({ queryKey: ["it-system", systemId] });
+    },
   });
 }
 
@@ -72,7 +75,10 @@ export function useDeleteUptime(systemId: string) {
   return useMutation({
     mutationFn: (recordId: string) =>
       apiJson(`/it-systems/uptime/${recordId}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: uptimeKey(systemId) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: uptimeKey(systemId) });
+      void qc.invalidateQueries({ queryKey: ["it-system", systemId] });
+    },
   });
 }
 

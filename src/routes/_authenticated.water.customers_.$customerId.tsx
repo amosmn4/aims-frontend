@@ -23,6 +23,8 @@ import {
 } from "@/features/water/use-water";
 import { CustomerFormDialog } from "@/features/water/customer-form-dialog";
 import { WithTerm, formatPeriodKey } from "@/features/water/water-ui";
+import { WATER_SERIES } from "@/features/water/chart-periods";
+import { ChartCaption, PeriodTooltip } from "@/features/water/water-charts";
 import { confirmDeleteCustomer, deleteErrorToast } from "@/features/water/water-delete";
 import { LoadError } from "@/components/load-error";
 import { ViewOnlyBanner } from "@/components/view-only-banner";
@@ -38,7 +40,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
-export const Route = createFileRoute("/_authenticated/water/customers/$customerId")({
+export const Route = createFileRoute("/_authenticated/water/customers_/$customerId")({
   head: () => ({ meta: [{ title: "Customer — Water Project — AIMS" }] }),
   component: CustomerDetailPage,
 });
@@ -258,32 +260,42 @@ function CustomerDetailPage() {
       </div>
 
       <div className="rounded-lg border bg-card p-4">
-        <div className="text-sm font-semibold mb-2">{months}-month trend</div>
+        <div className="text-sm font-semibold">{months}-month trend</div>
+        <ChartCaption>Bought and spent each month — not a running total.</ChartCaption>
         {d.monthly.every((m) => m.units_sold === 0 && m.revenue === 0) ? (
           <div className="text-xs text-muted-foreground py-8 text-center">
-            No usage in this period.
+            No purchases in this period.
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={monthly} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
+            <LineChart data={monthly} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} />
-              <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+              <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                width={56}
+                tickFormatter={(v: number) => v.toLocaleString()}
+              />
+              <Tooltip content={<PeriodTooltip rows={monthly} xKey="month" unit="" />} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Line
                 type="monotone"
                 dataKey="units_sold"
                 name="Units bought (m³)"
-                stroke="#0F7A78"
+                stroke={WATER_SERIES.main}
                 strokeWidth={2}
+                dot={false}
               />
               <Line
                 type="monotone"
                 dataKey="revenue"
                 name="Spend (KES)"
-                stroke="#B9762A"
+                stroke={WATER_SERIES.bulk}
+                strokeDasharray="6 3"
                 strokeWidth={2}
+                dot={false}
               />
             </LineChart>
           </ResponsiveContainer>

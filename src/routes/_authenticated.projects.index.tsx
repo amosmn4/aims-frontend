@@ -45,7 +45,10 @@ function ProjectsIndex() {
   const filters = Route.useSearch();
   const navigate = Route.useNavigate();
   const setFilters = (patch: DepartmentProjectFilters) =>
-    navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
+    navigate({
+      search: (prev: z.infer<typeof searchSchema>) => ({ ...prev, ...patch }),
+      replace: true,
+    });
   return isCeo ? (
     <DepartmentProjectTabs filters={filters} onFiltersChange={setFilters} />
   ) : (

@@ -8,7 +8,8 @@ import {
   type AccessGrantResource,
   type AccessGrantRow,
 } from "@/features/permissions/use-access-grants";
-import { useDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
+import { useDepartments } from "@/features/clients/use-clients-contracts";
+import { StaffSearchList, useStaffOptions } from "@/features/projects/staff-picker";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { FormField } from "@/components/form-field";
 import { LoadError } from "@/components/load-error";
@@ -34,10 +35,15 @@ function errMsg(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
-const LEVEL_LABEL = { read: "View only", write: "View and edit" } as const;
+const LEVEL_LABEL = { read: "Can view", write: "Can view and edit" } as const;
+const LEVEL_SENTENCE = { read: "they can view", write: "they can view and edit" } as const;
 
 const grantName = (g: AccessGrantRow) =>
-  g.user ? (g.user.full_name ?? g.user.email) : (g.department?.name ?? "—");
+  g.user
+    ? (g.user.full_name ?? g.user.email)
+    : g.department
+      ? `Everyone in ${g.department.name}`
+      : "—";
 
 export function ShareDialog({
   resource,
@@ -54,7 +60,7 @@ export function ShareDialog({
   const [level, setLevel] = useState<"read" | "write">("read");
   const [targetError, setTargetError] = useState("");
 
-  const profilesQ = useProfilesLite();
+  const { nameOf } = useStaffOptions();
   const departmentsQ = useDepartments();
   const grantsQ = useAccessGrants(resource, open ? resourceId : undefined);
   const createGrant = useCreateAccessGrant(resource, resourceId);
@@ -66,11 +72,15 @@ export function ShareDialog({
       setTargetError(target === "user" ? "Choose a person" : "Choose a department");
       return;
     }
+    const name =
+      target === "user"
+        ? (nameOf(targetId) ?? "them")
+        : ((departmentsQ.data ?? []).find((d) => d.id === targetId)?.name ?? "them");
     createGrant.mutate(
       { [target === "user" ? "userId" : "departmentId"]: targetId, level },
       {
         onSuccess: () => {
-          toast.success(`Access given to this ${recordLabel}`);
+          toast.success(`Shared with ${name} — ${LEVEL_SENTENCE[level]}.`);
           setTargetId("");
         },
         onError: (err) => toast.error(errMsg(err, "Couldn't give access")),
@@ -108,40 +118,48 @@ export function ShareDialog({
           <Share2 className="mr-1 h-3.5 w-3.5" /> Share {recordLabel}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Share this {recordLabel}</DialogTitle>
           <DialogDescription>
-            Give a person or a whole department View or Edit access to it.
+            Choose who else can open it, and whether they can also make changes.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[9rem_1fr]">
-            <FormField id="share-target-type" label="Share with">
-              <Select
-                value={target}
-                onValueChange={(v) => {
-                  setTarget(v as typeof target);
-                  setTargetId("");
+          <FormField id="share-target-type" label="Share with">
+            <Select
+              value={target}
+              onValueChange={(v) => {
+                setTarget(v as typeof target);
+                setTargetId("");
+                setTargetError("");
+              }}
+            >
+              <SelectTrigger id="share-target-type" className="h-9 sm:w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="user">A person</SelectItem>
+                <SelectItem value="department">A whole department</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          {target === "user" ? (
+            <FormField id="share-target" label="Person" required error={targetError}>
+              <StaffSearchList
+                id="share-target"
+                value={targetId}
+                onChange={(v) => {
+                  setTargetId(v);
                   setTargetError("");
                 }}
-              >
-                <SelectTrigger id="share-target-type" className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">A person</SelectItem>
-                  <SelectItem value="department">A department</SelectItem>
-                </SelectContent>
-              </Select>
+                invalid={!!targetError}
+              />
             </FormField>
-            <FormField
-              id="share-target"
-              label={target === "user" ? "Person" : "Department"}
-              required
-              error={targetError}
-            >
+          ) : (
+            <FormField id="share-target" label="Department" required error={targetError}>
               <Select
                 value={targetId}
                 onValueChange={(v) => {
@@ -150,30 +168,22 @@ export function ShareDialog({
                 }}
               >
                 <SelectTrigger id="share-target" className="h-9" aria-invalid={!!targetError}>
-                  <SelectValue
-                    placeholder={target === "user" ? "Choose a person" : "Choose a department"}
-                  />
+                  <SelectValue placeholder="Choose a department" />
                 </SelectTrigger>
                 <SelectContent>
-                  {target === "user"
-                    ? (profilesQ.data ?? []).map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.full_name ?? p.email}
-                        </SelectItem>
-                      ))
-                    : (departmentsQ.data ?? []).map((d) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name}
-                        </SelectItem>
-                      ))}
+                  {(departmentsQ.data ?? []).map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </FormField>
-          </div>
+          )}
 
-          <FormField id="share-level" label="Access">
+          <FormField id="share-level" label="What they can do">
             <Select value={level} onValueChange={(v) => setLevel(v as typeof level)}>
-              <SelectTrigger id="share-level" className="h-9 sm:w-48">
+              <SelectTrigger id="share-level" className="h-9 sm:w-56">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
