@@ -58,8 +58,23 @@ export const CLIENT_REQUESTS_PATH: Record<DepartmentCode, string> = {
   operations: "/operations/requests",
 };
 
+/** The Reports menu: the department's report, your own, projects, the team's, the charts. */
+function reportsChildren(code: DepartmentCode, isDepartmentHead: boolean): NavChild[] {
+  return [
+    { to: `/reports/departments/${code}`, label: "Department report" },
+    { to: "/reports/mine", label: "My report" },
+    { to: "/reports/projects", label: "Project reports" },
+    ...(isDepartmentHead ? [{ to: "/reports/team", label: "Team reports" }] : []),
+    { to: `/${code}/reports`, label: "Analytics", divider: true },
+  ];
+}
+
 /** Same seven items, same order, for every department. */
-export function buildDepartmentNav(code: DepartmentCode, hasWaterAccess = false): NavItem[] {
+export function buildDepartmentNav(
+  code: DepartmentCode,
+  hasWaterAccess = false,
+  isDepartmentHead = false,
+): NavItem[] {
   const base = `/${code}`;
   const own = DOMAIN_ITEMS[code];
   const projects = code === "hr" ? "/hr/projects" : "/projects";
@@ -108,10 +123,11 @@ export function buildDepartmentNav(code: DepartmentCode, hasWaterAccess = false)
       match: [`${base}/workspace`, "/clients", "/departments"],
     },
     {
-      to: `${base}/reports`,
+      to: `/reports/departments/${code}`,
       label: "Reports",
       icon: BarChart3,
       match: [`${base}/reports`, "/department-reports", "/reports"],
+      children: reportsChildren(code, isDepartmentHead),
     },
   ];
 }

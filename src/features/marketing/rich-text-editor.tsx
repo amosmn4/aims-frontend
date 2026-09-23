@@ -128,11 +128,22 @@ const HIGHLIGHT_COLORS = [
 
 const DEFAULT_VALUE = "__default__";
 
-type TextStyleKey = "p" | "h2" | "h3";
+type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
+const HEADING_LEVELS: HeadingLevel[] = [1, 2, 3, 4, 5, 6];
+
+type TextStyleKey = "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
 const TEXT_STYLES: { value: TextStyleKey; label: string; className: string }[] = [
   { value: "p", label: "Normal text", className: "text-sm" },
-  { value: "h2", label: "Heading 2", className: "text-lg font-semibold" },
+  { value: "h1", label: "Heading 1", className: "text-xl font-bold" },
+  { value: "h2", label: "Heading 2", className: "text-lg font-bold" },
   { value: "h3", label: "Heading 3", className: "text-base font-semibold" },
+  { value: "h4", label: "Heading 4", className: "text-sm font-semibold" },
+  { value: "h5", label: "Heading 5", className: "text-xs font-semibold" },
+  {
+    value: "h6",
+    label: "Heading 6",
+    className: "text-xs font-semibold uppercase tracking-wide",
+  },
 ];
 
 // Stock paragraph plus drop-cap (class) and line-height (style); styled by .blog-content in styles.css.
@@ -158,7 +169,7 @@ const Paragraph = TiptapParagraph.extend({
 const EXTENSIONS = [
   StarterKit.configure({
     paragraph: false,
-    heading: { levels: [2, 3] },
+    heading: { levels: HEADING_LEVELS },
     codeBlock: false,
     code: false,
     horizontalRule: false,
@@ -430,6 +441,7 @@ export function RichTextEditor({
       if (!e) return null;
       const textStyle = e.getAttributes("textStyle");
       const paragraph = e.getAttributes("paragraph");
+      const heading = HEADING_LEVELS.find((level) => e.isActive("heading", { level }));
       return {
         bold: e.isActive("bold"),
         italic: e.isActive("italic"),
@@ -438,11 +450,7 @@ export function RichTextEditor({
         subscript: e.isActive("subscript"),
         superscript: e.isActive("superscript"),
         link: e.isActive("link"),
-        textStyle: (e.isActive("heading", { level: 2 })
-          ? "h2"
-          : e.isActive("heading", { level: 3 })
-            ? "h3"
-            : "p") as TextStyleKey,
+        textStyle: (heading ? `h${heading}` : "p") as TextStyleKey,
         blockquote: e.isActive("blockquote"),
         bulletList: e.isActive("bulletList"),
         orderedList: e.isActive("orderedList"),
@@ -519,7 +527,7 @@ export function RichTextEditor({
   const setTextStyle = (v: TextStyleKey) => {
     const chain = editor.chain().focus();
     if (v === "p") chain.setParagraph();
-    else chain.setHeading({ level: v === "h2" ? 2 : 3 });
+    else chain.setHeading({ level: Number(v.slice(1)) as HeadingLevel });
     chain.run();
   };
 
@@ -564,7 +572,8 @@ export function RichTextEditor({
           disabled={disabled}
         >
           <SelectTrigger className="h-8 w-32 text-xs" title="Text style" aria-label="Text style">
-            <SelectValue />
+            {/* Explicit label keeps the button small; the list still previews each size. */}
+            <SelectValue>{TEXT_STYLES.find((t) => t.value === state.textStyle)?.label}</SelectValue>
           </SelectTrigger>
           <SelectContent onCloseAutoFocus={keepEditorFocus}>
             {TEXT_STYLES.map((t) => (

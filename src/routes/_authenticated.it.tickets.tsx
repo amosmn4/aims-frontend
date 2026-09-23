@@ -2,9 +2,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
-import { LifeBuoy, Loader2, Plus, Search } from "lucide-react";
+import { LifeBuoy, Loader2, Plus, Search, X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import { useItSystems } from "@/features/it/use-it-systems";
 import {
   TICKET_STATUSES,
   TICKET_STATUS_LABELS,
@@ -22,6 +23,7 @@ import { TicketFormDialog } from "@/features/it/tickets/ticket-form-dialog";
 import { PageHeader } from "@/components/app-shell";
 import { LoadError } from "@/components/load-error";
 import { ViewOnlyBanner } from "@/components/view-only-banner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -36,6 +38,8 @@ const searchSchema = z.object({
   ticket: z.string().optional().catch(undefined),
   view: z.enum(["board", "list"]).optional().catch(undefined),
   new: z.literal(1).optional().catch(undefined),
+  /** Show only tickets raised against one system or site. */
+  system: z.string().optional().catch(undefined),
 });
 
 export const Route = createFileRoute("/_authenticated/it/tickets")({
@@ -95,19 +99,27 @@ function ItTickets() {
   const [q, setQ] = useState("");
 
   const setSearch = (patch: Partial<z.infer<typeof searchSchema>>) =>
-    navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true });
+    navigate({
+      search: (prev: z.infer<typeof searchSchema>) => ({ ...prev, ...patch }),
+      replace: true,
+    });
 
   // ?new=1 opens the form once, then drops the flag.
   useEffect(() => {
     if (search.new !== 1) return;
     if (canManage) setNewOpen(true);
-    navigate({ search: (prev) => ({ ...prev, new: undefined }), replace: true });
+    navigate({
+      search: (prev: z.infer<typeof searchSchema>) => ({ ...prev, new: undefined }),
+      replace: true,
+    });
   }, [search.new, canManage, navigate]);
 
   const tickets = useMemo(() => ticketsQ.data ?? [], [ticketsQ.data]);
   const mineCount = tickets.filter((t) => t.assigneeId && t.assigneeId === user?.id).length;
   const unassignedCount = tickets.filter((t) => !t.assigneeId).length;
 
+  const systemFilter = search.system;
+  const systemName = useItSystems().data?.find((s) => s.id === systemFilter)?.name;
   const statusFilter = view === "list" ? status : "all";
   const needle = q.trim().toLowerCase();
   const filtered = useMemo(
@@ -115,6 +127,7 @@ function ItTickets() {
       tickets.filter(
         (t) =>
           (statusFilter === "all" || t.status === statusFilter) &&
+          (!systemFilter || t.systemId === systemFilter) &&
           (assigned === "anyone" ||
             (assigned === "me" ? t.assigneeId === user?.id : !t.assigneeId)) &&
           (!needle ||
@@ -123,13 +136,14 @@ function ItTickets() {
             personName(t.requester, "").toLowerCase().includes(needle) ||
             (t.system?.name ?? "").toLowerCase().includes(needle)),
       ),
-    [tickets, statusFilter, assigned, needle, user?.id],
+    [tickets, statusFilter, systemFilter, assigned, needle, user?.id],
   );
-  const isFiltered = statusFilter !== "all" || assigned !== "anyone" || !!needle;
+  const isFiltered = statusFilter !== "all" || assigned !== "anyone" || !!needle || !!systemFilter;
   const clearFilters = () => {
     setStatus("all");
     setAssigned("anyone");
     setQ("");
+    setSearch({ system: undefined });
   };
 
   const actions = {
@@ -245,6 +259,19 @@ function ItTickets() {
                   ))}
                 </SelectContent>
               </Select>
+            )}
+            {systemFilter && (
+              <Badge variant="secondary" className="gap-1 py-1 font-normal">
+                {systemName ?? "One system or site"}
+                <button
+                  type="button"
+                  aria-label="Show tickets for every system"
+                  onClick={() => setSearch({ system: undefined })}
+                  className="rounded-full p-0.5 text-muted-foreground hover:text-destructive"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
             )}
             {isFiltered && (
               <Button variant="ghost" size="sm" onClick={clearFilters}>

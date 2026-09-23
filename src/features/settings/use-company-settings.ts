@@ -8,6 +8,9 @@ export interface CompanySettings {
   financialYearStartMonth: number;
   timeZone: string;
   reportDueDay: number;
+  /** Off stops the monthly "report due" reminders for everyone. */
+  reportRemindersEnabled: boolean;
+  departmentHeadsReview: boolean;
   supportContactName: string | null;
   supportContactEmail: string | null;
   updatedAt: string;

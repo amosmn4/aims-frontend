@@ -42,8 +42,8 @@ export const Route = createFileRoute("/_authenticated/marketing/blog/")({
 });
 
 function BlogList() {
-  const { isAdminOrCeo, hasRole } = useAuth();
-  const canManage = isAdminOrCeo || hasRole("marketing");
+  const { isAdminOrCeo, hasCapability } = useAuth();
+  const canManage = isAdminOrCeo || hasCapability("publish_blog");
   const postsQ = useBlogPosts();
   const [newOpen, setNewOpen] = useState(false);
   const posts = postsQ.data ?? [];

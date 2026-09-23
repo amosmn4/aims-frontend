@@ -33,6 +33,8 @@ import { CalendarTab } from "@/components/project-workspace/calendar-tab";
 import { RaidTab } from "@/components/project-workspace/raid-tab";
 import { HrProjectOverview } from "@/features/hr/hr-project-overview";
 import { EditProjectDialog } from "@/features/projects/edit-project-dialog";
+import { useProjectAccess } from "@/features/projects/use-project-sharing";
+import { ShareDialog } from "@/features/permissions/share-dialog";
 import { ProjectBackLink, useProjectBack } from "@/features/projects/project-back-link";
 import { StaffSelect, useStaffOptions } from "@/features/projects/staff-picker";
 import { LoadError } from "@/components/load-error";
@@ -126,7 +128,7 @@ function ProjectDetail() {
   const costItemsQ = useCostItems(projectId);
   const updateTask = useUpdateTask();
   const deleteProject = useDeleteProject();
-  const { canWriteDepartment, profile } = useAuth();
+  const { profile } = useAuth();
   const departmentsQ = useDepartments();
   const { options: staff } = useStaffOptions();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -137,13 +139,17 @@ function ProjectDetail() {
     project?.department_code ??
     departmentsQ.data?.find((d) => d.id === project?.department_id)?.code;
   const back = useProjectBack(departmentCode, from);
+  const access = useProjectAccess(projectId, departmentCode);
 
   const tasks = tasksQ.data ?? [];
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
   const profileMap = new Map(staff.map((p) => [p.id, p.name]));
 
   const setView = (v: TabKey) =>
-    navigate({ search: (prev) => ({ ...prev, view: v }), replace: true });
+    navigate({
+      search: (prev: z.infer<typeof searchSchema>) => ({ ...prev, view: v }),
+      replace: true,
+    });
 
   if (projectQ.isLoading) {
     return (
@@ -161,8 +167,8 @@ function ProjectDetail() {
     );
   }
 
-  // Mirrors the backend write check (roles plus per-user overrides).
-  const canManage = !!departmentCode && canWriteDepartment(departmentCode);
+  // Department write access, or someone shared it with you as "Can view and edit".
+  const canManage = access.canEdit;
   const isHr = departmentCode === "hr";
   const detailed = tracksDeliveryMetrics(departmentCode);
   const primaryTabs: [TabKey, string][] = isHr
@@ -203,7 +209,8 @@ function ProjectDetail() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <ProjectBackLink back={back} />
         {canManage && (
-          <div className="flex shrink-0 gap-1">
+          <div className="flex shrink-0 flex-wrap gap-1">
+            <ShareDialog resource="projects" resourceId={projectId} recordLabel="project" />
             <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
               <Pencil className="h-3.5 w-3.5 mr-1" /> Edit project
             </Button>
@@ -225,7 +232,7 @@ function ProjectDetail() {
         )}
       </div>
 
-      {!canManage && (
+      {!canManage && access.isResolved && (
         <ViewOnlyBanner area="this project" action="change it, apart from tasks assigned to you" />
       )}
 

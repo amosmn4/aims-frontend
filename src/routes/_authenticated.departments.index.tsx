@@ -72,7 +72,7 @@ const KNOWN: Record<
 
 function DepartmentsOverview() {
   const deptsQ = useDepartments();
-  const { isAdminOrCeo, canReadDepartment, roles } = useAuth();
+  const { isAdminOrCeo, canReadDepartment, roles, workspaces, setWorkspace } = useAuth();
   const navigate = useNavigate();
   const home = homeRouteFor(roles);
   const sendHome = !!departmentScopeFor(roles) || home === "/water";
@@ -138,6 +138,10 @@ function DepartmentsOverview() {
                       {meta && (
                         <Link
                           to={meta.to}
+                          onClick={() => {
+                            if (workspaces.includes(key as (typeof workspaces)[number]))
+                              setWorkspace(key as (typeof workspaces)[number]);
+                          }}
                           className="text-xs font-medium inline-flex items-center gap-1 text-primary hover:underline"
                         >
                           Open {d.name} <ArrowRight className="h-3 w-3" aria-hidden="true" />

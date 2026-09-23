@@ -6,6 +6,8 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   Tooltip,
@@ -28,6 +30,20 @@ import {
 import { MeterFormDialog, type MeterFormValue } from "@/features/water/meter-form-dialog";
 import { ReadingFormDialog, type ReadingFormValue } from "@/features/water/reading-form-dialog";
 import { ListEmpty, TermInfo, WithTerm, formatPeriodKey } from "@/features/water/water-ui";
+import {
+  GRANULARITY_WORD,
+  periodKeyOf,
+  periodLabel,
+  readingDomain,
+  WATER_SERIES,
+  type ChartGranularity,
+} from "@/features/water/chart-periods";
+import {
+  ChartCaption,
+  ChartState,
+  GranularityToggle,
+  PeriodTooltip,
+} from "@/features/water/water-charts";
 import { RowActions } from "@/components/row-actions";
 import {
   confirmDeleteMeter,
@@ -48,7 +64,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
-export const Route = createFileRoute("/_authenticated/water/meters/$meterId")({
+export const Route = createFileRoute("/_authenticated/water/meters_/$meterId")({
   head: () => ({ meta: [{ title: "Meter — Water Project — AIMS" }] }),
   component: MeterDetailPage,
 });
@@ -214,23 +230,25 @@ function MeterDetailPage() {
               </Button>
             </>
           )}
-          <div className="w-32">
-            <Label htmlFor="meter-trend-period" className="text-xs">
-              Trend period
-            </Label>
-            <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
-              <SelectTrigger id="meter-trend-period" className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MONTH_OPTIONS.map((m) => (
-                  <SelectItem key={m} value={String(m)}>
-                    {m} months
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {!isReadingMeter && (
+            <div className="w-32">
+              <Label htmlFor="meter-trend-period" className="text-xs">
+                Trend period
+              </Label>
+              <Select value={String(months)} onValueChange={(v) => setMonths(Number(v))}>
+                <SelectTrigger id="meter-trend-period" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MONTH_OPTIONS.map((m) => (
+                    <SelectItem key={m} value={String(m)}>
+                      {m} months
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       </div>
       {!canManage && <ViewOnlyBanner area="the Water Project" />}
@@ -377,40 +395,55 @@ function MeterDetailPage() {
         </p>
       </div>
 
-      <div className="rounded-lg border bg-card p-4">
-        <div className="text-sm font-semibold mb-2">{months}-month trend</div>
-        {d.monthly.every((m) => m.units_sold === 0 && m.revenue === 0) ? (
-          <div className="text-xs text-muted-foreground py-8 text-center">
-            No usage in this period.
-          </div>
-        ) : (
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={monthly} margin={{ top: 8, right: 12, left: -18, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} />
-              <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Line
-                type="monotone"
-                dataKey="units_sold"
-                name={isReadingMeter ? "Volume (m³)" : "Units sold (m³)"}
-                stroke="#0F7A78"
-                strokeWidth={2}
-              />
-              {!isReadingMeter && (
+      {isReadingMeter ? (
+        <MeterReadingCharts meterId={d.id} />
+      ) : (
+        <div className="rounded-lg border bg-card p-4">
+          <div className="text-sm font-semibold">{months}-month trend</div>
+          <ChartCaption>Units bought and spent each month — not a running total.</ChartCaption>
+          <ChartState
+            isLoading={false}
+            isError={false}
+            what="this meter's trend"
+            isEmpty={d.monthly.every((m) => m.units_sold === 0 && m.revenue === 0)}
+            emptyMessage="No purchases in this period."
+            height={220}
+          >
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={monthly} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={56}
+                  tickFormatter={(v: number) => v.toLocaleString()}
+                />
+                <Tooltip content={<PeriodTooltip rows={monthly} xKey="month" unit="" />} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line
+                  type="monotone"
+                  dataKey="units_sold"
+                  name="Units bought (m³)"
+                  stroke={WATER_SERIES.main}
+                  strokeWidth={2}
+                  dot={false}
+                />
                 <Line
                   type="monotone"
                   dataKey="revenue"
                   name="Revenue (KES)"
-                  stroke="#B9762A"
+                  stroke={WATER_SERIES.bulk}
+                  strokeDasharray="6 3"
                   strokeWidth={2}
+                  dot={false}
                 />
-              )}
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </div>
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartState>
+        </div>
+      )}
 
       {isReadingMeter ? (
         <MeterReadingLog
@@ -458,6 +491,127 @@ function MeterDetailPage() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Two charts, one X axis: the dial's running total (fitted axis, never zero-based)
+ * and the water that actually passed through in each period.
+ */
+function MeterReadingCharts({ meterId }: { meterId: string }) {
+  const [granularity, setGranularity] = useState<ChartGranularity>("month");
+  const readingsQ = useWaterReadingsWithDelta({ meterId });
+
+  const buckets = new Map<string, { dial: number; at: number; used: number }>();
+  for (const r of readingsQ.data ?? []) {
+    const key = periodKeyOf(r.reading_date, granularity);
+    const bucket = buckets.get(key) ?? { dial: r.value, at: 0, used: 0 };
+    const at = new Date(r.reading_date).getTime();
+    if (at >= bucket.at) {
+      bucket.dial = r.value;
+      bucket.at = at;
+    }
+    bucket.used += r.delta ?? 0;
+    buckets.set(key, bucket);
+  }
+  const data = [...buckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, bucket]) => ({
+      period: periodLabel(key, granularity),
+      "Meter reading": bucket.dial,
+      "Water used": Math.round(bucket.used),
+    }));
+
+  const word = GRANULARITY_WORD[granularity];
+  const chartState = {
+    isLoading: readingsQ.isLoading,
+    isError: readingsQ.isError,
+    error: readingsQ.error,
+    onRetry: () => readingsQ.refetch(),
+    what: "this meter's readings",
+    isEmpty: data.length === 0,
+    emptyMessage: "No readings recorded for this meter yet.",
+  };
+
+  return (
+    <div className="rounded-lg border bg-card p-4 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="text-sm font-semibold">Readings over time</div>
+        <GranularityToggle value={granularity} onChange={setGranularity} />
+      </div>
+
+      <div>
+        <div className="text-sm font-medium">Meter reading (running total)</div>
+        <ChartCaption>
+          The number on the dial at the end of each {word}. The scale fits the readings, so even a
+          small rise shows.
+        </ChartCaption>
+        <ChartState {...chartState} height={200}>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={data} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="period"
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                width={62}
+                domain={readingDomain(data.map((row) => row["Meter reading"]))}
+                allowDataOverflow={false}
+                tickFormatter={(v: number) => Math.round(v).toLocaleString()}
+              />
+              <Tooltip content={<PeriodTooltip rows={data} />} />
+              <Line
+                type="monotone"
+                dataKey="Meter reading"
+                stroke={WATER_SERIES.main}
+                strokeWidth={2}
+                dot={{ r: 3 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </ChartState>
+      </div>
+
+      <div>
+        <div className="text-sm font-medium">Water used each {word}</div>
+        <ChartCaption>
+          How far the dial moved in each {word} — the water that actually passed through.
+        </ChartCaption>
+        <ChartState {...chartState} height={200}>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={data} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                dataKey="period"
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                width={62}
+                tickFormatter={(v: number) => v.toLocaleString()}
+              />
+              <Tooltip content={<PeriodTooltip rows={data} />} cursor={{ opacity: 0.1 }} />
+              <Bar
+                dataKey="Water used"
+                fill={WATER_SERIES.bulk}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={36}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartState>
+      </div>
     </div>
   );
 }

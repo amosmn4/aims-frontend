@@ -1,20 +1,23 @@
-import { useRef } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Download, Loader2, Upload } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 import {
   useDocumentVersions,
-  useUploadNewVersion,
   downloadDocument,
+  fileProblem,
   fileTypeLabel,
   formatFileSize,
-  DOCUMENT_ACCEPT,
-  MAX_DOCUMENT_BYTES,
   type DocumentRow,
 } from "@/features/documents/use-documents";
+import { postFileWithProgress } from "@/features/documents/use-document-uploads";
+import { DocumentDropZone } from "@/features/documents/document-drop-zone";
 import { useProfilesLite } from "@/features/clients/use-clients-contracts";
 import { formatDateTime } from "@/lib/format-date";
 import { LoadError } from "@/components/load-error";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -33,27 +36,32 @@ export function DocumentVersionHistoryDialog({
   canManage: boolean;
   onClose: () => void;
 }) {
+  const qc = useQueryClient();
   const versionsQ = useDocumentVersions(doc?.id);
   const profilesQ = useProfilesLite();
-  const uploadVersion = useUploadNewVersion();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [progress, setProgress] = useState<number | null>(null);
   const names = new Map((profilesQ.data ?? []).map((p) => [p.id, p.full_name ?? p.email]));
 
-  const handleFile = (file: File | undefined) => {
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  const handleFiles = async (files: File[]) => {
+    const file = files[0];
     if (!file || !doc) return;
-    if (file.size > MAX_DOCUMENT_BYTES) {
-      toast.error("This file is bigger than 25 MB. Choose a smaller file.");
+    const problem = fileProblem(file);
+    if (problem) {
+      toast.error(problem);
       return;
     }
-    uploadVersion.mutate(
-      { documentId: doc.id, file },
-      {
-        onSuccess: () => toast.success(`New version of "${doc.title}" added`),
-        onError: (err) =>
-          toast.error(err instanceof Error ? err.message : "Couldn't add the new version"),
-      },
-    );
+    setProgress(0);
+    const form = new FormData();
+    form.append("file", file);
+    try {
+      await postFileWithProgress(`/documents/${doc.id}/versions`, form, setProgress);
+      await qc.invalidateQueries({ queryKey: ["documents"] });
+      toast.success(`New version of "${doc.title}" added`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't add the new version");
+    } finally {
+      setProgress(null);
+    }
   };
 
   const versions = versionsQ.data ?? [];
@@ -67,27 +75,17 @@ export function DocumentVersionHistoryDialog({
         </DialogHeader>
 
         {canManage ? (
-          <div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={DOCUMENT_ACCEPT}
-              className="hidden"
-              onChange={(e) => handleFile(e.target.files?.[0])}
+          <div className="space-y-2">
+            <DocumentDropZone
+              onFiles={(files) => void handleFiles(files)}
+              multiple={false}
+              disabled={progress !== null}
+              label={progress === null ? "Drag the newer file here" : "Sending the newer file…"}
             />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadVersion.isPending}
-            >
-              {uploadVersion.isPending ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <Upload className="h-4 w-4 mr-1" />
-              )}
-              Upload new version
-            </Button>
+            {progress !== null && <Progress value={progress} className="h-1.5" />}
+            <p className="text-xs text-muted-foreground">
+              The newer file becomes the one people open. Earlier versions stay here.
+            </p>
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">
@@ -97,8 +95,9 @@ export function DocumentVersionHistoryDialog({
 
         <div className="max-h-72 overflow-y-auto">
           {versionsQ.isLoading ? (
-            <div className="py-4 flex justify-center">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <div className="space-y-2 py-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
             </div>
           ) : versionsQ.isError ? (
             <LoadError
@@ -130,11 +129,12 @@ export function DocumentVersionHistoryDialog({
                     variant="ghost"
                     onClick={() =>
                       doc &&
-                      downloadDocument(doc, v.id).catch((err) =>
+                      downloadDocument(doc, v.id, v.file_name).catch((err) =>
                         toast.error(err instanceof Error ? err.message : "Couldn't open the file"),
                       )
                     }
                     aria-label={`Download version ${v.version_no} of ${doc?.title ?? v.file_name}`}
+                    title="Download this version"
                   >
                     <Download className="h-4 w-4" />
                   </Button>
@@ -145,7 +145,8 @@ export function DocumentVersionHistoryDialog({
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={onClose} disabled={progress !== null}>
+            {progress !== null ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
             Close
           </Button>
         </DialogFooter>

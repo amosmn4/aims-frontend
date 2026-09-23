@@ -1,14 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Loader2, Phone, MessageSquare } from "lucide-react";
+import { BellOff, BellRing, Loader2, MessageSquare, Phone } from "lucide-react";
 import {
   useNotificationPreferences,
   useSaveNotificationPreferences,
   type NotificationPreferences,
 } from "@/features/notifications/use-notifications";
+import { MuteMenu, MutedBadge } from "@/features/notifications/mute-menu";
 import {
+  alertPreference,
   useAlertChannels,
+  useMuteAllAlerts,
   useSendTestSms,
   useSetAlertChannel,
   type AlertChannel,
@@ -16,6 +19,7 @@ import {
 } from "@/features/settings/use-alert-channels";
 import { PageHeader } from "@/components/app-shell";
 import { LoadError } from "@/components/load-error";
+import { ActionHint } from "@/components/help-link";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -27,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatDate } from "@/lib/format-date";
 
 export const Route = createFileRoute("/_authenticated/settings/notifications")({
   head: () => ({ meta: [{ title: "Notification Settings — AIMS" }] }),
@@ -58,6 +63,7 @@ function NotificationSettingsPage() {
   const savePrefs = useSaveNotificationPreferences();
   const channelsQ = useAlertChannels();
   const setChannel = useSetAlertChannel();
+  const muteAll = useMuteAllAlerts();
   const testSms = useSendTestSms();
   const [local, setLocal] = useState<NotificationPreferences | null>(null);
   const [rowErrors, setRowErrors] = useState<Partial<Record<string, string>>>({});
@@ -69,17 +75,45 @@ function NotificationSettingsPage() {
   const setRowError = (row: string, message?: string) =>
     setRowErrors((e) => ({ ...e, [row]: message }));
 
-  const toggleInApp = (key: keyof NotificationPreferences, value: boolean, row: string) => {
-    if (!local) return;
-    setLocal({ ...local, [key]: value });
-    setRowError(row);
+  const saveLegacy = (
+    key: keyof NotificationPreferences,
+    value: boolean,
+    row: string,
+    onSaved?: () => void,
+  ) => {
+    setLocal((l) => (l ? { ...l, [key]: value } : l));
     savePrefs.mutate(
       { [key]: value },
       {
-        onSuccess: () => toast.success("Alert setting saved"),
+        onSuccess: () => onSaved?.(),
         onError: (err) => {
           setLocal((l) => (l ? { ...l, [key]: !value } : l));
           setRowError(row, errorText(err));
+          toast.error(errorText(err));
+        },
+      },
+    );
+  };
+
+  const toggleEmailDigest = (value: boolean) => {
+    setRowError("email_digest");
+    saveLegacy("email_digest", value, "email_digest", () =>
+      toast.success(value ? "Daily digest turned on" : "Daily digest turned off"),
+    );
+  };
+
+  // The bell switch also keeps the older category setting in step, so both agree.
+  const toggleInApp = (eventKey: AlertEventKey, value: boolean) => {
+    setRowError(eventKey);
+    const legacyKey = IN_APP_KEY[eventKey];
+    if (legacyKey) saveLegacy(legacyKey, value, eventKey);
+    setChannel.mutate(
+      { eventKey, inApp: value },
+      {
+        onSuccess: () =>
+          toast.success(value ? "AIMS will send these alerts" : "AIMS won't send these alerts"),
+        onError: (err) => {
+          setRowError(eventKey, errorText(err));
           toast.error(errorText(err));
         },
       },
@@ -100,16 +134,57 @@ function NotificationSettingsPage() {
     );
   };
 
+  const muteRow = (eventKey: AlertEventKey, mutedUntil: string | null) => {
+    setRowError(eventKey);
+    setChannel.mutate(
+      { eventKey, mutedUntil },
+      {
+        onSuccess: () =>
+          toast.success(
+            mutedUntil ? `Muted until ${formatDate(mutedUntil)}` : "This alert is back on",
+          ),
+        onError: (err) => {
+          setRowError(eventKey, errorText(err));
+          toast.error(errorText(err));
+        },
+      },
+    );
+  };
+
+  const muteEverything = (mutedUntil: string | null) => {
+    muteAll.mutate(mutedUntil, {
+      onSuccess: () =>
+        toast.success(
+          mutedUntil
+            ? `All alerts paused until ${formatDate(mutedUntil)}`
+            : "All alerts are back on",
+        ),
+      onError: (err) => toast.error(errorText(err)),
+    });
+  };
+
   const channels = channelsQ.data;
   const loadError = prefsQ.error ?? channelsQ.error;
   const phoneMissing =
     !!channels && !channels.hasPhone && (channels.available.sms || channels.available.whatsapp);
 
+  const mutedEvents = (channels?.events ?? []).filter(
+    (e) => alertPreference(channels, e.key).muted,
+  );
+  const anyMuted = mutedEvents.length > 0;
+  const allMuted = !!channels && mutedEvents.length === channels.events.length;
+  // The furthest date tells people when everything is back on.
+  const pauseEndsOn = mutedEvents
+    .map((e) => alertPreference(channels, e.key).mutedUntil)
+    .filter((d): d is string => !!d)
+    .sort()
+    .at(-1);
+
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="max-w-4xl space-y-4">
       <PageHeader
         title="Notification settings"
-        description="Choose where each kind of alert reaches you. Each switch saves as soon as you change it."
+        description="Choose where each kind of alert reaches you, and pause the ones you don't want right now. Every change saves straight away."
       />
 
       {loadError ? (
@@ -127,6 +202,67 @@ function NotificationSettingsPage() {
         </div>
       ) : (
         <>
+          <section
+            className={`rounded-lg border p-4 ${anyMuted ? "border-primary/40 bg-primary/5" : "bg-card"}`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-start gap-2">
+                {anyMuted ? (
+                  <BellOff className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+                ) : (
+                  <BellRing className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+                )}
+                <div>
+                  <p className="text-sm font-medium">
+                    {!anyMuted
+                      ? "All your alerts are on"
+                      : allMuted
+                        ? `All alerts are paused until ${formatDate(pauseEndsOn)}`
+                        : `${mutedEvents.length} of ${channels.events.length} alert types are paused`}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {anyMuted
+                      ? "Paused alerts start again on their own — you don't have to remember."
+                      : "Pause everything for a while if you're away or in a busy week."}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {anyMuted && (
+                  <Button
+                    size="sm"
+                    disabled={muteAll.isPending}
+                    onClick={() => muteEverything(null)}
+                  >
+                    <BellRing className="mr-1 h-4 w-4" aria-hidden="true" />
+                    Turn alerts back on
+                  </Button>
+                )}
+                <MuteMenu
+                  verb="Pause"
+                  showUnmute={anyMuted}
+                  onMute={muteEverything}
+                  onUnmute={() => muteEverything(null)}
+                  trigger={
+                    <Button size="sm" variant="outline" disabled={muteAll.isPending}>
+                      {muteAll.isPending ? (
+                        <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <BellOff className="mr-1 h-4 w-4" aria-hidden="true" />
+                      )}
+                      {anyMuted ? "Change how long" : "Pause all alerts"}
+                    </Button>
+                  }
+                />
+              </div>
+            </div>
+          </section>
+
+          <ActionHint topic="choose how alerts reach you">
+            Switching an alert <strong>off</strong> stops it for good. <strong>Muting</strong> only
+            pauses it, and it comes back on by itself on the date you pick.
+          </ActionHint>
+
           {phoneMissing && (
             <p className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2.5 text-sm text-muted-foreground">
               <Phone className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -143,31 +279,39 @@ function NotificationSettingsPage() {
                 <TableRow>
                   <TableHead className="min-w-56">Alert</TableHead>
                   <TableHead className="text-center">In AIMS</TableHead>
-                  {CHANNELS.map((c) => (
-                    <TableHead key={c.key} className="text-center align-bottom">
-                      <div>{c.label}</div>
-                      {!channels.available[c.key] && (
-                        <div className="text-xs font-normal text-muted-foreground">
-                          Not set up yet
-                        </div>
-                      )}
-                    </TableHead>
-                  ))}
+                  {CHANNELS.map((c) => {
+                    const blocked = !channels.available[c.key]
+                      ? "Not set up yet"
+                      : c.needsPhone && !channels.hasPhone
+                        ? "Needs your phone number"
+                        : null;
+                    return (
+                      <TableHead key={c.key} className="text-center align-bottom">
+                        <div>{c.label}</div>
+                        {blocked && (
+                          <div className="text-xs font-normal text-muted-foreground">{blocked}</div>
+                        )}
+                      </TableHead>
+                    );
+                  })}
+                  <TableHead className="min-w-44 text-right">Pause</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {channels.events.map((event) => {
-                  const inAppKey = IN_APP_KEY[event.key] ?? null;
-                  const choice = channels.preferences[event.key] ?? {
-                    email: false,
-                    sms: false,
-                    whatsapp: false,
-                  };
+                  const legacyKey = IN_APP_KEY[event.key];
+                  const pref = alertPreference(channels, event.key);
+                  const inAppOn = pref.inApp && (legacyKey ? local[legacyKey] : true);
                   const error = rowErrors[event.key];
                   return (
                     <TableRow key={event.key}>
                       <TableCell>
                         <div className="text-sm font-medium">{event.label}</div>
+                        {!inAppOn && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            Turned off — AIMS sends nothing of this kind.
+                          </p>
+                        )}
                         {error && (
                           <p role="alert" className="text-xs text-destructive mt-0.5">
                             {error}
@@ -175,31 +319,51 @@ function NotificationSettingsPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-center">
-                        {inAppKey ? (
-                          <Switch
-                            checked={local[inAppKey]}
-                            onCheckedChange={(v) => toggleInApp(inAppKey, v, event.key)}
-                            aria-label={`${event.label} in AIMS`}
-                          />
-                        ) : (
-                          <div className="inline-flex flex-col items-center gap-0.5">
-                            <Switch checked disabled aria-label={`${event.label} in AIMS`} />
-                            <span className="text-xs text-muted-foreground">Always on</span>
-                          </div>
-                        )}
+                        <Switch
+                          checked={inAppOn}
+                          onCheckedChange={(v) => toggleInApp(event.key, v)}
+                          aria-label={`${event.label} in AIMS`}
+                        />
                       </TableCell>
                       {CHANNELS.map((c) => (
                         <TableCell key={c.key} className="text-center">
                           <Switch
-                            checked={choice[c.key]}
+                            checked={pref[c.key]}
                             disabled={
-                              !channels.available[c.key] || (c.needsPhone && !channels.hasPhone)
+                              !inAppOn ||
+                              !channels.available[c.key] ||
+                              (c.needsPhone && !channels.hasPhone)
                             }
                             onCheckedChange={(v) => toggleChannel(event.key, c.key, v)}
                             aria-label={`${event.label} by ${c.label}`}
                           />
                         </TableCell>
                       ))}
+                      <TableCell className="text-right">
+                        {pref.muted && pref.mutedUntil ? (
+                          <MutedBadge
+                            until={pref.mutedUntil}
+                            onUnmute={() => muteRow(event.key, null)}
+                          />
+                        ) : (
+                          <MuteMenu
+                            showUnmute={false}
+                            onMute={(until) => muteRow(event.key, until)}
+                            onUnmute={() => muteRow(event.key, null)}
+                            trigger={
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={!inAppOn}
+                                aria-label={`Mute ${event.label}`}
+                              >
+                                <BellOff className="mr-1 h-4 w-4" aria-hidden="true" />
+                                Mute
+                              </Button>
+                            }
+                          />
+                        )}
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -259,7 +423,7 @@ function NotificationSettingsPage() {
             <Switch
               id="email-digest"
               checked={local.email_digest}
-              onCheckedChange={(v) => toggleInApp("email_digest", v, "email_digest")}
+              onCheckedChange={toggleEmailDigest}
             />
           </div>
         </>

@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Eye, EyeOff, Loader2, Save, Send, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Loader2, Pencil, Save, Send, Trash2, Upload } from "lucide-react";
 import {
   useBlogPost,
   useSaveBlogPost,
@@ -17,6 +17,7 @@ import {
   type BlogPostRow,
 } from "@/features/marketing/use-blog";
 import { RichTextEditor } from "@/features/marketing/rich-text-editor";
+import { BlogPostPreview } from "@/features/marketing/blog-post-preview";
 import { useLeaveGuard } from "@/features/settings/use-leave-guard";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { FormField } from "@/components/form-field";
@@ -82,8 +83,8 @@ function BackLink() {
 }
 
 function BlogEditorForm({ post }: { post: BlogPostRow }) {
-  const { isAdminOrCeo, hasRole } = useAuth();
-  const canManage = isAdminOrCeo || hasRole("marketing");
+  const { isAdminOrCeo, hasCapability } = useAuth();
+  const canManage = isAdminOrCeo || hasCapability("publish_blog");
   const navigate = useNavigate();
   const save = useSaveBlogPost();
   const uploadImage = useUploadBlogImage(post.id);
@@ -99,10 +100,17 @@ function BlogEditorForm({ post }: { post: BlogPostRow }) {
   const [saved, setSaved] = useState<Fields>(() => fieldsOf(post));
   const [form, setForm] = useState<Fields>(saved);
   const [titleError, setTitleError] = useState("");
+  // The form stays mounted behind the preview, so nothing typed is ever lost.
+  const [previewing, setPreviewing] = useState(false);
 
   const dirty =
     canManage && (Object.keys(saved) as (keyof Fields)[]).some((k) => form[k] !== saved[k]);
   const { allowLeave } = useLeaveGuard(dirty);
+
+  const tagList = form.tags
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
 
   const set = <K extends keyof Fields>(key: K, value: string) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -113,6 +121,7 @@ function BlogEditorForm({ post }: { post: BlogPostRow }) {
   const saveChanges = async () => {
     if (!form.title.trim()) {
       setTitleError("Enter a title for the post");
+      setPreviewing(false);
       return false;
     }
     try {
@@ -122,10 +131,7 @@ function BlogEditorForm({ post }: { post: BlogPostRow }) {
         excerpt: form.excerpt,
         content: form.content,
         author_name: form.authorName,
-        tags: form.tags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
+        tags: tagList,
       });
       setSaved(form);
       toast.success("Post saved");
@@ -226,10 +232,16 @@ function BlogEditorForm({ post }: { post: BlogPostRow }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild size="sm" variant="outline">
-            <Link to="/marketing/blog/$postId/preview" params={{ postId: post.id }} target="_blank">
-              <Eye className="mr-1 h-4 w-4" /> Preview post
-            </Link>
+          <Button size="sm" variant="outline" onClick={() => setPreviewing((p) => !p)}>
+            {previewing ? (
+              <>
+                <Pencil className="mr-1 h-4 w-4" /> Back to editing
+              </>
+            ) : (
+              <>
+                <Eye className="mr-1 h-4 w-4" /> Preview post
+              </>
+            )}
           </Button>
           {canManage &&
             (post.status === "draft" ? (
@@ -274,209 +286,239 @@ function BlogEditorForm({ post }: { post: BlogPostRow }) {
         </div>
       </div>
 
-      {!canManage && <ViewOnlyBanner area="blog posts" action="edit or publish them" />}
+      {!canManage && !previewing && (
+        <ViewOnlyBanner area="blog posts" action="edit or publish them" />
+      )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="space-y-3 lg:col-span-2">
-          <form
-            className="space-y-3 rounded-lg border bg-card p-4"
-            noValidate
-            onSubmit={(e) => {
-              e.preventDefault();
-              void saveChanges();
-            }}
+      {previewing && (
+        <div className="mx-auto w-full max-w-3xl space-y-4">
+          <p
+            className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+            role="note"
           >
-            <FormField id="post-title" label="Title" required error={titleError}>
-              <Input
-                id="post-title"
-                value={form.title}
-                aria-invalid={!!titleError}
-                onChange={(e) => set("title", e.target.value)}
-                disabled={!canManage}
-              />
-            </FormField>
-            <FormField
-              id="post-excerpt"
-              label="Excerpt"
-              hint="A short summary shown in the blog list."
-            >
-              <Textarea
-                id="post-excerpt"
-                value={form.excerpt}
-                onChange={(e) => set("excerpt", e.target.value)}
-                rows={2}
-                disabled={!canManage}
-              />
-            </FormField>
-            <div className="space-y-1">
-              <span className="text-sm font-medium">Content</span>
-              <RichTextEditor value={form.content} onChange={setContent} disabled={!canManage} />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <FormField id="post-tags" label="Tags" hint="Separate tags with commas.">
-                <Input
-                  id="post-tags"
-                  value={form.tags}
-                  onChange={(e) => set("tags", e.target.value)}
-                  placeholder="payroll, compliance, kenya"
-                  disabled={!canManage}
-                />
-              </FormField>
-              <FormField id="post-author" label="Author name">
-                <Input
-                  id="post-author"
-                  value={form.authorName}
-                  onChange={(e) => set("authorName", e.target.value)}
-                  placeholder="AMSOL Marketing Team"
-                  disabled={!canManage}
-                />
-              </FormField>
-            </div>
-            {canManage && (
-              <div className="flex flex-wrap items-center gap-3">
-                <Button type="submit" disabled={save.isPending || !dirty}>
-                  {save.isPending ? (
-                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-1 h-4 w-4" />
-                  )}
-                  Save post
-                </Button>
-                <span className="text-xs text-muted-foreground" role="status">
-                  {dirty ? "You have unsaved changes." : "All changes saved."}
-                </span>
-                {dirty && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={async () => {
-                      const ok = await confirmDialog({
-                        title: "Discard your changes?",
-                        description: "The post goes back to how it was last saved.",
-                        confirmLabel: "Discard changes",
-                        destructive: true,
-                      });
-                      if (ok) setForm(saved);
-                    }}
-                  >
-                    Cancel changes
-                  </Button>
-                )}
-              </div>
-            )}
-          </form>
+            {dirty
+              ? "This is how the post looks right now, including changes you haven't saved yet."
+              : "This is how the post looks on the website."}{" "}
+            Use "Back to editing" to carry on writing.
+          </p>
+          <BlogPostPreview
+            post={{
+              title: form.title,
+              excerpt: form.excerpt,
+              content: form.content,
+              authorName: form.authorName,
+              tags: tagList,
+              publishedAt: post.published_at,
+              imageUrl: imagePreviewUrl,
+              videoUrl: videoPreviewUrl,
+            }}
+          />
         </div>
+      )}
 
-        <div className="space-y-3">
-          <section className="rounded-lg border bg-card p-4" aria-labelledby="image-heading">
-            <h2 id="image-heading" className="mb-2 text-sm font-semibold">
-              Cover image
-            </h2>
-            {imagePreviewUrl ? (
-              <img
-                src={imagePreviewUrl}
-                alt={`Cover image for ${post.title}`}
-                className="aspect-video w-full rounded-md border object-cover"
-              />
-            ) : (
-              <div className="flex aspect-video items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
-                No image yet
-              </div>
-            )}
-            {canManage && (
-              <>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  className="hidden"
-                  onChange={(e) => onFileChange(e, "image")}
+      <div className={previewing ? "hidden" : undefined}>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="space-y-3 lg:col-span-2">
+            <form
+              className="space-y-3 rounded-lg border bg-card p-4"
+              noValidate
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveChanges();
+              }}
+            >
+              <FormField id="post-title" label="Title" required error={titleError}>
+                <Input
+                  id="post-title"
+                  value={form.title}
+                  aria-invalid={!!titleError}
+                  onChange={(e) => set("title", e.target.value)}
+                  disabled={!canManage}
                 />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-2 w-full"
-                  disabled={uploadImage.isPending}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {uploadImage.isPending ? (
-                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="mr-1.5 h-4 w-4" />
-                  )}
-                  {post.has_image ? "Replace image" : "Upload image"}
-                </Button>
-              </>
-            )}
-          </section>
-
-          <section className="rounded-lg border bg-card p-4" aria-labelledby="video-heading">
-            <h2 id="video-heading" className="mb-2 text-sm font-semibold">
-              Video (optional)
-            </h2>
-            {videoPreviewUrl ? (
-              <video
-                src={videoPreviewUrl}
-                controls
-                className="aspect-video w-full rounded-md border"
-              />
-            ) : (
-              <div className="flex aspect-video items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
-                No video
-              </div>
-            )}
-            {canManage && (
-              <>
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept="video/mp4,video/webm"
-                  className="hidden"
-                  onChange={(e) => onFileChange(e, "video")}
+              </FormField>
+              <FormField
+                id="post-excerpt"
+                label="Excerpt"
+                hint="A short summary shown in the blog list."
+              >
+                <Textarea
+                  id="post-excerpt"
+                  value={form.excerpt}
+                  onChange={(e) => set("excerpt", e.target.value)}
+                  rows={2}
+                  disabled={!canManage}
                 />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-2 w-full"
-                  disabled={uploadVideo.isPending}
-                  onClick={() => videoInputRef.current?.click()}
-                >
-                  {uploadVideo.isPending ? (
-                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="mr-1.5 h-4 w-4" />
+              </FormField>
+              <div className="space-y-1">
+                <span className="text-sm font-medium">Content</span>
+                <RichTextEditor value={form.content} onChange={setContent} disabled={!canManage} />
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <FormField id="post-tags" label="Tags" hint="Separate tags with commas.">
+                  <Input
+                    id="post-tags"
+                    value={form.tags}
+                    onChange={(e) => set("tags", e.target.value)}
+                    placeholder="payroll, compliance, kenya"
+                    disabled={!canManage}
+                  />
+                </FormField>
+                <FormField id="post-author" label="Author name">
+                  <Input
+                    id="post-author"
+                    value={form.authorName}
+                    onChange={(e) => set("authorName", e.target.value)}
+                    placeholder="AMSOL Marketing Team"
+                    disabled={!canManage}
+                  />
+                </FormField>
+              </div>
+              {canManage && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button type="submit" disabled={save.isPending || !dirty}>
+                    {save.isPending ? (
+                      <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-1 h-4 w-4" />
+                    )}
+                    Save post
+                  </Button>
+                  <span className="text-xs text-muted-foreground" role="status">
+                    {dirty ? "You have unsaved changes." : "All changes saved."}
+                  </span>
+                  {dirty && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        const ok = await confirmDialog({
+                          title: "Discard your changes?",
+                          description: "The post goes back to how it was last saved.",
+                          confirmLabel: "Discard changes",
+                          destructive: true,
+                        });
+                        if (ok) setForm(saved);
+                      }}
+                    >
+                      Cancel changes
+                    </Button>
                   )}
-                  {post.has_video ? "Replace video" : "Upload video"}
-                </Button>
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  The website shows the video instead of the cover image.
-                </p>
-              </>
-            )}
-          </section>
-
-          <section className="rounded-lg border bg-card p-4" aria-labelledby="engagement-heading">
-            <h2 id="engagement-heading" className="mb-3 text-sm font-semibold">
-              Readers
-            </h2>
-            <dl className="space-y-2 text-sm">
-              {[
-                ["Views", post.views],
-                ["Likes", post.likes],
-                ["Shares", post.shares],
-                [
-                  "Average time spent",
-                  post.avg_time_spent_seconds != null ? `${post.avg_time_spent_seconds}s` : "—",
-                ],
-              ].map(([label, value]) => (
-                <div key={label} className="flex justify-between">
-                  <dt className="text-muted-foreground">{label}</dt>
-                  <dd className="font-medium tabular-nums">{value}</dd>
                 </div>
-              ))}
-            </dl>
-          </section>
+              )}
+            </form>
+          </div>
+
+          <div className="space-y-3">
+            <section className="rounded-lg border bg-card p-4" aria-labelledby="image-heading">
+              <h2 id="image-heading" className="mb-2 text-sm font-semibold">
+                Cover image
+              </h2>
+              {imagePreviewUrl ? (
+                <img
+                  src={imagePreviewUrl}
+                  alt={`Cover image for ${post.title}`}
+                  className="aspect-video w-full rounded-md border object-cover"
+                />
+              ) : (
+                <div className="flex aspect-video items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
+                  No image yet
+                </div>
+              )}
+              {canManage && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="hidden"
+                    onChange={(e) => onFileChange(e, "image")}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 w-full"
+                    disabled={uploadImage.isPending}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploadImage.isPending ? (
+                      <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="mr-1.5 h-4 w-4" />
+                    )}
+                    {post.has_image ? "Replace image" : "Upload image"}
+                  </Button>
+                </>
+              )}
+            </section>
+
+            <section className="rounded-lg border bg-card p-4" aria-labelledby="video-heading">
+              <h2 id="video-heading" className="mb-2 text-sm font-semibold">
+                Video (optional)
+              </h2>
+              {videoPreviewUrl ? (
+                <video
+                  src={videoPreviewUrl}
+                  controls
+                  className="aspect-video w-full rounded-md border"
+                />
+              ) : (
+                <div className="flex aspect-video items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
+                  No video
+                </div>
+              )}
+              {canManage && (
+                <>
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/mp4,video/webm"
+                    className="hidden"
+                    onChange={(e) => onFileChange(e, "video")}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 w-full"
+                    disabled={uploadVideo.isPending}
+                    onClick={() => videoInputRef.current?.click()}
+                  >
+                    {uploadVideo.isPending ? (
+                      <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="mr-1.5 h-4 w-4" />
+                    )}
+                    {post.has_video ? "Replace video" : "Upload video"}
+                  </Button>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    The website shows the video instead of the cover image.
+                  </p>
+                </>
+              )}
+            </section>
+
+            <section className="rounded-lg border bg-card p-4" aria-labelledby="engagement-heading">
+              <h2 id="engagement-heading" className="mb-3 text-sm font-semibold">
+                Readers
+              </h2>
+              <dl className="space-y-2 text-sm">
+                {[
+                  ["Views", post.views],
+                  ["Likes", post.likes],
+                  ["Shares", post.shares],
+                  [
+                    "Average time spent",
+                    post.avg_time_spent_seconds != null ? `${post.avg_time_spent_seconds}s` : "—",
+                  ],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between">
+                    <dt className="text-muted-foreground">{label}</dt>
+                    <dd className="font-medium tabular-nums">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          </div>
         </div>
       </div>
     </div>

@@ -9,6 +9,13 @@ import { cn } from "@/lib/utils";
 import { CLIENT_REQUEST_STAGE_LABELS } from "@/features/client-requests/use-client-requests";
 import { TICKET_PRIORITY_LABELS } from "@/features/it/use-tickets";
 import {
+  useReports,
+  useReportsDue,
+  type ReportDue,
+  type ReportRow,
+} from "@/features/reports/use-reports";
+import { reportPath } from "@/features/reports/report-rows";
+import {
   useMyWork,
   type MyReportStatus,
   type MyWork,
@@ -57,6 +64,27 @@ function monthName(period: string) {
 const rowLink =
   "flex items-start justify-between gap-3 px-3 py-2.5 hover:bg-secondary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
+/** Everything about reports that the home page nudges this person about. */
+interface ReportNudge {
+  period?: ReportDue["period"];
+  own: ReportDue["own"];
+  /** Reports this person wrote that came back for changes. */
+  sentBack: ReportRow[];
+  /** Project reports that already exist, so a project is nudged only once. */
+  projectReports: ReportRow[];
+  teamWaiting: number;
+}
+
+// Report pages, kept as plain strings like the other report links.
+const MY_REPORTS = "/reports/mine" as string;
+const TEAM_REPORTS = "/reports/team" as string;
+
+const quoteReason = (note: string | null) => {
+  if (!note) return null;
+  const clean = note.replace(/\s+/g, " ").trim();
+  return `"${clean.length > 140 ? `${clean.slice(0, 139)}…` : clean}"`;
+};
+
 /** "Your work, Faith": what's waiting on this person, shown at the top of their home page. */
 export function MyWorkPanel({
   departmentCode,
@@ -66,9 +94,20 @@ export function MyWorkPanel({
   departmentCode?: string;
   className?: string;
 }) {
-  const { profile } = useAuth();
+  const { profile, hasRole, isAdminOrCeo } = useAuth();
   const q = useMyWork();
+  const dueQ = useReportsDue();
+  const sentBackQ = useReports({ status: "changes_requested" }, !isAdminOrCeo);
+  const projectReportsQ = useReports({ kind: "project" }, !isAdminOrCeo);
   const firstName = profile?.fullName?.trim().split(/\s+/)[0];
+
+  const nudge: ReportNudge = {
+    period: dueQ.data?.period,
+    own: dueQ.data?.own ?? null,
+    sentBack: (sentBackQ.data ?? []).filter((r) => r.createdBy === profile?.id),
+    projectReports: projectReportsQ.data ?? [],
+    teamWaiting: hasRole("department_head") && !isAdminOrCeo ? (dueQ.data?.waitingOnMe ?? 0) : 0,
+  };
 
   return (
     <section
@@ -87,13 +126,21 @@ export function MyWorkPanel({
       ) : q.isError || !q.data ? (
         <LoadError what="your work" error={q.error} onRetry={() => q.refetch()} className="m-4" />
       ) : (
-        <MyWorkBlocks data={q.data} departmentCode={departmentCode} />
+        <MyWorkBlocks data={q.data} departmentCode={departmentCode} nudge={nudge} />
       )}
     </section>
   );
 }
 
-function MyWorkBlocks({ data, departmentCode }: { data: MyWork; departmentCode?: string }) {
+function MyWorkBlocks({
+  data,
+  departmentCode,
+  nudge,
+}: {
+  data: MyWork;
+  departmentCode?: string;
+  nudge: ReportNudge;
+}) {
   const firstForDepartment = (code: string | null | undefined) =>
     departmentCode && code === departmentCode ? 0 : 1;
 
@@ -105,11 +152,46 @@ function MyWorkBlocks({ data, departmentCode }: { data: MyWork; departmentCode?:
   );
   const waiting = data.reviews?.waiting ?? 0;
 
+  // A report that came back for changes is shown once, in its own louder row.
+  const sentBackIds = new Set(nudge.sentBack.map((r) => r.id));
+  const departmentReports = reports.filter(
+    (r) => NEEDS_ACTION.includes(r.status) && !(r.reportId && sentBackIds.has(r.reportId)),
+  );
+  const period = nudge.period;
+  const showOwn = !!period && (!nudge.own || nudge.own.status === "draft");
+  const reportedProjects = new Set(
+    nudge.projectReports
+      .filter((r) => !period || r.periodStart.slice(0, 7) === period.start.slice(0, 7))
+      .map((r) => r.subjectId),
+  );
+  const projectsToReport = period
+    ? projects.filter((p) => !reportedProjects.has(p.id)).slice(0, 2)
+    : [];
+  const hasReportRows =
+    nudge.sentBack.length > 0 ||
+    departmentReports.length > 0 ||
+    showOwn ||
+    projectsToReport.length > 0 ||
+    nudge.teamWaiting > 0;
+
   const blocks: { key: string; node: ReactNode }[] = [];
   if (data.tasks.open > 0) blocks.push({ key: "tasks", node: <TasksBlock tasks={data.tasks} /> });
   if (waiting > 0) blocks.push({ key: "reviews", node: <ReviewsBlock waiting={waiting} /> });
-  if (reports.some((r) => NEEDS_ACTION.includes(r.status)))
-    blocks.push({ key: "reports", node: <ReportsBlock reports={reports} /> });
+  if (hasReportRows)
+    blocks.push({
+      key: "reports",
+      node: (
+        <ReportsBlock
+          sentBack={nudge.sentBack}
+          departmentReports={departmentReports}
+          period={period}
+          own={nudge.own}
+          showOwn={showOwn}
+          projects={projectsToReport}
+          teamWaiting={nudge.teamWaiting}
+        />
+      ),
+    });
   if (data.requests.length > 0)
     blocks.push({ key: "requests", node: <RequestsBlock requests={data.requests} /> });
   if (projects.length > 0)
@@ -255,31 +337,135 @@ function ItRequestsBlock({ open }: { open: number }) {
   );
 }
 
-function ReportsBlock({ reports }: { reports: MyWorkReport[] }) {
+function NudgeRow({
+  title,
+  detail,
+  loud,
+  action,
+}: {
+  title: ReactNode;
+  detail: ReactNode;
+  loud?: boolean;
+  action: ReactNode;
+}) {
+  return (
+    <li
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-2 px-3 py-2.5",
+        loud && "border-l-2 border-destructive bg-destructive/5",
+      )}
+    >
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className={cn("block text-xs", loud ? "text-destructive" : "text-muted-foreground")}>
+          {detail}
+        </span>
+      </span>
+      {action}
+    </li>
+  );
+}
+
+/** Every report waiting on this person: sent back, their own, a project's, their team's. */
+function ReportsBlock({
+  sentBack,
+  departmentReports,
+  period,
+  own,
+  showOwn,
+  projects,
+  teamWaiting,
+}: {
+  sentBack: ReportRow[];
+  departmentReports: MyWorkReport[];
+  period?: ReportDue["period"];
+  own: ReportDue["own"];
+  showOwn: boolean;
+  projects: MyWorkProject[];
+  teamWaiting: number;
+}) {
   const today = localDayKey();
   return (
-    <Block title="Reports to send">
-      {reports.map((r) => {
-        const name = SHORT_DEPARTMENT_NAME[r.departmentCode] ?? r.departmentName;
-        const late = NEEDS_ACTION.includes(r.status) && r.dueDate < today;
+    <Block title="Reports">
+      {sentBack.map((r) => {
+        const reason = quoteReason(r.lastReviewNote);
         return (
-          <li
-            key={r.departmentId}
-            className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5"
-          >
-            <span className="min-w-0">
-              <span className="block text-sm font-medium">
-                {name} report for {monthName(r.period)} — due {formatDate(r.dueDate)}
-              </span>
-              <span className="block text-xs text-muted-foreground">
-                {REPORT_STATUS_WORDS[r.status]}
-                {late && <span className="font-medium text-destructive"> · Late</span>}
-              </span>
-            </span>
-            <ReportAction report={r} />
-          </li>
+          <NudgeRow
+            key={r.id}
+            loud
+            title={r.title}
+            detail={reason ? `Sent back to you: ${reason}` : "Sent back to you for changes"}
+            action={
+              <Button asChild size="sm">
+                <Link to={reportPath(r.id)}>Open and fix</Link>
+              </Button>
+            }
+          />
         );
       })}
+
+      {departmentReports.map((r) => {
+        const name = SHORT_DEPARTMENT_NAME[r.departmentCode] ?? r.departmentName;
+        const late = r.dueDate < today;
+        return (
+          <NudgeRow
+            key={r.departmentId}
+            title={`${name} report for ${monthName(r.period)} — due ${formatDate(r.dueDate)}`}
+            detail={
+              <>
+                {REPORT_STATUS_WORDS[r.status]}
+                {late && <span className="font-medium text-destructive"> · Late</span>}
+              </>
+            }
+            action={<ReportAction report={r} />}
+          />
+        );
+      })}
+
+      {showOwn && period && (
+        <NudgeRow
+          title={`Your own report for ${period.label}`}
+          detail={
+            own
+              ? "You started it but haven't sent it yet"
+              : "AIMS has your figures ready — about five minutes"
+          }
+          action={
+            <Button asChild size="sm" variant={own ? "outline" : "default"}>
+              <Link to={own ? reportPath(own.id) : MY_REPORTS}>
+                {own ? "Finish it" : "Start it"}
+              </Link>
+            </Button>
+          }
+        />
+      )}
+
+      {projects.map((p) => (
+        <NudgeRow
+          key={p.id}
+          title={`${p.name} — progress report`}
+          detail={[projectReason(p), period && `Nothing written for ${period.label}`]
+            .filter(Boolean)
+            .join(" · ")}
+          action={
+            <Button asChild size="sm" variant="outline">
+              <Link to="/reports/projects">Start it</Link>
+            </Button>
+          }
+        />
+      ))}
+
+      {teamWaiting > 0 && (
+        <NudgeRow
+          title="Your team's reports"
+          detail={`${plural(teamWaiting, "report")} sent to you to read and decide on`}
+          action={
+            <Button asChild size="sm">
+              <Link to={TEAM_REPORTS}>Review them</Link>
+            </Button>
+          }
+        />
+      )}
     </Block>
   );
 }
@@ -298,7 +484,7 @@ function ReportAction({ report }: { report: MyWorkReport }) {
   let link: ReactNode;
   if (report.status !== "not_started" && report.reportId) {
     link = (
-      <Link to="/department-reports/$reportId" params={{ reportId: report.reportId }}>
+      <Link to="/reports/$reportId" params={{ reportId: report.reportId }}>
         {label}
       </Link>
     );

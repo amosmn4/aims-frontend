@@ -3,6 +3,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { FileArchive, KanbanSquare, Loader2, Plus, Search } from "lucide-react";
 import { RequireDepartmentAccess } from "@/components/require-role";
+import { PageHeader } from "@/components/app-shell";
+import { QuickLinks } from "@/components/quick-links";
+import { SectionHeading } from "@/components/section-heading";
+import { DEPARTMENT_QUICK_LINKS } from "@/lib/department-quick-links";
 import { RowActions } from "@/components/row-actions";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { usePermissions } from "@/lib/permissions";
@@ -27,9 +31,13 @@ import {
 } from "@/features/tender/use-tender";
 import { useDepartments } from "@/features/clients/use-clients-contracts";
 import { useTenderDepartmentOptions } from "@/features/tender/forward-tender-dialog";
+import { ClosingSoonPanel } from "@/features/tender/closing-soon-panel";
+import { daysToDeadline, tendersStillToSubmit } from "@/features/tender/bid-deadlines";
+import { BidReadinessPanel } from "@/features/tender/bid-readiness-panel";
 import { useServiceLines } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
 import { FunnelChart } from "@/components/funnel-chart";
+import { StatLink } from "@/components/stat-link";
 import { DateRangeFilter, type DateRange } from "@/components/date-range-filter";
 import { usePagination } from "@/hooks/use-pagination";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -167,7 +175,18 @@ export function TenderWorkspace() {
     .reduce((sum, s) => sum + s.total_value, 0);
   const wonCount = summary.find((s) => s.stage === "won")?.count ?? 0;
   const lostCount = summary.find((s) => s.stage === "lost")?.count ?? 0;
+  const wonValue = summary.find((s) => s.stage === "won")?.total_value ?? 0;
+  const lostValue = summary.find((s) => s.stage === "lost")?.total_value ?? 0;
   const winRate = wonCount + lostCount > 0 ? wonCount / (wonCount + lostCount) : null;
+
+  // Deadline pressure comes from the full list, the same one the panels below read.
+  const allTendersQ = useTenders({});
+  const queue = tendersStillToSubmit(allTendersQ.data ?? []);
+  const closingThisWeek = queue.filter((t) => {
+    const days = daysToDeadline(t.submission_deadline!);
+    return days >= 0 && days <= 7;
+  }).length;
+  const pastDeadline = queue.filter((t) => daysToDeadline(t.submission_deadline!) < 0).length;
 
   // Pass-through funnel: cumulative_count is "how many tenders ever reached at least this
   // stage" (never shrinks as tenders advance, only when one's deleted) — not the live `count`
@@ -194,45 +213,76 @@ export function TenderWorkspace() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {editing && <EditTenderDialog tender={editing} onClose={() => setEditing(null)} />}
-      <div className="flex items-start justify-between flex-wrap gap-2">
-        <div>
-          <h1 className="text-lg font-semibold">Tenders</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Every tender being bid for: what's open, deadlines and how often we win.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" asChild>
-            <Link to="/tender/bid-pipeline">
-              <KanbanSquare className="h-4 w-4 mr-1" /> Open the board
-            </Link>
-          </Button>
-          <Button size="sm" variant="outline" asChild>
-            <Link to="/tender/documents">
-              <FileArchive className="h-4 w-4 mr-1" /> Mandatory documents library
-            </Link>
-          </Button>
-          {perms.canManageTenders && <NewTenderDialog />}
-        </div>
-      </div>
+      <PageHeader
+        title="Tenders"
+        description="Every tender being bid for: what's open, deadlines and how often we win."
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <Link to="/tender/bid-pipeline">
+                <KanbanSquare className="mr-1 h-4 w-4" /> Manage tenders
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/tender/documents">
+                <FileArchive className="mr-1 h-4 w-4" /> Manage bid documents
+              </Link>
+            </Button>
+            {perms.canManageTenders && <NewTenderDialog />}
+          </>
+        }
+      />
       {!perms.canManageTenders && <ViewOnlyBanner area="Tenders" />}
-      <OwnWorkPanels departmentCode="tender" role="tender" />
 
       {summaryQ.isError ? (
         <LoadError what="tender totals" error={summaryQ.error} onRetry={() => summaryQ.refetch()} />
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <KpiCard label="Open tenders" value={activeCount.toLocaleString()} />
-          <KpiCard label="Value being bid" value={formatCurrency(pipelineValue)} />
-          <KpiCard
-            label="Win rate"
-            value={winRate != null ? `${(winRate * 100).toFixed(0)}%` : "—"}
-          />
-          <KpiCard label="Total tenders" value={totalTenders.toLocaleString()} />
-        </div>
+        <section aria-labelledby="td-glance">
+          <SectionHeading id="td-glance">At a glance</SectionHeading>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatLink
+              to="/tender/bid-pipeline"
+              label="Bids in flight"
+              value={activeCount.toLocaleString()}
+              hint={`${totalTenders.toLocaleString()} tenders all together`}
+            />
+            <StatLink
+              to="/tender/bid-pipeline"
+              label="Closing within a week"
+              value={closingThisWeek}
+              hint={
+                pastDeadline > 0
+                  ? `${pastDeadline} already past the deadline`
+                  : "Nothing has been missed"
+              }
+              tone={pastDeadline > 0 ? "danger" : closingThisWeek > 0 ? "warning" : "default"}
+            />
+            <StatLink
+              to="/tender/bid-pipeline"
+              label="How often we win"
+              value={winRate != null ? `${(winRate * 100).toFixed(0)}%` : "—"}
+              hint={`${wonCount} won · ${lostCount} lost`}
+              tone={winRate != null && winRate >= 0.5 ? "positive" : "default"}
+              emptyText={winRate == null ? "No decisions yet" : undefined}
+            />
+            <StatLink
+              to="/tender/bid-pipeline"
+              label="Value being bid for"
+              value={formatCurrency(pipelineValue)}
+              hint={`${formatCurrency(wonValue)} won so far`}
+            />
+          </div>
+        </section>
       )}
+
+      <QuickLinks links={DEPARTMENT_QUICK_LINKS.tender} />
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <ClosingSoonPanel />
+        <BidReadinessPanel />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-1 rounded-lg border bg-card p-4 min-w-0 overflow-hidden">
@@ -244,9 +294,27 @@ export function TenderWorkspace() {
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
           ) : totalTenders === 0 ? (
-            <div className="text-xs text-muted-foreground py-6 text-center">No tenders yet.</div>
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              No tenders yet. Add one and it will show how far it gets.
+            </div>
           ) : (
-            <FunnelChart stages={funnelData} formatValue={(v) => v.toLocaleString()} />
+            <>
+              <FunnelChart stages={funnelData} formatValue={(v) => v.toLocaleString()} />
+              <dl className="mt-3 grid grid-cols-2 gap-2 border-t pt-3 text-xs">
+                <div>
+                  <dt className="text-muted-foreground">Value won</dt>
+                  <dd className="font-semibold tabular-nums text-success">
+                    {formatCurrency(wonValue)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Value lost</dt>
+                  <dd className="font-semibold tabular-nums text-destructive">
+                    {formatCurrency(lostValue)}
+                  </dd>
+                </div>
+              </dl>
+            </>
           )}
         </div>
 
@@ -494,6 +562,8 @@ export function TenderWorkspace() {
           </div>
         )}
       </div>
+
+      <OwnWorkPanels departmentCode="tender" role="tender" />
     </div>
   );
 }

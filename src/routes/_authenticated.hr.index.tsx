@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { useMemo, useState, type ComponentType } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -14,12 +14,19 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useHrDepartment, useHrWork, isOpenProject } from "@/features/hr/use-hr";
 import { HrProjectTable } from "@/features/hr/hr-project-table";
+import { RecruitmentStagePanel } from "@/features/hr/recruitment-stage-panel";
+import { DueThisWeekPanel } from "@/features/hr/due-this-week-panel";
 import { useRecruitmentEngagements } from "@/features/hr/use-recruitment";
 import { NewProjectDialog } from "@/features/projects/new-project-dialog";
 import { NewClientDialog } from "@/features/clients/client-picker";
 import { isTaskOverdue, useProjects, useTasks } from "@/features/projects/use-projects";
 import { formatCurrency } from "@/features/finance/finance";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/app-shell";
+import { StatLink } from "@/components/stat-link";
+import { QuickLinks } from "@/components/quick-links";
+import { SectionHeading } from "@/components/section-heading";
+import { DEPARTMENT_QUICK_LINKS } from "@/lib/department-quick-links";
 import { LoadError } from "@/components/load-error";
 import { ViewOnlyBanner } from "@/components/view-only-banner";
 import { formatDate } from "@/lib/format-date";
@@ -37,59 +44,6 @@ const inDays = (n: number) => {
   d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);
 };
-
-function Kpi({
-  label,
-  value,
-  hint,
-  icon: Icon,
-  to,
-  search,
-  tone,
-}: {
-  label: string;
-  value: ReactNode;
-  hint: string;
-  icon: ComponentType<{ className?: string }>;
-  to: string;
-  search?: Record<string, string | boolean>;
-  tone?: "danger";
-}) {
-  return (
-    <Link
-      to={to}
-      search={search}
-      className={cn(
-        "group rounded-xl border bg-card p-4 transition-colors hover:border-primary/50",
-        tone === "danger" && "border-destructive/40",
-      )}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">{label}</span>
-        <span
-          className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-primary",
-            tone === "danger" && "bg-destructive/10 text-destructive",
-          )}
-        >
-          <Icon className="h-4 w-4" />
-        </span>
-      </div>
-      <div
-        className={cn(
-          "mt-2 text-3xl font-semibold tabular-nums",
-          tone === "danger" && "text-destructive",
-        )}
-      >
-        {value}
-      </div>
-      <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-        <span>{hint}</span>
-        <ArrowRight className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-      </div>
-    </Link>
-  );
-}
 
 function HrDashboard() {
   const { canWriteDepartment } = useAuth();
@@ -172,27 +126,32 @@ function HrDashboard() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Human Resources</h1>
-          <p className="text-sm text-muted-foreground">
-            Your service-line projects, what needs attention, and how each line is doing.
-          </p>
-        </div>
-        {canManage && department && (
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setClientOpen(true)}>
-              <Building2 className="h-4 w-4 mr-1.5" /> New client
-            </Button>
-            <NewProjectDialog fixedDepartmentId={department.id} />
-          </div>
-        )}
-      </div>
+      <PageHeader
+        title="Human Resources"
+        description="The work we run for clients: projects by service line, what needs chasing, and how recruitment is going."
+        actions={
+          canManage && department ? (
+            <>
+              <Button variant="outline" asChild>
+                <Link to="/hr/projects">
+                  <FolderKanban className="mr-1.5 h-4 w-4" /> Manage projects
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link to="/hr/recruitment">
+                  <UserCheck className="mr-1.5 h-4 w-4" /> Manage recruitment
+                </Link>
+              </Button>
+              <Button variant="outline" onClick={() => setClientOpen(true)}>
+                <Building2 className="mr-1.5 h-4 w-4" /> New client
+              </Button>
+              <NewProjectDialog fixedDepartmentId={department.id} />
+            </>
+          ) : undefined
+        }
+      />
 
       {!canManage && department && <ViewOnlyBanner area="HR" action="add clients or projects" />}
-
-      <StartHerePanel departmentCode="hr" />
-      <MyWorkPanel departmentCode="hr" />
 
       {isLoading ? (
         <div className="flex justify-center py-16">
@@ -224,39 +183,44 @@ function HrDashboard() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Kpi
-              label="Open projects"
-              value={data.open.length}
-              hint={`${data.oneOff.length} one-off · ${data.recurring.length} recurring`}
-              icon={FolderKanban}
-              to="/hr/projects"
-            />
-            <Kpi
-              label="Recurring clients"
-              value={data.recurringClients}
-              hint={`across ${data.recurring.length} recurring projects`}
-              icon={Repeat}
-              to="/hr/projects"
-              search={{ type: "ongoing" }}
-            />
-            <Kpi
-              label="Overdue tasks"
-              value={data.overdueTasks.length}
-              hint={data.overdueTasks.length ? "need follow-up" : "nothing is late"}
-              icon={AlertTriangle}
-              to="/hr/tasks"
-              search={data.overdueTasks.length ? { overdue: true } : undefined}
-              tone={data.overdueTasks.length ? "danger" : undefined}
-            />
-            <Kpi
-              label="People placed"
-              value={placed}
-              hint={`from ${recruitmentProjects} recruitment projects`}
-              icon={UserCheck}
-              to="/hr/recruitment"
-            />
-          </div>
+          <section aria-labelledby="hr-glance">
+            <SectionHeading id="hr-glance">At a glance</SectionHeading>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatLink
+                to="/hr/projects"
+                label="Open projects"
+                value={data.open.length}
+                hint={`${data.oneOff.length} one-off · ${data.recurring.length} recurring`}
+                icon={FolderKanban}
+              />
+              <StatLink
+                to="/hr/projects"
+                search={{ type: "ongoing" }}
+                label="Recurring clients"
+                value={data.recurringClients}
+                hint={`Across ${data.recurring.length} recurring projects`}
+                icon={Repeat}
+              />
+              <StatLink
+                to="/hr/tasks"
+                search={data.overdueTasks.length ? { overdue: true } : undefined}
+                label="Overdue tasks"
+                value={data.overdueTasks.length}
+                hint={data.overdueTasks.length ? "Need following up" : "Nothing is late"}
+                icon={AlertTriangle}
+                tone={data.overdueTasks.length ? "danger" : "positive"}
+              />
+              <StatLink
+                to="/hr/recruitment"
+                label="People placed"
+                value={placed}
+                hint={`From ${recruitmentProjects} recruitment project${recruitmentProjects === 1 ? "" : "s"}`}
+                icon={UserCheck}
+              />
+            </div>
+          </section>
+
+          <QuickLinks links={DEPARTMENT_QUICK_LINKS.hr} />
 
           <div className="grid gap-4 lg:grid-cols-3">
             <section
@@ -389,6 +353,11 @@ function HrDashboard() {
             </section>
           </div>
 
+          <div className="grid gap-4 lg:grid-cols-2">
+            <RecruitmentStagePanel />
+            <DueThisWeekPanel tasks={tasks} projectName={data.projectName} />
+          </div>
+
           <section aria-label="Service lines">
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Service lines</h2>
@@ -418,6 +387,9 @@ function HrDashboard() {
           </section>
         </>
       )}
+
+      <StartHerePanel departmentCode="hr" />
+      <MyWorkPanel departmentCode="hr" />
 
       {department && (
         <NewClientDialog

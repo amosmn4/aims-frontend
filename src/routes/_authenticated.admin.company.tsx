@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { FormField, RequiredNote } from "@/components/form-field";
 import { LoadError } from "@/components/load-error";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
@@ -68,6 +69,8 @@ const EDITABLE: (keyof SettingsForm)[] = [
   "financialYearStartMonth",
   "timeZone",
   "reportDueDay",
+  "reportRemindersEnabled",
+  "departmentHeadsReview",
   "supportContactName",
   "supportContactEmail",
 ];
@@ -159,6 +162,8 @@ function CompanySettingsPage() {
       financialYearStartMonth: form.financialYearStartMonth,
       timeZone: form.timeZone,
       reportDueDay: form.reportDueDay,
+      reportRemindersEnabled: form.reportRemindersEnabled,
+      departmentHeadsReview: form.departmentHeadsReview,
       supportContactName: supportName || null,
       supportContactEmail: supportEmail || null,
     };
@@ -323,6 +328,38 @@ function CompanySettingsPage() {
           <p className="text-xs text-muted-foreground">
             Departments get a reminder 3 days before, and you're told about any report that's late.
           </p>
+        </div>
+
+        <div className="flex items-start justify-between gap-3 rounded-lg border p-3">
+          <div>
+            <Label htmlFor="company-report-reminders">Send monthly report reminders</Label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Turn this off to stop the "report due" reminder emails for everyone in the company.
+            </p>
+          </div>
+          <Switch
+            id="company-report-reminders"
+            checked={form.reportRemindersEnabled}
+            onCheckedChange={(v) => set("reportRemindersEnabled", v)}
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-3 rounded-lg border p-3">
+          <div>
+            <Label htmlFor="company-heads-review">
+              Department heads read their team&rsquo;s reports
+            </Label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Off means every report comes to you. Turn it on once you have given people the
+              department head role, and their team&rsquo;s own reports and project progress reports
+              go to them first. You still see all of them.
+            </p>
+          </div>
+          <Switch
+            id="company-heads-review"
+            checked={form.departmentHeadsReview}
+            onCheckedChange={(v) => set("departmentHeadsReview", v)}
+          />
         </div>
 
         <div className="grid gap-1.5 sm:col-span-2">

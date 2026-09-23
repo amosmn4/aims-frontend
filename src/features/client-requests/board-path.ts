@@ -11,7 +11,7 @@ const BOARD_BY_DEPARTMENT: Record<DepartmentCode, string> = {
 
 /** Where this person's Client requests board lives in their own menu. */
 export function useClientRequestsBoardPath() {
-  const { roles } = useAuth();
-  const scope = departmentScopeFor(roles);
+  const { roles, workspace } = useAuth();
+  const scope = workspace && workspace !== "water" ? workspace : departmentScopeFor(roles);
   return scope ? BOARD_BY_DEPARTMENT[scope] : "/pipeline/engagements";
 }

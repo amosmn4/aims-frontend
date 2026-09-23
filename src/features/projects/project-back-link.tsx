@@ -40,7 +40,7 @@ export function useProjectBack(
   from: string | undefined,
 ): ProjectBack {
   const router = useRouter();
-  const { roles, isAdminOrCeo, canReadDepartment } = useAuth();
+  const { roles, isAdminOrCeo, canReadDepartment, workspace } = useAuth();
 
   if (isSafePath(from)) {
     const path = from.split("#")[0];
@@ -51,7 +51,7 @@ export function useProjectBack(
     return { href: from, to, search, label };
   }
 
-  const scope = departmentScopeFor(roles);
+  const scope = workspace && workspace !== "water" ? workspace : departmentScopeFor(roles);
   if (scope && departmentCode && departmentCode !== scope) {
     const to = `/${scope}/shared-projects`;
     return { href: to, to, search: {}, label: "Shared with me" };

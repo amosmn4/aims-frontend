@@ -821,6 +821,8 @@ export const EVERYONE_HOW_TO: HowTo[] = [
     steps: [
       "Open the account menu (your name, top right) and click **My notifications**.",
       "For each kind of alert, switch **In AIMS**, **Email**, **SMS** or **WhatsApp** on or off. It saves straight away.",
+      "To stop an alert for a while, click **Mute** on its row and pick 1 day, 1 week or a date. It comes back on by itself.",
+      "Going away? Click **Pause all alerts** at the top, and **Turn alerts back on** when you're back.",
       "SMS and WhatsApp need a phone number. Add it in **My profile**.",
     ],
     to: "/settings/notifications",

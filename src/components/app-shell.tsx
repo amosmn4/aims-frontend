@@ -36,6 +36,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { HeaderSearch } from "@/components/header-search";
 import { ViewAsBanner, ViewAsButton } from "@/components/view-as";
 import { UserMenu } from "@/components/nav/user-menu";
+import { WorkspaceSwitcher } from "@/components/nav/workspace-switcher";
 import { useEffectiveLayout, useMediaQuery } from "@/components/nav/use-effective-layout";
 import {
   DropdownMenu,
@@ -374,23 +375,33 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   // Ctrl/Cmd+K is handled inside HeaderSearch.
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const { roles, isAdminOrCeo, hasRole, isCeo, isSystemAdmin, viewAs, canReadDepartment } =
-    useAuth();
+  const {
+    roles,
+    isAdminOrCeo,
+    hasRole,
+    isCeo,
+    isSystemAdmin,
+    viewAs,
+    canReadDepartment,
+    workspace,
+  } = useAuth();
   const { mode, setMode } = useEffectiveLayout(!isCeo);
   const isLarge = useMediaQuery("(min-width: 1024px)");
   const location = useLocation();
-  const home = homeRouteFor(roles);
+  const home = homeRouteFor(roles, workspace);
 
   const visibleChildren = (item: NavItem) =>
     (item.children ?? []).filter((c) => !c.department || canReadDepartment(c.department));
 
-  const departmentScope = departmentScopeFor(roles);
+  // The workspace someone picked wins; otherwise their only department.
+  const departmentScope =
+    workspace && workspace !== "water" ? workspace : departmentScopeFor(roles);
   const hasAnyDepartment = isAdminOrCeo || DEPARTMENT_CODES.some((c) => canReadDepartment(c));
   const visibleNav = isCeo
     ? CEO_NAV
     : departmentScope
-      ? buildDepartmentNav(departmentScope, hasRole("water"))
-      : home === "/water"
+      ? buildDepartmentNav(departmentScope, hasRole("water"), hasRole("department_head"))
+      : workspace === "water" || home === "/water"
         ? buildWaterNav()
         : !hasAnyDepartment
           ? buildSetupNav()
@@ -413,6 +424,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const UserBlock = (
     <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+      <WorkspaceSwitcher className="shrink-0" />
       <HeaderSearch
         inputRef={searchInputRef}
         className={tightHeader ? "xl:w-36 2xl:w-56" : undefined}
@@ -747,7 +759,7 @@ export function PageHeader({
         <h1 className="text-lg font-semibold text-foreground">{title}</h1>
         {description && <p className="text-xs text-muted-foreground max-w-3xl">{description}</p>}
       </div>
-      {actions && <div className="flex gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
   );
 }

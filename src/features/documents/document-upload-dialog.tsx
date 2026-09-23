@@ -1,14 +1,15 @@
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Loader2, Upload } from "lucide-react";
+import { Loader2, Upload, X } from "lucide-react";
 import {
-  useUploadDocument,
   RESOURCE_TYPE_LABELS,
-  DOCUMENT_ACCEPT,
   DOCUMENT_CATEGORY_SUGGESTIONS,
-  MAX_DOCUMENT_BYTES,
+  fileProblem,
+  formatFileSize,
   type DocumentResourceType,
 } from "@/features/documents/use-documents";
+import { useDocumentUploads } from "@/features/documents/use-document-uploads";
+import { DocumentDropZone, UploadProgressList } from "@/features/documents/document-drop-zone";
 import {
   AccessModePicker,
   accessContextFor,
@@ -97,7 +98,7 @@ export function DocumentUploadDialog({
   const uid = useId();
   const { profile, isAdminOrCeo, hasRole } = useAuth();
   const departmentsQ = useDepartments();
-  const upload = useUploadDocument();
+  const uploads = useDocumentUploads();
   const showPicker = !fixedResourceType;
 
   const initialAttachTo: DocumentResourceType =
@@ -110,8 +111,8 @@ export function DocumentUploadDialog({
   const [resourceId, setResourceId] = useState(initialResourceId);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("other");
-  const [file, setFile] = useState<File | null>(null);
-  const [fileInputKey, setFileInputKey] = useState(0);
+  const [labels, setLabels] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
   // null keeps the default for wherever the file is going.
   const [accessMode, setAccessMode] = useState<AccessMode | null>(null);
   const [departmentIds, setDepartmentIds] = useState<string[]>([]);
@@ -128,8 +129,9 @@ export function DocumentUploadDialog({
   const mode = accessMode ?? defaultAccessMode(context);
 
   const dirty =
-    !!file ||
+    files.length > 0 ||
     title.trim() !== "" ||
+    labels.trim() !== "" ||
     category !== "other" ||
     accessMode !== null ||
     (showPicker && (attachTo !== initialAttachTo || resourceId !== initialResourceId));
@@ -140,13 +142,14 @@ export function DocumentUploadDialog({
     setResourceId(initialResourceId);
     setTitle("");
     setCategory("other");
-    setFile(null);
-    setFileInputKey((k) => k + 1);
+    setLabels("");
+    setFiles([]);
     setAccessMode(null);
     setDepartmentIds([]);
     setUserIds([]);
     setErrors({});
     setSubmitError(undefined);
+    uploads.clear();
   };
 
   const close = () => {
@@ -163,44 +166,62 @@ export function DocumentUploadDialog({
       : true,
   );
 
-  const submit = (e: FormEvent) => {
+  const addFiles = (chosen: File[]) => {
+    const blocked = chosen.map(fileProblem).filter((p): p is string => !!p);
+    const keep = chosen.filter((f) => !fileProblem(f));
+    setFiles((prev) => [
+      ...prev,
+      ...keep.filter((f) => !prev.some((p) => p.name === f.name && p.size === f.size)),
+    ]);
+    setErrors((prev) => ({ ...prev, file: blocked[0] }));
+  };
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!profile) return;
     const next: Errors = {};
     if (showPicker && !resourceId) next.target = `Choose which ${NOUNS[attachTo]?.[0] ?? "one"}`;
-    if (!file) next.file = "Choose a file to upload";
-    else if (file.size > MAX_DOCUMENT_BYTES)
-      next.file = "This file is bigger than 25 MB. Choose a smaller file.";
+    if (files.length === 0) next.file = "Choose at least one file to upload";
     next.access = validateAccess(mode, departmentIds, userIds);
     setErrors(next);
     setSubmitError(undefined);
-    if (!file || next.target || next.file || next.access) return;
+    if (files.length === 0 || next.target || next.access) return;
 
     const grants = draftAccessGrants(mode, departmentIds, userIds, profile.id);
-    upload.mutate(
+    const tags = labels
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const result = await uploads.upload(
+      files,
       {
-        file,
         resourceType: attachTo,
         resourceId,
         title: title.trim() || undefined,
         category,
+        tags,
         access: grants.length > 0 ? grants : undefined,
       },
-      {
-        onSuccess: (doc) => {
-          toast.success(
-            isLibrary
-              ? `Added "${doc.title}" to the ${libraryName ?? "department"} library`
-              : `Attached "${doc.title}"`,
-          );
-          close();
-        },
-        onError: (err) =>
-          setSubmitError(
-            err instanceof Error ? err.message : "Couldn't upload the file. Try again.",
-          ),
-      },
+      { silent: true },
     );
+
+    if (result.failed > 0) {
+      setSubmitError(
+        result.uploaded > 0
+          ? "Some files couldn't be added — see the list above."
+          : "That didn't work — see the list above.",
+      );
+      setFiles([]);
+      return;
+    }
+    toast.success(
+      isLibrary
+        ? `Added ${result.uploaded === 1 ? `"${files[0].name}"` : `${result.uploaded} files`} to the ${libraryName ?? "department"} library`
+        : result.uploaded === 1
+          ? `Attached "${files[0].name}"`
+          : `Attached ${result.uploaded} files`,
+    );
+    close();
   };
 
   const recordNoun = RESOURCE_TYPE_LABELS[attachTo].toLowerCase();
@@ -209,9 +230,14 @@ export function DocumentUploadDialog({
       ? `Add to the ${libraryName} library`
       : "Add to a department library"
     : fixedResourceType
-      ? `Attach a file to this ${recordNoun}`
-      : "Attach a file";
+      ? `Attach files to this ${recordNoun}`
+      : "Attach files";
   const primaryLabel = isLibrary ? "Add to library" : "Attach file";
+  const submitLabel = isLibrary
+    ? "Add to library"
+    : files.length > 1
+      ? `Attach ${files.length} files`
+      : "Attach file";
 
   return (
     <Dialog
@@ -232,8 +258,8 @@ export function DocumentUploadDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent>
-        <form onSubmit={submit} noValidate className="space-y-4">
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <form onSubmit={(e) => void submit(e)} noValidate className="space-y-4">
           <DialogHeader>
             <DialogTitle>{dialogTitle}</DialogTitle>
             <RequiredNote />
@@ -286,30 +312,67 @@ export function DocumentUploadDialog({
             </div>
           )}
 
-          <FormField
-            id={`${uid}-file`}
-            label="File"
-            required
-            error={errors.file}
-            hint="PDF, Word, Excel, PowerPoint, images, text or zip — up to 25 MB"
-          >
-            <Input
-              key={fileInputKey}
-              id={`${uid}-file`}
-              type="file"
-              accept={DOCUMENT_ACCEPT}
-              aria-invalid={!!errors.file}
-              aria-describedby={errors.file ? `${uid}-file-error` : undefined}
-              onChange={(e) => {
-                setFile(e.target.files?.[0] ?? null);
-                setErrors((prev) => ({ ...prev, file: undefined }));
-              }}
+          <fieldset className="space-y-2">
+            <legend className="mb-2 text-sm font-medium">
+              Files
+              <span className="ml-0.5 text-destructive" aria-hidden="true">
+                *
+              </span>
+            </legend>
+            <DocumentDropZone
+              onFiles={addFiles}
+              disabled={uploads.uploading}
+              label="Drag files here, or choose them"
             />
-          </FormField>
+            {files.length > 0 && (
+              <ul className="divide-y rounded-lg border bg-card">
+                {files.map((f) => (
+                  <li
+                    key={`${f.name}-${f.size}`}
+                    className="flex items-center justify-between gap-2 px-3 py-2 text-xs"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span className="font-medium">{f.name}</span>{" "}
+                      <span className="text-muted-foreground">{formatFileSize(f.size)}</span>
+                    </span>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      aria-label={`Remove ${f.name}`}
+                      onClick={() => setFiles((prev) => prev.filter((p) => p !== f))}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {errors.file && (
+              <p role="alert" className="text-xs text-destructive">
+                {errors.file}
+              </p>
+            )}
+            <UploadProgressList items={uploads.items} />
+          </fieldset>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <FormField id={`${uid}-title`} label="Title" hint="Leave blank to use the file name">
-              <Input id={`${uid}-title`} value={title} onChange={(e) => setTitle(e.target.value)} />
+            <FormField
+              id={`${uid}-title`}
+              label="Title"
+              hint={
+                files.length > 1
+                  ? "Each file keeps its own name when you add several at once"
+                  : "Leave blank to use the file name"
+              }
+            >
+              <Input
+                id={`${uid}-title`}
+                value={title}
+                disabled={files.length > 1}
+                onChange={(e) => setTitle(e.target.value)}
+              />
             </FormField>
             <FormField id={`${uid}-category`} label="Category">
               <Select value={category} onValueChange={setCategory}>
@@ -326,6 +389,19 @@ export function DocumentUploadDialog({
               </Select>
             </FormField>
           </div>
+
+          <FormField
+            id={`${uid}-labels`}
+            label="Labels"
+            hint="Optional words people can filter by later, separated by commas"
+          >
+            <Input
+              id={`${uid}-labels`}
+              value={labels}
+              onChange={(e) => setLabels(e.target.value)}
+              placeholder="e.g. 2026, signed"
+            />
+          </FormField>
 
           <fieldset>
             <legend className="mb-2 text-sm font-medium">Who can see this file</legend>
@@ -363,13 +439,13 @@ export function DocumentUploadDialog({
             <Button type="button" variant="outline" onClick={() => void guardClose(close)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={upload.isPending}>
-              {upload.isPending ? (
+            <Button type="submit" disabled={uploads.uploading}>
+              {uploads.uploading ? (
                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />
               ) : (
                 <Upload className="h-4 w-4 mr-1" />
               )}
-              {primaryLabel}
+              {submitLabel}
             </Button>
           </DialogFooter>
         </form>
