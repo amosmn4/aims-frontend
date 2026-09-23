@@ -135,16 +135,17 @@ export const WATER_SERIES_DASH = {
 } as const;
 
 /** Validated categorical order for zone slices — never cycled, extras fold into "Other". */
+// Each theme has its own steps; see --chart-zone-* in styles.css.
 export const ZONE_COLORS = [
-  "#2a78d6",
-  "#eb6834",
-  "#1baf7a",
-  "#eda100",
-  "#e87ba4",
-  "#4a3aa7",
+  "var(--chart-zone-1)",
+  "var(--chart-zone-2)",
+  "var(--chart-zone-3)",
+  "var(--chart-zone-4)",
+  "var(--chart-zone-5)",
+  "var(--chart-zone-6)",
 ] as const;
 
-export const OTHER_ZONES_COLOR = "#7a7a72";
+export const OTHER_ZONES_COLOR = "var(--chart-zone-other)";
 
 /** Top slices by size, with the tail folded into one "Other zones" slice. */
 export function topSlices<T>(
@@ -166,4 +167,24 @@ export function topSlices<T>(
     });
   }
   return head;
+}
+
+/**
+ * The overlay line drawn on top of comparison bars. Ink rather than a seventh hue,
+ * so it reads on both surfaces and never competes with the categorical bars.
+ */
+export const OVERLAY_SERIES = {
+  color: "var(--color-foreground)",
+  dash: "5 4",
+} as const;
+
+/** Money with thousands separators, e.g. "KES 12,400". */
+export function formatMoney(n: number): string {
+  return `KES ${Math.round(n).toLocaleString()}`;
+}
+
+/** Cumulative sum, for a running-total overlay. */
+export function runningTotal(values: number[]): number[] {
+  let sum = 0;
+  return values.map((v) => (sum += Number.isFinite(v) ? v : 0));
 }

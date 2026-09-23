@@ -151,6 +151,7 @@ export function PeriodTooltip({
   rows,
   xKey = "period",
   unit = "m³",
+  units,
   showChange = true,
 }: {
   active?: boolean;
@@ -159,12 +160,15 @@ export function PeriodTooltip({
   rows?: TooltipRow[];
   xKey?: string;
   unit?: string;
+  /** Per-series unit, for a combo chart whose series aren't all measured the same way. */
+  units?: Record<string, string>;
   /** Off when the axis isn't time, so rows aren't compared to an unrelated neighbour. */
   showChange?: boolean;
 }) {
   if (!active || !payload?.length) return null;
   const index = rows && showChange ? rows.findIndex((r) => r[xKey] === label) : -1;
   const previous = index > 0 ? rows?.[index - 1] : undefined;
+  const unitFor = (key: string) => units?.[key] ?? unit;
 
   return (
     <div className="rounded-lg border bg-card p-2.5 text-xs shadow-sm">
@@ -187,7 +191,7 @@ export function PeriodTooltip({
               <span className="text-muted-foreground">{entry.name ?? key}</span>
               <span className="ml-auto pl-3 font-medium tabular-nums text-foreground">
                 {typeof entry.value === "number" ? formatUnits(entry.value) : "—"}
-                {unit ? ` ${unit}` : ""}
+                {unitFor(key) ? ` ${unitFor(key)}` : ""}
               </span>
             </div>
           );
@@ -201,7 +205,8 @@ export function PeriodTooltip({
             if (typeof entry.value !== "number" || typeof before !== "number") return null;
             return (
               <div key={key} className="tabular-nums">
-                {formatChange(entry.value - before)} {unit} vs {String(previous[xKey] ?? "before")}
+                {formatChange(entry.value - before)} {unitFor(key)} vs{" "}
+                {String(previous[xKey] ?? "before")}
               </div>
             );
           })}
@@ -292,5 +297,45 @@ export function ZoneDonut({
         ))}
       </ul>
     </div>
+  );
+}
+
+export interface ChartSeriesKey {
+  key: string;
+  label: string;
+  color: string;
+  shape: "bar" | "line";
+  dash?: string;
+}
+
+/** Legend keyed by mark shape as well as colour, so series never rely on hue alone. */
+export function ChartLegend({ items }: { items: ChartSeriesKey[] }) {
+  return (
+    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      {items.map((s) => (
+        <li key={s.key} className="flex items-center gap-1.5">
+          {s.shape === "bar" ? (
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+              style={{ background: s.color }}
+              aria-hidden="true"
+            />
+          ) : (
+            <svg width="16" height="8" viewBox="0 0 16 8" aria-hidden="true" className="shrink-0">
+              <line
+                x1="0"
+                y1="4"
+                x2="16"
+                y2="4"
+                stroke={s.color}
+                strokeWidth="2"
+                strokeDasharray={s.dash}
+              />
+            </svg>
+          )}
+          <span>{s.label}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

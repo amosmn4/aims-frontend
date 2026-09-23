@@ -1,17 +1,21 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Plus, Search } from "lucide-react";
 import {
   useWaterZones,
   useWaterAllZones,
+  useWaterMeters,
+  useWaterZoneComparison,
   useCreateWaterZone,
   useUpdateWaterZone,
   useDeleteWaterZone,
   useCanManageWater,
   type WaterZoneRow,
 } from "@/features/water/use-water";
-import { ListEmpty, ListNoMatches, WithTerm } from "@/features/water/water-ui";
+import { currentMonth, orderZoneTree, zoneIndent } from "@/features/water/zone-tree";
+import { formatUnits } from "@/features/water/chart-periods";
+import { ListEmpty, ListNoMatches } from "@/features/water/water-ui";
 import { RowActions } from "@/components/row-actions";
 import { confirmDeleteZone, deleteErrorToast } from "@/features/water/water-delete";
 import { PageHeader } from "@/components/app-shell";
@@ -19,10 +23,10 @@ import { FormField, RequiredNote } from "@/components/form-field";
 import { LoadError } from "@/components/load-error";
 import { ViewOnlyBanner } from "@/components/view-only-banner";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
-import { usePagination } from "@/hooks/use-pagination";
-import { PaginationBar } from "@/components/pagination-bar";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -42,7 +46,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -55,17 +58,75 @@ export const Route = createFileRoute("/_authenticated/water/zones")({
 
 const NONE = "__none__";
 
+function lossTone(pct: number | null): string {
+  if (pct === null) return "text-muted-foreground";
+  if (pct >= 15) return "text-destructive";
+  if (pct >= 5) return "text-warning";
+  return "text-foreground";
+}
+
+function indentLabel(name: string, depth: number): string {
+  return `${"  ".repeat(depth)}${depth > 0 ? "↳ " : ""}${name}`;
+}
+
 function WaterZonesPage() {
   const canManage = useCanManageWater();
   const [q, setQ] = useState("");
-  const { page, pageSize, setPage, setPageSize } = usePagination(25);
-  const zonesQ = useWaterZones({ q: q.trim() || undefined }, { page, pageSize });
+  const [month, setMonth] = useState(currentMonth());
+  const term = useDebouncedValue(q.trim().toLowerCase());
+
+  const zonesQ = useWaterZones();
+  const metersQ = useWaterMeters();
+  const comparisonQ = useWaterZoneComparison({ month: month || currentMonth() });
   const deleteZone = useDeleteWaterZone();
   const [editing, setEditing] = useState<WaterZoneRow | "new" | null>(null);
 
   const result = zonesQ.data;
-  const zones = result ? (Array.isArray(result) ? result : result.data) : [];
-  const total = result && !Array.isArray(result) ? result.total : zones.length;
+  const zones = useMemo(
+    () => (result ? (Array.isArray(result) ? result : result.data) : []),
+    [result],
+  );
+  const meters = useMemo(() => metersQ.data ?? [], [metersQ.data]);
+  const comparison = useMemo(() => comparisonQ.data ?? [], [comparisonQ.data]);
+
+  const metersByZone = useMemo(() => {
+    const map = new Map<string, { bulk: string[]; households: number; active: number }>();
+    for (const m of meters) {
+      if (!m.zone_id) continue;
+      const entry = map.get(m.zone_id) ?? { bulk: [], households: 0, active: 0 };
+      if (m.meter_type === "bulk") entry.bulk.push(m.meter_number);
+      if (m.meter_type === "household") {
+        entry.households += 1;
+        if (m.is_active) entry.active += 1;
+      }
+      map.set(m.zone_id, entry);
+    }
+    return map;
+  }, [meters]);
+
+  const statsByZone = useMemo(
+    () => new Map(comparison.filter((c) => c.zone_id).map((c) => [c.zone_id as string, c])),
+    [comparison],
+  );
+  const mainLine = comparison.find((c) => c.zone_id === null);
+  const mainLineMeters = meters.filter((m) => !m.zone_id && m.meter_type === "household").length;
+
+  // A match keeps its ancestors on screen, so the tree never loses its shape.
+  const rows = useMemo(() => {
+    const ordered = orderZoneTree(zones);
+    if (!term) return ordered;
+    const byId = new Map(ordered.map((z) => [z.id, z]));
+    const keep = new Set<string>();
+    for (const zone of ordered) {
+      if (!zone.name.toLowerCase().includes(term)) continue;
+      let current: (typeof ordered)[number] | undefined = zone;
+      while (current && !keep.has(current.id)) {
+        keep.add(current.id);
+        current = current.parent_zone_id ? byId.get(current.parent_zone_id) : undefined;
+      }
+    }
+    return ordered.filter((z) => keep.has(z.id));
+  }, [zones, term]);
 
   const handleDelete = async (z: WaterZoneRow) => {
     if (!(await confirmDeleteZone(z))) return;
@@ -85,24 +146,32 @@ function WaterZonesPage() {
     <div className="space-y-4">
       <PageHeader
         title="Zones"
-        description="The areas the water network is split into. A zone can sit inside another zone as a sub-zone."
-        actions={canManage ? addButton : undefined}
+        actions={
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <Label htmlFor="zones-month" className="text-xs">
+                Month
+              </Label>
+              <Input
+                id="zones-month"
+                type="month"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="h-9 w-40"
+              />
+            </div>
+            {canManage && addButton}
+          </div>
+        }
       />
       {!canManage && <ViewOnlyBanner area="the Water Project" />}
-      <p className="text-xs text-muted-foreground">
-        Each zone&apos;s <WithTerm term="bulk">bulk meter</WithTerm> is compared with its{" "}
-        <WithTerm term="household">household meters</WithTerm> to find where water is lost.
-      </p>
 
       <div className="rounded-lg border bg-card p-3">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setQ(e.target.value)}
             placeholder="Search zones by name…"
             aria-label="Search zones"
             className="pl-7"
@@ -116,15 +185,10 @@ function WaterZonesPage() {
         </div>
       ) : zonesQ.isError ? (
         <LoadError what="zones" error={zonesQ.error} onRetry={() => zonesQ.refetch()} />
-      ) : zones.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div className="rounded-lg border bg-card">
-          {q.trim() ? (
-            <ListNoMatches
-              onClear={() => {
-                setQ("");
-                setPage(1);
-              }}
-            />
+          {term ? (
+            <ListNoMatches onClear={() => setQ("")} />
           ) : (
             <ListEmpty message="No zones yet" action={canManage ? addButton : undefined} />
           )}
@@ -135,11 +199,12 @@ function WaterZonesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Parent zone</TableHead>
-                  <TableHead className="text-right">Sub-zones</TableHead>
-                  <TableHead className="text-right">Active meters</TableHead>
-                  <TableHead className="text-right">Customers</TableHead>
+                  <TableHead>Zone</TableHead>
+                  <TableHead>Bulk meter</TableHead>
+                  <TableHead className="text-right">Household meters</TableHead>
+                  <TableHead className="text-right">Bulk reading (m³)</TableHead>
+                  <TableHead className="text-right">Plots used (m³)</TableHead>
+                  <TableHead className="text-right">Loss</TableHead>
                   {canManage && (
                     <TableHead className="w-20">
                       <span className="sr-only">Actions</span>
@@ -148,47 +213,100 @@ function WaterZonesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {zones.map((z) => (
-                  <TableRow key={z.id}>
-                    <TableCell className="font-medium">{z.name}</TableCell>
-                    <TableCell className="text-sm">
-                      {z.parent_zone_name ?? <Badge variant="secondary">Top-level</Badge>}
-                    </TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">
-                      {z.child_count}
-                    </TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">
-                      {z.active_meter_count}
-                      {z.meter_count > z.active_meter_count && (
-                        <span className="block text-xs text-muted-foreground">
-                          +{z.meter_count - z.active_meter_count} inactive
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">
-                      {z.customer_count}
-                    </TableCell>
-                    {canManage && (
-                      <TableCell>
-                        <RowActions
-                          label={`zone ${z.name}`}
-                          onEdit={() => setEditing(z)}
-                          onDelete={() => handleDelete(z)}
-                        />
+                {rows.map((z) => {
+                  const zoneMeters = metersByZone.get(z.id);
+                  const stats = statsByZone.get(z.id);
+                  const hasBulk = (zoneMeters?.bulk.length ?? 0) > 0;
+                  return (
+                    <TableRow key={z.id}>
+                      <TableCell style={{ paddingLeft: 12 + zoneIndent(z.depth) }}>
+                        <Link
+                          to="/water/zones/$zoneId"
+                          params={{ zoneId: z.id }}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {z.depth > 0 && (
+                            <span className="text-muted-foreground mr-1" aria-hidden="true">
+                              ↳
+                            </span>
+                          )}
+                          {z.name}
+                        </Link>
                       </TableCell>
-                    )}
+                      <TableCell className="font-mono text-xs">
+                        {hasBulk ? (
+                          zoneMeters?.bulk.join(", ")
+                        ) : (
+                          <Badge variant="secondary" className="font-sans text-warning">
+                            No bulk meter
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-xs tabular-nums">
+                        {zoneMeters?.households ?? 0}
+                        {!!zoneMeters && zoneMeters.households > zoneMeters.active && (
+                          <span className="block text-muted-foreground">
+                            {zoneMeters.households - zoneMeters.active} inactive
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-xs tabular-nums">
+                        {hasBulk ? formatUnits(stats?.bulk_total ?? 0) : "—"}
+                        {hasBulk && z.child_count > 0 && (
+                          <span className="block text-muted-foreground">incl. sub-zones</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right text-xs tabular-nums">
+                        {formatUnits(stats?.household_total ?? 0)}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right text-xs tabular-nums ${
+                          hasBulk ? lossTone(stats?.loss_pct ?? null) : "text-muted-foreground"
+                        }`}
+                      >
+                        {hasBulk && stats ? (
+                          <>
+                            {formatUnits(stats.loss_units)}
+                            <span className="block">
+                              {stats.loss_pct === null ? "—" : `${stats.loss_pct.toFixed(1)}%`}
+                            </span>
+                          </>
+                        ) : (
+                          "Not measured"
+                        )}
+                      </TableCell>
+                      {canManage && (
+                        <TableCell>
+                          <RowActions
+                            label={`zone ${z.name}`}
+                            onEdit={() => setEditing(z)}
+                            onDelete={() => handleDelete(z)}
+                          />
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
+                {!term && (mainLine || mainLineMeters > 0) && (
+                  <TableRow className="bg-muted/30">
+                    <TableCell className="font-medium">On the main line</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">No zone</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {mainLineMeters}
+                    </TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">—</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {formatUnits(mainLine?.household_total ?? 0)}
+                    </TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground">
+                      Not measured
+                    </TableCell>
+                    {canManage && <TableCell />}
                   </TableRow>
-                ))}
+                )}
               </TableBody>
             </Table>
           </div>
-          <PaginationBar
-            page={page}
-            pageSize={pageSize}
-            total={total}
-            onPageChange={setPage}
-            onPageSizeChange={setPageSize}
-          />
         </div>
       )}
 
@@ -248,7 +366,7 @@ function EditZoneForm({
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
 
   // Excludes only the zone itself; the backend rejects moving a zone under its own sub-zones.
-  const parentOptions = (allZonesQ.data ?? []).filter((z) => z.id !== value?.id);
+  const parentOptions = orderZoneTree(allZonesQ.data ?? []).filter((z) => z.id !== value?.id);
   const isPending = create.isPending || update.isPending;
 
   const submit = () => {
@@ -286,9 +404,6 @@ function EditZoneForm({
     >
       <DialogHeader>
         <DialogTitle>{value ? `Edit zone ${value.name}` : "Add zone"}</DialogTitle>
-        <DialogDescription>
-          Leave the parent empty for a top-level zone, or pick a zone to put this one inside it.
-        </DialogDescription>
       </DialogHeader>
       <RequiredNote />
       <div className="space-y-3">
@@ -307,7 +422,7 @@ function EditZoneForm({
         </FormField>
         <FormField
           id="zone-parent"
-          label="Parent zone (optional)"
+          label="Sits inside"
           error={
             allZonesQ.isError ? "Couldn't load the zone list. Close and try again." : undefined
           }
@@ -317,13 +432,13 @@ function EditZoneForm({
             onValueChange={(v) => setParentZoneId(v === NONE ? "" : v)}
           >
             <SelectTrigger id="zone-parent">
-              <SelectValue placeholder="None — top-level zone" />
+              <SelectValue placeholder="Nothing — top-level zone" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={NONE}>None — top-level zone</SelectItem>
+              <SelectItem value={NONE}>Nothing — top-level zone</SelectItem>
               {parentOptions.map((z) => (
                 <SelectItem key={z.id} value={z.id}>
-                  {z.parent_zone_id ? `↳ ${z.name}` : z.name}
+                  {indentLabel(z.name, z.depth)}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -139,6 +139,7 @@ import { Route as AuthenticatedAdminAuditRouteImport } from './routes/_authentic
 import { Route as AuthenticatedMarketingBlogIndexRouteImport } from './routes/_authenticated.marketing.blog.index'
 import { Route as AuthenticatedFinanceReportsIndexRouteImport } from './routes/_authenticated.finance.reports.index'
 import { Route as AuthenticatedClientsContractsIndexRouteImport } from './routes/_authenticated.clients.contracts.index'
+import { Route as AuthenticatedWaterZonesZoneIdRouteImport } from './routes/_authenticated.water.zones_.$zoneId'
 import { Route as AuthenticatedWaterMetersMeterIdRouteImport } from './routes/_authenticated.water.meters_.$meterId'
 import { Route as AuthenticatedWaterCustomersCustomerIdRouteImport } from './routes/_authenticated.water.customers_.$customerId'
 import { Route as AuthenticatedReportsDepartmentsTenderRouteImport } from './routes/_authenticated.reports.departments.tender'
@@ -894,6 +895,12 @@ const AuthenticatedClientsContractsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedClientsContractsRoute,
   } as any)
+const AuthenticatedWaterZonesZoneIdRoute =
+  AuthenticatedWaterZonesZoneIdRouteImport.update({
+    id: '/zones_/$zoneId',
+    path: '/zones/$zoneId',
+    getParentRoute: () => AuthenticatedWaterRoute,
+  } as any)
 const AuthenticatedWaterMetersMeterIdRoute =
   AuthenticatedWaterMetersMeterIdRouteImport.update({
     id: '/meters_/$meterId',
@@ -1119,6 +1126,7 @@ export interface FileRoutesByFullPath {
   '/reports/departments/tender': typeof AuthenticatedReportsDepartmentsTenderRoute
   '/water/customers/$customerId': typeof AuthenticatedWaterCustomersCustomerIdRoute
   '/water/meters/$meterId': typeof AuthenticatedWaterMetersMeterIdRoute
+  '/water/zones/$zoneId': typeof AuthenticatedWaterZonesZoneIdRoute
   '/clients/contracts/': typeof AuthenticatedClientsContractsIndexRoute
   '/finance/reports/': typeof AuthenticatedFinanceReportsIndexRoute
   '/marketing/blog/': typeof AuthenticatedMarketingBlogIndexRoute
@@ -1248,6 +1256,7 @@ export interface FileRoutesByTo {
   '/reports/departments/tender': typeof AuthenticatedReportsDepartmentsTenderRoute
   '/water/customers/$customerId': typeof AuthenticatedWaterCustomersCustomerIdRoute
   '/water/meters/$meterId': typeof AuthenticatedWaterMetersMeterIdRoute
+  '/water/zones/$zoneId': typeof AuthenticatedWaterZonesZoneIdRoute
   '/clients/contracts': typeof AuthenticatedClientsContractsIndexRoute
   '/finance/reports': typeof AuthenticatedFinanceReportsIndexRoute
   '/marketing/blog': typeof AuthenticatedMarketingBlogIndexRoute
@@ -1395,6 +1404,7 @@ export interface FileRoutesById {
   '/_authenticated/reports/departments/tender': typeof AuthenticatedReportsDepartmentsTenderRoute
   '/_authenticated/water/customers_/$customerId': typeof AuthenticatedWaterCustomersCustomerIdRoute
   '/_authenticated/water/meters_/$meterId': typeof AuthenticatedWaterMetersMeterIdRoute
+  '/_authenticated/water/zones_/$zoneId': typeof AuthenticatedWaterZonesZoneIdRoute
   '/_authenticated/clients/contracts/': typeof AuthenticatedClientsContractsIndexRoute
   '/_authenticated/finance/reports/': typeof AuthenticatedFinanceReportsIndexRoute
   '/_authenticated/marketing/blog/': typeof AuthenticatedMarketingBlogIndexRoute
@@ -1542,6 +1552,7 @@ export interface FileRouteTypes {
     | '/reports/departments/tender'
     | '/water/customers/$customerId'
     | '/water/meters/$meterId'
+    | '/water/zones/$zoneId'
     | '/clients/contracts/'
     | '/finance/reports/'
     | '/marketing/blog/'
@@ -1671,6 +1682,7 @@ export interface FileRouteTypes {
     | '/reports/departments/tender'
     | '/water/customers/$customerId'
     | '/water/meters/$meterId'
+    | '/water/zones/$zoneId'
     | '/clients/contracts'
     | '/finance/reports'
     | '/marketing/blog'
@@ -1817,6 +1829,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports/departments/tender'
     | '/_authenticated/water/customers_/$customerId'
     | '/_authenticated/water/meters_/$meterId'
+    | '/_authenticated/water/zones_/$zoneId'
     | '/_authenticated/clients/contracts/'
     | '/_authenticated/finance/reports/'
     | '/_authenticated/marketing/blog/'
@@ -2743,6 +2756,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsContractsIndexRouteImport
       parentRoute: typeof AuthenticatedClientsContractsRoute
     }
+    '/_authenticated/water/zones_/$zoneId': {
+      id: '/_authenticated/water/zones_/$zoneId'
+      path: '/zones/$zoneId'
+      fullPath: '/water/zones/$zoneId'
+      preLoaderRoute: typeof AuthenticatedWaterZonesZoneIdRouteImport
+      parentRoute: typeof AuthenticatedWaterRoute
+    }
     '/_authenticated/water/meters_/$meterId': {
       id: '/_authenticated/water/meters_/$meterId'
       path: '/meters/$meterId'
@@ -3251,6 +3271,7 @@ interface AuthenticatedWaterRouteChildren {
   AuthenticatedWaterIndexRoute: typeof AuthenticatedWaterIndexRoute
   AuthenticatedWaterCustomersCustomerIdRoute: typeof AuthenticatedWaterCustomersCustomerIdRoute
   AuthenticatedWaterMetersMeterIdRoute: typeof AuthenticatedWaterMetersMeterIdRoute
+  AuthenticatedWaterZonesZoneIdRoute: typeof AuthenticatedWaterZonesZoneIdRoute
 }
 
 const AuthenticatedWaterRouteChildren: AuthenticatedWaterRouteChildren = {
@@ -3265,6 +3286,7 @@ const AuthenticatedWaterRouteChildren: AuthenticatedWaterRouteChildren = {
   AuthenticatedWaterCustomersCustomerIdRoute:
     AuthenticatedWaterCustomersCustomerIdRoute,
   AuthenticatedWaterMetersMeterIdRoute: AuthenticatedWaterMetersMeterIdRoute,
+  AuthenticatedWaterZonesZoneIdRoute: AuthenticatedWaterZonesZoneIdRoute,
 }
 
 const AuthenticatedWaterRouteWithChildren =

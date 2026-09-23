@@ -129,9 +129,27 @@
   --sidebar-accent-foreground: oklch(1 0 0);
   --sidebar-border: oklch(0.44 0.14 245 / 0.4);
   --sidebar-ring: oklch(0.7 0.18 55);
+
+  /* Zone series on charts. Checked for colour-blind separation and contrast. */
+  --chart-zone-1: #2a78d6;
+  --chart-zone-2: #eb6834;
+  --chart-zone-3: #1baf7a;
+  --chart-zone-4: #eda100;
+  --chart-zone-5: #e87ba4;
+  --chart-zone-6: #4a3aa7;
+  --chart-zone-other: #7a7a72;
 }
 
 .dark {
+  /* Their own steps, not a flip — the light ones wash out on a dark ground. */
+  --chart-zone-1: #3986e5;
+  --chart-zone-2: #d95821;
+  --chart-zone-3: #009f6c;
+  --chart-zone-4: #bd7400;
+  --chart-zone-5: #c75d87;
+  --chart-zone-6: #7c74e6;
+  --chart-zone-other: #8a8a82;
+
   --background: oklch(0.2 0.02 250);
   --foreground: oklch(0.98 0.005 240);
   --card: oklch(0.26 0.03 250);
