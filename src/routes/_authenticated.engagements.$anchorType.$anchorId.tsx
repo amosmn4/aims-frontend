@@ -130,7 +130,7 @@ function EngagementView() {
           <Link
             to="/projects/$projectId"
             params={{ projectId: onlyProject.id }}
-            search={{ view: "comms" }}
+            search={{ view: "discussions" }}
             className="text-primary hover:underline"
           >
             On the project

@@ -119,6 +119,7 @@ export const REPORT_STATUS_LABEL: Record<ReportStatus, string> = {
   submitted: "Waiting",
   changes_requested: "Needs changes",
   approved: "Approved",
+  shared: "Shared",
 };
 
 export const REPORT_STATUS_TONE: Record<ReportStatus, string> = {
@@ -126,6 +127,7 @@ export const REPORT_STATUS_TONE: Record<ReportStatus, string> = {
   submitted: "bg-primary/10 text-primary",
   changes_requested: "bg-warning/15 text-warning",
   approved: "bg-success/15 text-success",
+  shared: "bg-success/15 text-success",
 };
 
 /** "September 2026" for the month a date falls in. */
@@ -162,6 +164,7 @@ export function nextMonthLabel(end: string | null | undefined): string {
 /** Who is expected to read and decide on this report. */
 export function reviewerLabel(kind: ReviewerKind, departmentName?: string | null): string {
   if (kind === "ceo") return "The CEO";
+  if (kind === "none") return "Everyone on the project";
   return departmentName ? `The head of ${departmentName}` : "Your head of department";
 }
 
@@ -174,6 +177,7 @@ export function sendLabel(
   reviewerKind: ReviewerKind,
   departmentName?: string | null,
 ): string {
+  if (reviewerKind === "none") return status === "shared" ? "Save changes" : "Share with the team";
   if (status === "changes_requested") return "Update and send again";
   return `Send to ${lowerFirst(reviewerLabel(reviewerKind, departmentName))}`;
 }

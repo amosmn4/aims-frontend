@@ -181,9 +181,39 @@ export function ReportEditor({
     }
   };
 
+  const shareOnly = report.reviewerKind === "none";
+
   const send = async () => {
     if (missing.length > 0) {
       toast.error(`Fill in ${missing.join(" and ")} before sending this report.`);
+      return;
+    }
+    if (shareOnly && report.status === "shared") {
+      try {
+        await save();
+        toast.success("Saved. The team sees the updated report.");
+      } catch (e) {
+        toast.error(errorText(e, "Couldn't save the report"));
+      }
+      return;
+    }
+    if (shareOnly) {
+      const note = await promptDialog({
+        title: "Share this report with the team?",
+        description:
+          "Everyone on the project can read it and comment. You can still edit it afterwards.",
+        label: "Add a short note (not required)",
+        inputType: "textarea",
+        placeholder: "Anything you want them to read first…",
+        confirmLabel: "Share with the team",
+      });
+      if (note === null) return;
+      try {
+        await save({ submit: true, note: note.trim() || undefined });
+        toast.success("Shared with the team");
+      } catch (e) {
+        toast.error(errorText(e, "Couldn't share the report"));
+      }
       return;
     }
     const resend = report.status === "changes_requested";
@@ -550,19 +580,21 @@ export function ReportEditor({
 
       {!readOnly && (
         <div className="flex flex-wrap justify-end gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={saveDraft}
-            disabled={update.isPending || refresh.isPending}
-          >
-            {update.isPending ? (
-              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-1 h-4 w-4" />
-            )}
-            Save and finish later
-          </Button>
+          {report.status !== "shared" && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={saveDraft}
+              disabled={update.isPending || refresh.isPending}
+            >
+              {update.isPending ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-1 h-4 w-4" />
+              )}
+              Save and finish later
+            </Button>
+          )}
           <Button size="sm" onClick={send} disabled={update.isPending}>
             <Send className="mr-1 h-4 w-4" />
             {sendLabel(report.status, report.reviewerKind, report.department?.name)}

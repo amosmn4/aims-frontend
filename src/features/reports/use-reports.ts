@@ -6,9 +6,10 @@ import { apiJson } from "@/lib/api-client";
 export type ReportKind = "department" | "project" | "individual";
 export type ReportTemplate =
   "department_monthly" | "project_progress" | "project_completion" | "individual_period";
-export type ReportStatus = "draft" | "submitted" | "changes_requested" | "approved";
+export type ReportStatus = "draft" | "submitted" | "changes_requested" | "approved" | "shared";
 export type ReportPeriodType = "monthly" | "quarterly" | "annual" | "other";
-export type ReviewerKind = "ceo" | "department_head";
+/** "none": a project report, shared with the team rather than approved. */
+export type ReviewerKind = "ceo" | "department_head" | "none";
 export type FigureFormat = "count" | "money" | "percent" | "days" | "hours" | "text";
 export type FigureSource = "aims" | "typed" | "ai";
 export type SectionType = "figures" | "narrative" | "list" | "risks" | "decisions";

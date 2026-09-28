@@ -7,41 +7,23 @@ import { confirmDialog } from "@/components/confirm-dialog";
 import {
   useProject,
   useProjects,
-  useTasks,
   useCreateTask,
-  useUpdateTask,
-  useMilestones,
-  useDeliverables,
   useDeleteProject,
-  tracksDeliveryMetrics,
   TASK_PRIORITY_LABELS,
-  type TaskStatus,
   type TaskPriority,
 } from "@/features/projects/use-projects";
-import { useCostItems } from "@/features/project-workspace/use-project-workspace";
 import { useDepartments } from "@/features/clients/use-clients-contracts";
-import { useAuth } from "@/lib/auth";
-import { TaskDetailDialog } from "@/features/projects/task-detail-dialog";
-import { AttachmentsPanel } from "@/features/documents/attachments-panel";
-import { ActivityThread } from "@/features/activity/activity-thread";
-import { WorkspaceHeader } from "@/components/project-workspace/workspace-header";
-import { OverviewTab } from "@/components/project-workspace/overview-tab";
-import { TasksTab } from "@/components/project-workspace/tasks-tab";
-import { GanttTab } from "@/components/project-workspace/gantt-tab";
-import { TeamTab } from "@/components/project-workspace/team-tab";
-import { FinancialsTab } from "@/components/project-workspace/financials-tab";
-import { CalendarTab } from "@/components/project-workspace/calendar-tab";
-import { RaidTab } from "@/components/project-workspace/raid-tab";
-import { HrProjectOverview } from "@/features/hr/hr-project-overview";
-import { DeliverablesPanel } from "@/features/projects/deliverables-panel";
-import { MilestonesPanel } from "@/features/projects/milestones-panel";
 import { EditProjectDialog } from "@/features/projects/edit-project-dialog";
 import { useProjectAccess } from "@/features/projects/use-project-sharing";
 import { ShareDialog } from "@/features/permissions/share-dialog";
 import { ProjectBackLink, useProjectBack } from "@/features/projects/project-back-link";
-import { StaffSelect, useStaffOptions } from "@/features/projects/staff-picker";
+import { StaffSelect } from "@/features/projects/staff-picker";
+import {
+  PROJECT_TABS,
+  ProjectWorkspace,
+  type ProjectTab,
+} from "@/features/projects/workspace/project-workspace";
 import { LoadError } from "@/components/load-error";
-import { ViewOnlyBanner } from "@/components/view-only-banner";
 import { FormField, RequiredNote } from "@/components/form-field";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { cn } from "@/lib/utils";
@@ -63,46 +45,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-const TABS = [
-  ["overview", "Overview"],
-  ["tasks", "Tasks"],
-  ["gantt", "Timeline"],
-  ["team", "Team"],
-  ["financials", "Financials"],
-  ["calendar", "Calendar"],
-  ["comms", "Activity"],
-  ["raid", "Risks and issues"],
-  ["documents", "Documents"],
-] as const;
-
-type TabKey = (typeof TABS)[number][0] | "deliverables" | "milestones";
-
-// HR logs only what the CEO reports on: deliverables, tasks, milestones, documents, people.
-const HR_TABS: [TabKey, string][] = [
-  ["overview", "Overview"],
-  ["deliverables", "Deliverables"],
-  ["tasks", "Tasks"],
-  ["milestones", "Milestones"],
-  ["documents", "Documents"],
-  ["team", "Team"],
-];
-
+// Older links may name tabs that no longer exist; they open the Overview.
 const searchSchema = z.object({
-  view: z
-    .union([
-      z.literal("overview"),
-      z.literal("deliverables"),
-      z.literal("milestones"),
-      z.literal("tasks"),
-      z.literal("gantt"),
-      z.literal("team"),
-      z.literal("financials"),
-      z.literal("calendar"),
-      z.literal("comms"),
-      z.literal("raid"),
-      z.literal("documents"),
-    ])
-    .catch("overview"),
+  view: z.string().optional().catch(undefined),
   from: z.string().optional().catch(undefined),
 });
 
@@ -117,16 +62,8 @@ function ProjectDetail() {
   const navigate = Route.useNavigate();
 
   const projectQ = useProject(projectId);
-  const tasksQ = useTasks({ projectId });
-  const milestonesQ = useMilestones(projectId);
-  const deliverablesQ = useDeliverables(projectId);
-  const costItemsQ = useCostItems(projectId);
-  const updateTask = useUpdateTask();
   const deleteProject = useDeleteProject();
-  const { profile } = useAuth();
   const departmentsQ = useDepartments();
-  const { options: staff } = useStaffOptions();
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
 
   const project = projectQ.data;
@@ -134,17 +71,10 @@ function ProjectDetail() {
     project?.department_code ??
     departmentsQ.data?.find((d) => d.id === project?.department_id)?.code;
   const back = useProjectBack(departmentCode, from);
-  const access = useProjectAccess(projectId, departmentCode);
-
-  const tasks = tasksQ.data ?? [];
-  const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
-  const profileMap = new Map(staff.map((p) => [p.id, p.name]));
-
-  const setView = (v: TabKey) =>
-    navigate({
-      search: (prev: z.infer<typeof searchSchema>) => ({ ...prev, view: v }),
-      replace: true,
-    });
+  const access = useProjectAccess(
+    project?.scope === "department" ? projectId : undefined,
+    departmentCode,
+  );
 
   if (projectQ.isLoading) {
     return (
@@ -162,27 +92,16 @@ function ProjectDetail() {
     );
   }
 
-  // Department write access, or someone shared it with you as "Can view and edit".
-  const canManage = access.canEdit;
-  const isHr = departmentCode === "hr";
-  const detailed = tracksDeliveryMetrics(departmentCode);
-  const tabs: [TabKey, string][] = isHr
-    ? HR_TABS
-    : TABS.map(([v, label]): [TabKey, string] => [v, label]);
-  const view: TabKey = tabs.some(([v]) => v === requestedView) ? requestedView : "overview";
-
-  const handleStatusChange = (taskId: string, status: TaskStatus) => {
-    updateTask.mutate(
-      { id: taskId, status },
-      { onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed") },
-    );
-  };
+  const view: ProjectTab = (PROJECT_TABS as readonly string[]).includes(requestedView ?? "")
+    ? (requestedView as ProjectTab)
+    : "overview";
+  const isCompany = project.scope === "company";
 
   const handleDeleteProject = async () => {
     const ok = await confirmDialog({
       title: `Delete "${project.name}"?`,
       description:
-        "This removes all its tasks, milestones and documents too. This can't be undone.",
+        "This removes all its tasks, deliverables, discussions and files too. This can't be undone.",
       confirmLabel: "Delete project",
       destructive: true,
     });
@@ -196,169 +115,59 @@ function ProjectDetail() {
     });
   };
 
-  const actualCost = (costItemsQ.data ?? []).reduce((a, c) => a + c.actual_amount, 0);
+  const departmentActions = access.canEdit && (
+    <>
+      <ShareDialog resource="projects" resourceId={projectId} recordLabel="project" />
+      <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+        <Pencil className="h-3.5 w-3.5 mr-1" /> Edit project
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="text-muted-foreground hover:text-destructive"
+        disabled={deleteProject.isPending}
+        onClick={handleDeleteProject}
+      >
+        {deleteProject.isPending ? (
+          <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+        ) : (
+          <Trash2 className="h-3.5 w-3.5 mr-1" />
+        )}
+        Delete project
+      </Button>
+    </>
+  );
 
   return (
-    <div className="pipeline-scope space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <ProjectBackLink back={back} />
-        {canManage && (
-          <div className="flex shrink-0 flex-wrap gap-1">
-            <ShareDialog resource="projects" resourceId={projectId} recordLabel="project" />
-            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
-              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit project
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-muted-foreground hover:text-destructive"
-              disabled={deleteProject.isPending}
-              onClick={handleDeleteProject}
-            >
-              {deleteProject.isPending ? (
-                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-              ) : (
-                <Trash2 className="h-3.5 w-3.5 mr-1" />
-              )}
-              Delete project
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {!canManage && access.isResolved && (
-        <ViewOnlyBanner area="this project" action="change it, apart from tasks assigned to you" />
-      )}
-
-      <WorkspaceHeader
+    <>
+      <ProjectWorkspace
         project={project}
-        tasks={tasks}
-        actualCost={actualCost}
-        hrLog={
-          isHr
-            ? { deliverables: deliverablesQ.data ?? [], milestones: milestonesQ.data ?? [] }
-            : undefined
+        view={view}
+        onViewChange={(v) =>
+          navigate({
+            search: (prev: z.infer<typeof searchSchema>) => ({ ...prev, view: v }),
+            replace: true,
+          })
         }
+        canEditDepartmentProject={access.canEdit}
+        back={isCompany ? <CompanyBackLink /> : <ProjectBackLink back={back} />}
+        departmentActions={departmentActions}
       />
-
-      <div className="ws-tabbar" role="tablist" aria-label="Project sections">
-        {tabs.map(([v, label]) => (
-          <button
-            key={v}
-            type="button"
-            role="tab"
-            aria-selected={view === v}
-            onClick={() => setView(v)}
-            className={`ws-tabbtn ${view === v ? "active" : ""}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <div>
-        {view === "overview" && isHr && (
-          <HrProjectOverview
-            project={project}
-            tasks={tasks}
-            milestones={milestonesQ.data ?? []}
-            deliverables={deliverablesQ.data ?? []}
-            canManage={canManage}
-            onOpenTask={setSelectedTaskId}
-            onOpenSection={setView}
-          />
-        )}
-        {view === "deliverables" && (
-          <DeliverablesPanel projectId={projectId} canManage={canManage} />
-        )}
-        {view === "milestones" && (
-          <MilestonesPanel
-            projectId={projectId}
-            milestones={milestonesQ.data ?? []}
-            canManage={canManage}
-          />
-        )}
-        {view === "overview" && !isHr && (
-          <OverviewTab
-            project={project}
-            tasks={tasks}
-            milestones={milestonesQ.data ?? []}
-            actualCost={actualCost}
-            canManage={canManage}
-          />
-        )}
-        {view === "tasks" &&
-          (tasksQ.isLoading ? (
-            <div className="py-12 flex justify-center">
-              <Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--pipeline-ink)" }} />
-            </div>
-          ) : tasksQ.isError ? (
-            <LoadError what="tasks" error={tasksQ.error} onRetry={() => tasksQ.refetch()} />
-          ) : (
-            <TasksTab
-              tasks={tasks}
-              profileMap={profileMap}
-              detailed={detailed}
-              canMoveTask={(t) => canManage || t.assignee_id === profile?.id}
-              onTaskClick={(t) => setSelectedTaskId(t.id)}
-              onStatusChange={handleStatusChange}
-              newTaskAction={canManage ? <NewTaskDialog projectId={projectId} /> : undefined}
-            />
-          ))}
-        {view === "gantt" && (
-          <GanttTab
-            project={project}
-            tasks={tasks}
-            milestones={milestonesQ.data ?? []}
-            detailed={detailed}
-          />
-        )}
-        {view === "team" && (
-          <TeamTab
-            projectId={projectId}
-            canManage={canManage}
-            detailed={detailed}
-            showRaci={!isHr}
-            departmentName={project.department_name}
-            restricted={project.visibility === "restricted"}
-          />
-        )}
-        {view === "financials" && (
-          <FinancialsTab
-            project={project}
-            projectId={projectId}
-            canManage={canManage}
-            showClientContract={!isHr}
-          />
-        )}
-        {view === "calendar" && <CalendarTab tasks={tasks} milestones={milestonesQ.data ?? []} />}
-        {view === "comms" && (
-          <div className="ws-panel">
-            <ActivityThread
-              record={{ kind: "project", id: projectId }}
-              canLog={canManage}
-              readOnlyReason="Only the people working on this project can add activity."
-              flat
-            />
-          </div>
-        )}
-        {view === "raid" && <RaidTab projectId={projectId} canManage={canManage} />}
-        {view === "documents" && (
-          <div className="ws-panel">
-            <AttachmentsPanel resourceType="project" resourceId={projectId} canManage={canManage} />
-          </div>
-        )}
-      </div>
-
-      <TaskDetailDialog
-        task={selectedTask}
-        onClose={() => setSelectedTaskId(null)}
-        canManageDocuments={canManage}
-        projectTasks={tasks}
-      />
-
       {editing && <EditProjectDialog project={project} onClose={() => setEditing(false)} />}
-    </div>
+    </>
+  );
+}
+
+function CompanyBackLink() {
+  return (
+    <ProjectBackLink
+      back={{
+        to: "/projects/company",
+        href: "/projects/company",
+        search: {},
+        label: "company projects",
+      }}
+    />
   );
 }
 

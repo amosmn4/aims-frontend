@@ -79,6 +79,7 @@ export type ProjectTeamMember = {
   name: string;
   role: string;
   type: ProjectTeamMemberType;
+  access: "lead" | "member" | "viewer";
   allocation_percent: number;
   hours_logged: number;
   created_at: string;
@@ -92,6 +93,7 @@ type BackendTeamMember = {
   name: string;
   role: string;
   type: ProjectTeamMemberType;
+  access?: "lead" | "member" | "viewer";
   allocationPercent: number;
   hoursLogged: string | number;
   createdAt: string;
@@ -106,6 +108,7 @@ function mapTeamMember(m: BackendTeamMember): ProjectTeamMember {
     name: m.name,
     role: m.role,
     type: m.type,
+    access: m.access ?? "member",
     allocation_percent: m.allocationPercent,
     hours_logged: Number(m.hoursLogged),
     created_at: m.createdAt,
@@ -129,10 +132,14 @@ export function useCreateTeamMember(projectId: string) {
       name: string;
       role: string;
       type?: ProjectTeamMemberType;
+      access?: "member" | "viewer";
       allocationPercent?: number;
       hoursLogged?: number;
     }) => apiJson(`/projects/${projectId}/team`, { method: "POST", body: JSON.stringify(input) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["project-team", projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project-team", projectId] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
   });
 }
 

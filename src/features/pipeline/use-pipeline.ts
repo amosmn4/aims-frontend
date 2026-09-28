@@ -79,6 +79,9 @@ export interface ProjectActivityRow {
   created_at: string;
   /** The thread's first entry when this is a reply. */
   parent_id: string | null;
+  /** Company projects: a discussion the lead marked as settled. */
+  is_decision: boolean;
+  decided_at: string | null;
 }
 
 type BackendProjectActivity = {
@@ -90,6 +93,8 @@ type BackendProjectActivity = {
   createdBy: string | null;
   creator?: { fullName: string | null; email: string } | null;
   parentId?: string | null;
+  isDecision?: boolean;
+  decidedAt?: string | null;
   createdAt: string;
 };
 
@@ -104,7 +109,22 @@ function mapProjectActivity(a: BackendProjectActivity): ProjectActivityRow {
     created_by_name: a.creator?.fullName ?? a.creator?.email ?? null,
     created_at: a.createdAt,
     parent_id: a.parentId ?? null,
+    is_decision: !!a.isDecision,
+    decided_at: a.decidedAt ?? null,
   };
+}
+
+/** Lead or CEO marks a discussion as a decision, or takes the mark off. */
+export function useSetDecision(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, isDecision }: { id: string; isDecision: boolean }) =>
+      apiJson(`/projects/activities/${id}/decision`, {
+        method: "PATCH",
+        body: JSON.stringify({ isDecision }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects", projectId, "activities"] }),
+  });
 }
 
 export function useProjectActivities(projectId: string | undefined) {
