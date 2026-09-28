@@ -35,6 +35,13 @@ export const MAIN_METER_NAMES = ["Borehole → Tank", "Tank → Distribution"] a
 
 export type WaterVendingSystem = "amsol" | "mpaya";
 
+export type WaterInactiveReason = "replaced" | "removed";
+
+export const WATER_INACTIVE_REASON_LABELS: Record<WaterInactiveReason, string> = {
+  replaced: "Replaced",
+  removed: "Removed",
+};
+
 export const WATER_VENDING_SYSTEM_LABELS: Record<WaterVendingSystem, string> = {
   amsol: "Amsol",
   mpaya: "mPaya",
@@ -86,6 +93,9 @@ export interface WaterMeterRow {
   zone_id: string | null;
   zone_name: string | null;
   is_active: boolean;
+  deactivated_at: string | null;
+  inactive_reason: WaterInactiveReason | null;
+  inactive_note: string | null;
   created_at: string;
   last_vend_at: string | null;
   total_vend_count: number;
@@ -322,6 +332,9 @@ export interface WaterZoneDetail {
   bulk_total: number;
   child_bulk_total: number;
   direct_household_total: number;
+  adjustment_total: number;
+  /** "readings" when at least one household balance was measured. */
+  consumption_basis: "readings" | "tokens";
   accounted_total: number;
   loss_units: number;
   loss_pct: number | null;
@@ -354,6 +367,8 @@ type BackendZoneDetail = {
   bulkTotal: number;
   childBulkTotal: number;
   directHouseholdTotal: number;
+  adjustmentTotal?: number;
+  consumptionBasis?: "readings" | "tokens";
   accountedTotal: number;
   lossUnits: number;
   lossPct: number | null;
@@ -389,6 +404,8 @@ function mapZoneDetail(d: BackendZoneDetail): WaterZoneDetail {
     bulk_total: d.bulkTotal,
     child_bulk_total: d.childBulkTotal,
     direct_household_total: d.directHouseholdTotal,
+    adjustment_total: d.adjustmentTotal ?? 0,
+    consumption_basis: d.consumptionBasis ?? "tokens",
     accounted_total: d.accountedTotal,
     loss_units: d.lossUnits,
     loss_pct: d.lossPct,
@@ -634,6 +651,9 @@ type BackendMeter = {
   zoneId: string | null;
   zone: { id: string; name: string } | null;
   isActive: boolean;
+  deactivatedAt?: string | null;
+  inactiveReason?: WaterInactiveReason | null;
+  inactiveNote?: string | null;
   createdAt: string;
   usageRecords?: { recordedAt: string }[];
   readings?: { readingDate: string }[];
@@ -659,6 +679,9 @@ function mapMeter(m: BackendMeter): WaterMeterRow {
     zone_id: m.zoneId,
     zone_name: m.zone?.name ?? null,
     is_active: m.isActive,
+    deactivated_at: m.deactivatedAt ?? null,
+    inactive_reason: m.inactiveReason ?? null,
+    inactive_note: m.inactiveNote ?? null,
     created_at: m.createdAt,
     last_vend_at: m.usageRecords?.[0]?.recordedAt ?? null,
     total_vend_count: m._count?.usageRecords ?? 0,
@@ -853,6 +876,9 @@ const READING_DEPENDENT_KEYS = [
   "readings",
   "readings-with-delta",
   "reading-series",
+  "balance-periods",
+  "household-flags",
+  "zones",
   "meters",
   "dashboard",
   "trend",
@@ -938,6 +964,162 @@ export function useDeleteWaterReading() {
     onSuccess: () => {
       invalidateReadingViews(qc);
     },
+  });
+}
+
+/* ---------- Household balances (prepaid) ---------- */
+
+export type WaterBalanceFlag = "balance_too_high" | "no_use" | "high_use";
+
+export const WATER_BALANCE_FLAG_LABELS: Record<WaterBalanceFlag, string> = {
+  balance_too_high: "Balance higher than possible",
+  no_use: "No use recorded",
+  high_use: "High use",
+};
+
+export const WATER_BALANCE_FLAG_HINTS: Record<WaterBalanceFlag, string> = {
+  balance_too_high:
+    "The balance rose more than the units bought. Check for a missing purchase upload or a misread, then inspect the meter.",
+  no_use:
+    "Nothing used for weeks. Check whether the home is empty, the meter is stuck or bypassed.",
+  high_use: "More than double this household's usual daily use. Possible leak in the home.",
+};
+
+export interface WaterBalancePeriod {
+  from: string;
+  to: string;
+  opening_balance: number;
+  purchased: number;
+  closing_balance: number;
+  used: number;
+  days: number;
+  per_day: number | null;
+  baseline_per_day: number | null;
+  flags: WaterBalanceFlag[];
+}
+
+export interface WaterBalanceReadingRow {
+  id: string;
+  reading_date: string;
+  balance: number;
+  notes: string | null;
+  /** Null on the first reading: it is the starting balance. */
+  period: WaterBalancePeriod | null;
+}
+
+type BackendBalancePeriod = {
+  from: string;
+  to: string;
+  openingBalance: number;
+  purchased: number;
+  closingBalance: number;
+  used: number;
+  days: number;
+  perDay: number | null;
+  baselinePerDay: number | null;
+  flags: WaterBalanceFlag[];
+};
+
+function mapBalancePeriod(p: BackendBalancePeriod): WaterBalancePeriod {
+  return {
+    from: p.from,
+    to: p.to,
+    opening_balance: p.openingBalance,
+    purchased: p.purchased,
+    closing_balance: p.closingBalance,
+    used: p.used,
+    days: p.days,
+    per_day: p.perDay,
+    baseline_per_day: p.baselinePerDay,
+    flags: p.flags,
+  };
+}
+
+export function useWaterBalancePeriods(meterId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["water", "balance-periods", meterId],
+    enabled: !!meterId && enabled,
+    queryFn: async () => {
+      const rows = await apiJson<
+        {
+          id: string;
+          readingDate: string;
+          balance: number;
+          notes: string | null;
+          period: BackendBalancePeriod | null;
+        }[]
+      >(`/water/meters/${meterId}/balance-periods`);
+      return rows.map((r): WaterBalanceReadingRow => ({
+        id: r.id,
+        reading_date: r.readingDate,
+        balance: r.balance,
+        notes: r.notes,
+        period: r.period ? mapBalancePeriod(r.period) : null,
+      }));
+    },
+  });
+}
+
+export interface WaterHouseholdFlagRow {
+  meter_id: string;
+  meter_number: string;
+  meter_is_active: boolean;
+  customer_name: string | null;
+  zone_name: string | null;
+  flag: WaterBalanceFlag;
+  period: WaterBalancePeriod;
+}
+
+export function useWaterHouseholdFlags(months = 3) {
+  return useQuery({
+    queryKey: ["water", "household-flags", months],
+    queryFn: async () => {
+      const rows = await apiJson<
+        {
+          meterId: string;
+          flag: WaterBalanceFlag;
+          period: BackendBalancePeriod;
+          meter: {
+            meterNumber: string;
+            isActive: boolean;
+            customer: { name: string } | null;
+            zone: { name: string } | null;
+          };
+        }[]
+      >(`/water/household-flags${buildQuery({ months })}`);
+      return rows.map((r): WaterHouseholdFlagRow => ({
+        meter_id: r.meterId,
+        meter_number: r.meter.meterNumber,
+        meter_is_active: r.meter.isActive,
+        customer_name: r.meter.customer?.name ?? null,
+        zone_name: r.meter.zone?.name ?? null,
+        flag: r.flag,
+        period: mapBalancePeriod(r.period),
+      }));
+    },
+  });
+}
+
+export type TakeOutOfUseInput = {
+  meterId: string;
+  reason: WaterInactiveReason;
+  /** datetime-local string, browser time. */
+  date: string;
+  finalReading?: number;
+  note?: string;
+  newMeterNumber?: string;
+  newMeterReading?: number;
+};
+
+export function useTakeMeterOutOfUse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ meterId, date, ...input }: TakeOutOfUseInput) =>
+      apiJson<{ meter: { id: string }; newMeter: { id: string } | null }>(
+        `/water/meters/${meterId}/take-out-of-use`,
+        { method: "POST", body: JSON.stringify({ ...input, date: toUtcInstant(date) }) },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["water"] }),
   });
 }
 
@@ -1380,6 +1562,9 @@ type BackendMeterDetail = {
     plotNo: string | null;
     installedAt: string | null;
     isActive: boolean;
+    deactivatedAt: string | null;
+    inactiveReason: WaterInactiveReason | null;
+    inactiveNote: string | null;
     createdAt: string;
     customer: { id: string; name: string; phone: string | null; isActive: boolean } | null;
     zone: { id: string; name: string } | null;
@@ -1415,6 +1600,9 @@ export interface WaterMeterDetail {
   plot_no: string | null;
   installed_at: string | null;
   is_active: boolean;
+  deactivated_at: string | null;
+  inactive_reason: WaterInactiveReason | null;
+  inactive_note: string | null;
   created_at: string;
   customer: { id: string; name: string; phone: string | null; is_active: boolean } | null;
   zone: { id: string; name: string } | null;
@@ -1454,6 +1642,9 @@ function mapMeterDetail(d: BackendMeterDetail): WaterMeterDetail {
     plot_no: d.meter.plotNo,
     installed_at: d.meter.installedAt,
     is_active: d.meter.isActive,
+    deactivated_at: d.meter.deactivatedAt,
+    inactive_reason: d.meter.inactiveReason,
+    inactive_note: d.meter.inactiveNote,
     created_at: d.meter.createdAt,
     customer: d.meter.customer
       ? {

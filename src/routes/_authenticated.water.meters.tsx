@@ -18,6 +18,7 @@ import {
   type WaterMeterRow,
   type WaterMeterType,
   type WaterVendingSystem,
+  WATER_INACTIVE_REASON_LABELS,
 } from "@/features/water/use-water";
 import { MeterFormDialog } from "@/features/water/meter-form-dialog";
 import { orderZoneTree, zoneIndent } from "@/features/water/zone-tree";
@@ -437,7 +438,11 @@ function WaterMetersPage() {
                                 : "bg-muted text-muted-foreground"
                             }
                           >
-                            {m.is_active ? "Active" : "Inactive"}
+                            {m.is_active
+                              ? "Active"
+                              : m.inactive_reason
+                                ? WATER_INACTIVE_REASON_LABELS[m.inactive_reason]
+                                : "Inactive"}
                           </Badge>
                         </TableCell>
                         <TableCell>

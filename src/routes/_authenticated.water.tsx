@@ -8,6 +8,7 @@ const TABS = [
   { to: "/water/zones", label: "Zones" },
   { to: "/water/meters", label: "Meters Registry" },
   { to: "/water/customers", label: "Customers" },
+  { to: "/water/balances", label: "Household balances" },
   { to: "/water/readings", label: "Bulk & Main Readings" },
   { to: "/water/upload", label: "Upload usage file" },
   { to: "/water/reports", label: "Reports" },

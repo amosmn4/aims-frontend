@@ -125,6 +125,12 @@ export type Project = {
   start_date: string | null;
   end_date: string | null;
   task_count: number | null;
+  /** Only on list rows: done vs total, for progress columns. */
+  tasks_done: number | null;
+  deliverable_count: number | null;
+  deliverables_done: number | null;
+  milestone_count: number | null;
+  milestones_done: number | null;
   created_at: string;
 };
 
@@ -158,6 +164,51 @@ export type Milestone = {
   is_complete: boolean;
   created_at: string;
 };
+
+export type DeliverableStatus = "not_started" | "in_progress" | "delivered";
+
+export const DELIVERABLE_STATUS_LABELS: Record<DeliverableStatus, string> = {
+  not_started: "Not started",
+  in_progress: "In progress",
+  delivered: "Delivered",
+};
+
+export type Deliverable = {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string | null;
+  due_date: string | null;
+  status: DeliverableStatus;
+  delivered_at: string | null;
+  created_at: string;
+};
+
+export const DELIVERABLE_STATUS_TONE: Record<DeliverableStatus, string> = {
+  not_started: "bg-secondary text-muted-foreground",
+  in_progress: "bg-warning/15 text-warning",
+  delivered: "bg-success/15 text-success",
+};
+
+export function isDeliverableLate(d: Pick<Deliverable, "status" | "due_date">) {
+  return (
+    d.status !== "delivered" && !!d.due_date && d.due_date < new Date().toISOString().slice(0, 10)
+  );
+}
+
+/** Share of deliverables, tasks and milestones that are done. */
+export function loggedProgress(
+  deliverables: Pick<Deliverable, "status">[],
+  tasks: Pick<Task, "status">[],
+  milestones: Pick<Milestone, "is_complete">[],
+) {
+  const total = deliverables.length + tasks.length + milestones.length;
+  const done =
+    deliverables.filter((d) => d.status === "delivered").length +
+    tasks.filter((t) => t.status === "completed").length +
+    milestones.filter((m) => m.is_complete).length;
+  return total === 0 ? 0 : Math.round((done / total) * 100);
+}
 
 export type TaskComment = {
   id: string;
@@ -239,6 +290,9 @@ type BackendProject = {
   startDate: string | null;
   endDate: string | null;
   _count?: { tasks: number };
+  tasks?: { status: TaskStatus }[];
+  deliverables?: { status: DeliverableStatus }[];
+  milestones?: { isComplete: boolean }[];
   createdAt: string;
 };
 
@@ -270,6 +324,17 @@ type BackendMilestone = {
   description: string | null;
   dueDate: string;
   isComplete: boolean;
+  createdAt: string;
+};
+
+type BackendDeliverable = {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  dueDate: string | null;
+  status: DeliverableStatus;
+  deliveredAt: string | null;
   createdAt: string;
 };
 
@@ -321,6 +386,13 @@ function mapProject(p: BackendProject): Project {
     start_date: p.startDate ? p.startDate.slice(0, 10) : null,
     end_date: p.endDate ? p.endDate.slice(0, 10) : null,
     task_count: p._count?.tasks ?? null,
+    tasks_done: p.tasks ? p.tasks.filter((t) => t.status === "completed").length : null,
+    deliverable_count: p.deliverables ? p.deliverables.length : null,
+    deliverables_done: p.deliverables
+      ? p.deliverables.filter((d) => d.status === "delivered").length
+      : null,
+    milestone_count: p.milestones ? p.milestones.length : null,
+    milestones_done: p.milestones ? p.milestones.filter((m) => m.isComplete).length : null,
     created_at: p.createdAt,
   };
 }
@@ -355,6 +427,19 @@ function mapMilestone(m: BackendMilestone): Milestone {
     due_date: m.dueDate.slice(0, 10),
     is_complete: m.isComplete,
     created_at: m.createdAt,
+  };
+}
+
+function mapDeliverable(d: BackendDeliverable): Deliverable {
+  return {
+    id: d.id,
+    project_id: d.projectId,
+    title: d.title,
+    description: d.description,
+    due_date: d.dueDate ? d.dueDate.slice(0, 10) : null,
+    status: d.status,
+    delivered_at: d.deliveredAt,
+    created_at: d.createdAt,
   };
 }
 
@@ -591,6 +676,64 @@ export function useDeleteMilestone(projectId: string) {
   return useMutation({
     mutationFn: (id: string) => apiJson(`/projects/milestones/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["milestones", projectId] }),
+  });
+}
+
+/* ---------- Deliverables ---------- */
+
+export function useDeliverables(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["deliverables", projectId],
+    enabled: !!projectId,
+    queryFn: async () =>
+      (await apiJson<BackendDeliverable[]>(`/projects/${projectId}/deliverables`)).map(
+        mapDeliverable,
+      ),
+  });
+}
+
+export type DeliverableInput = {
+  title?: string;
+  description?: string;
+  dueDate?: string | null;
+  status?: DeliverableStatus;
+};
+
+export function useCreateDeliverable(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DeliverableInput & { title: string }) =>
+      apiJson(`/projects/${projectId}/deliverables`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deliverables", projectId] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+export function useUpdateDeliverable(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...input }: DeliverableInput & { id: string }) =>
+      apiJson(`/projects/deliverables/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deliverables", projectId] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+export function useDeleteDeliverable(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiJson(`/projects/deliverables/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deliverables", projectId] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
   });
 }
 

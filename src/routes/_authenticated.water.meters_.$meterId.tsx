@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Droplets, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Droplets, Loader2, Pencil, Plus, PowerOff, Trash2 } from "lucide-react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import {
   useWaterMeterDetail,
+  useWaterBalancePeriods,
   useWaterReadingsWithDelta,
   useDeleteWaterMeter,
   useDeleteWaterReading,
@@ -23,10 +24,13 @@ import {
   vendingHealth,
   VENDING_HEALTH_LABELS,
   VENDING_HEALTH_BADGE_STYLES,
+  WATER_INACTIVE_REASON_LABELS,
   WATER_METER_TYPE_LABELS,
   WATER_VENDING_SYSTEM_LABELS,
   type WaterMeterDetail,
 } from "@/features/water/use-water";
+import { TakeOutOfUseDialog } from "@/features/water/take-out-of-use-dialog";
+import { HouseholdBalanceLog } from "@/features/water/household-balance-log";
 import { MeterFormDialog, type MeterFormValue } from "@/features/water/meter-form-dialog";
 import { ReadingFormDialog, type ReadingFormValue } from "@/features/water/reading-form-dialog";
 import { ListEmpty, TermInfo, WithTerm, formatPeriodKey } from "@/features/water/water-ui";
@@ -109,6 +113,8 @@ function MeterDetailPage() {
   const deleteMeter = useDeleteWaterMeter();
   const [editOpen, setEditOpen] = useState(false);
   const [readingDialog, setReadingDialog] = useState<ReadingFormValue | "new" | null>(null);
+  const [retiring, setRetiring] = useState(false);
+  const balancesQ = useWaterBalancePeriods(meterId, detailQ.data?.meter_type === "household");
 
   if (detailQ.isLoading) {
     return (
@@ -128,7 +134,7 @@ function MeterDetailPage() {
   }
 
   const isReadingMeter = d.meter_type !== "household";
-  const canRecordReading = canManage && isReadingMeter && d.is_active;
+  const canRecordReading = canManage && d.is_active;
   const health = vendingHealth(d.totals.last_vend_at);
   const avgPerVend =
     !isReadingMeter && d.totals.transaction_count > 0
@@ -136,11 +142,14 @@ function MeterDetailPage() {
       : 0;
   const monthly = d.monthly.map((m) => ({ ...m, month: formatPeriodKey(m.month) }));
 
+  const balanceCount = balancesQ.data?.length ?? 0;
+  const hasHistory = d.totals.transaction_count > 0 || balanceCount > 0;
+
   const handleDelete = async () => {
     const ok = await confirmDeleteMeter({
       meter_number: d.meter_number,
       vend_count: isReadingMeter ? 0 : d.totals.transaction_count,
-      reading_count: isReadingMeter ? d.totals.transaction_count : 0,
+      reading_count: isReadingMeter ? d.totals.transaction_count : balanceCount,
     });
     if (!ok) return;
     deleteMeter.mutate(d.id, {
@@ -195,7 +204,11 @@ function MeterDetailPage() {
                   : "bg-muted text-muted-foreground"
               }
             >
-              {d.is_active ? "Active (in use)" : "Inactive (not in use)"}
+              {d.is_active
+                ? "Active (in use)"
+                : d.inactive_reason
+                  ? `${WATER_INACTIVE_REASON_LABELS[d.inactive_reason]} (not in use)`
+                  : "Inactive (not in use)"}
             </Badge>
             {!isReadingMeter && (
               <Badge className={VENDING_HEALTH_BADGE_STYLES[health]}>
@@ -209,7 +222,8 @@ function MeterDetailPage() {
             <>
               {canRecordReading && (
                 <Button size="sm" onClick={() => setReadingDialog("new")}>
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Record reading
+                  <Plus className="h-3.5 w-3.5 mr-1" />{" "}
+                  {isReadingMeter ? "Record reading" : "Record balance"}
                 </Button>
               )}
               <Button
@@ -219,15 +233,22 @@ function MeterDetailPage() {
               >
                 <Pencil className="h-3.5 w-3.5 mr-1" /> Edit meter
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-destructive hover:text-destructive"
-                onClick={handleDelete}
-                disabled={deleteMeter.isPending}
-              >
-                <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete meter
-              </Button>
+              {d.is_active && (
+                <Button size="sm" variant="outline" onClick={() => setRetiring(true)}>
+                  <PowerOff className="h-3.5 w-3.5 mr-1" /> Take out of use
+                </Button>
+              )}
+              {!hasHistory && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  onClick={handleDelete}
+                  disabled={deleteMeter.isPending}
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete meter
+                </Button>
+              )}
             </>
           )}
           {!isReadingMeter && (
@@ -252,11 +273,23 @@ function MeterDetailPage() {
         </div>
       </div>
       {!canManage && <ViewOnlyBanner area="the Water Project" />}
-      {canManage && isReadingMeter && !d.is_active && (
-        <p className="text-xs text-muted-foreground">
-          This meter is inactive, so it takes no new readings. Edit the meter and switch it to
-          Active if it is back in use.
-        </p>
+      {!d.is_active && (
+        <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+          <span className="font-medium">
+            {d.inactive_reason === "replaced"
+              ? "Replaced"
+              : d.inactive_reason === "removed"
+                ? "Removed"
+                : "Out of use"}
+            {d.deactivated_at ? ` on ${formatDate(d.deactivated_at)}` : ""}
+            {d.replaced_by_meter ? ` by meter ${d.replaced_by_meter.meter_number}` : ""}.
+          </span>{" "}
+          {d.inactive_note && <span>{d.inactive_note}. </span>}
+          <span className="text-muted-foreground">
+            It takes no new readings. Its readings and purchases are kept in reports.
+            {canManage && " Edit the meter and switch it to Active if it is back in use."}
+          </span>
+        </div>
       )}
 
       <MeterFormDialog
@@ -266,8 +299,10 @@ function MeterDetailPage() {
       <ReadingFormDialog
         value={readingDialog}
         meterId={d.id}
+        kind={isReadingMeter ? "network" : "household"}
         onClose={() => setReadingDialog(null)}
       />
+      <TakeOutOfUseDialog meter={d} open={retiring} onClose={() => setRetiring(false)} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard
@@ -385,7 +420,7 @@ function MeterDetailPage() {
               ? "No purchases recorded yet for this meter."
               : `Averaging ${avgPerVend.toLocaleString(undefined, { style: "currency", currency: "KES" })} per purchase across ${d.totals.transaction_count} purchase${d.totals.transaction_count === 1 ? "" : "s"}. ${
                   !d.is_active
-                    ? "This meter is inactive (not in use); its past purchases are kept for reporting."
+                    ? "This meter is out of use; its past purchases and balances are kept for reporting."
                     : health === "active"
                       ? "Buying tokens regularly — no action needed."
                       : health === "slowing"
@@ -453,6 +488,16 @@ function MeterDetailPage() {
           onAdd={canRecordReading ? () => setReadingDialog("new") : undefined}
         />
       ) : (
+        <HouseholdBalanceLog
+          meterId={d.id}
+          meterNumber={d.meter_number}
+          canManage={canManage}
+          onEdit={setReadingDialog}
+          onAdd={canRecordReading ? () => setReadingDialog("new") : undefined}
+        />
+      )}
+
+      {!isReadingMeter && (
         <div className="rounded-lg border bg-card overflow-hidden">
           <div className="p-4 pb-0 text-sm font-semibold">Recent purchases</div>
           {d.recent_usage.length === 0 ? (

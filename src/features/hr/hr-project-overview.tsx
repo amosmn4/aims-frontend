@@ -1,13 +1,15 @@
-import { useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, CalendarDays, CheckCircle2, Loader2, Plus, Repeat } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, Repeat } from "lucide-react";
 import {
-  useCreateTask,
   useUpdateProject,
   isTaskOverdue,
-  taskCompletion,
+  DELIVERABLE_STATUS_LABELS,
+  DELIVERABLE_STATUS_TONE,
+  isDeliverableLate,
+  loggedProgress,
   PROJECT_STATUS_LABELS,
   TASK_STATUS_LABELS,
+  type Deliverable,
   type Milestone,
   type Project,
   type ProjectStatus,
@@ -17,12 +19,10 @@ import { ClientContractPanel } from "@/features/projects/client-contract-panel";
 import { RecruitmentFunnelPanel } from "@/features/hr/recruitment-funnel-panel";
 import { RecruitmentPlacementsPanel } from "@/features/hr/recruitment-placements-panel";
 import { RECRUITMENT_SERVICE_LINE } from "@/features/hr/use-recruitment";
-import { TimelinePanel } from "@/components/project-workspace/overview-tab";
 import { formatDate } from "@/lib/format-date";
-import { StaffSelect, useStaffOptions } from "@/features/projects/staff-picker";
+import { useStaffOptions } from "@/features/projects/staff-picker";
 import { daysLeft } from "@/features/project-workspace/workspace-calcs";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -31,34 +31,48 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { MilestonesPanel } from "@/features/projects/milestones-panel";
 
-/** Plain-language project home for HR: what's done, what's late, who the client is, what's next. */
+export type HrSection = "deliverables" | "tasks" | "milestones";
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+/** Plain-language summary of an HR project: progress, what's late, and what has been logged. */
 export function HrProjectOverview({
   project,
   tasks,
   milestones,
+  deliverables,
   canManage,
   onOpenTask,
-  onViewTasks,
+  onOpenSection,
 }: {
   project: Project;
   tasks: Task[];
   milestones: Milestone[];
+  deliverables: Deliverable[];
   canManage: boolean;
   onOpenTask: (taskId: string) => void;
-  onViewTasks: () => void;
+  onOpenSection: (section: HrSection) => void;
 }) {
   const update = useUpdateProject();
   const { nameOf } = useStaffOptions();
-  const done = tasks.filter((t) => t.status === "completed").length;
-  const pct = taskCompletion(tasks);
-  const overdue = tasks.filter((t) => isTaskOverdue(t));
+  const pct = loggedProgress(deliverables, tasks, milestones);
+  const delivered = deliverables.filter((d) => d.status === "delivered").length;
+  const tasksDone = tasks.filter((t) => t.status === "completed").length;
+  const milestonesDone = milestones.filter((m) => m.is_complete).length;
+  const lateTasks = tasks.filter((t) => isTaskOverdue(t)).length;
+  const lateDeliverables = deliverables.filter((d) => isDeliverableLate(d)).length;
+  const lateMilestones = milestones.filter((m) => !m.is_complete && m.due_date < today()).length;
+  const late = lateTasks + lateDeliverables + lateMilestones;
   const recurring = project.engagement_type === "ongoing";
   const left = recurring ? null : daysLeft(project.end_date);
   const upcoming = tasks
     .filter((t) => t.status !== "completed")
     .sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"))
+    .slice(0, 5);
+  const nextMilestones = milestones
+    .filter((m) => !m.is_complete)
+    .sort((a, b) => a.due_date.localeCompare(b.due_date))
     .slice(0, 5);
 
   return (
@@ -72,25 +86,41 @@ export function HrProjectOverview({
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary">
             <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
           </div>
-          <div className="mt-1.5 text-xs text-muted-foreground">
-            {tasks.length === 0 ? "No tasks yet" : `${done} of ${tasks.length} tasks done`}
+          <div className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
+            <div>
+              {delivered} of {deliverables.length} deliverables delivered
+            </div>
+            <div>
+              {tasksDone} of {tasks.length} tasks done
+            </div>
+            <div>
+              {milestonesDone} of {milestones.length} milestones reached
+            </div>
           </div>
         </div>
 
-        <div className={cn("ws-panel !mt-0", overdue.length > 0 && "border-destructive/40")}>
+        <div className={cn("ws-panel !mt-0", late > 0 && "border-destructive/40")}>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <AlertTriangle className="h-3.5 w-3.5" /> Overdue tasks
+            <AlertTriangle className="h-3.5 w-3.5" /> Late
           </div>
           <div
             className={cn(
               "mt-2 text-2xl font-semibold tabular-nums",
-              overdue.length > 0 && "text-destructive",
+              late > 0 && "text-destructive",
             )}
           >
-            {overdue.length}
+            {late}
           </div>
           <div className="mt-1.5 text-xs text-muted-foreground">
-            {overdue.length === 0 ? "Nothing is late" : `Oldest: ${overdue[0].title}`}
+            {late === 0
+              ? "Nothing is late"
+              : [
+                  lateDeliverables > 0 && `${lateDeliverables} deliverables`,
+                  lateTasks > 0 && `${lateTasks} tasks`,
+                  lateMilestones > 0 && `${lateMilestones} milestones`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
           </div>
         </div>
 
@@ -152,6 +182,13 @@ export function HrProjectOverview({
         </div>
       </div>
 
+      {project.description && (
+        <div className="ws-panel">
+          <h3>About this project</h3>
+          <p className="mt-1 whitespace-pre-line text-sm">{project.description}</p>
+        </div>
+      )}
+
       <ClientContractPanel project={project} canManage={canManage} />
 
       {project.service_line_code === RECRUITMENT_SERVICE_LINE && (
@@ -167,25 +204,61 @@ export function HrProjectOverview({
       )}
 
       <div className="ws-panel">
-        <div className="flex items-center justify-between gap-2">
-          <h3>Next up</h3>
-          {tasks.length > 0 && (
-            <Button size="sm" variant="ghost" onClick={onViewTasks}>
-              All tasks ({tasks.length})
-            </Button>
-          )}
-        </div>
-        {canManage && <QuickAddTask projectId={project.id} />}
+        <SummaryHeading
+          title="Deliverables"
+          viewAllLabel={`All deliverables (${deliverables.length})`}
+          show={deliverables.length > 0}
+          onViewAll={() => onOpenSection("deliverables")}
+        />
+        {deliverables.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">No deliverables logged yet.</p>
+        ) : (
+          <ul className="mt-2 divide-y rounded-lg border">
+            {deliverables.slice(0, 5).map((d) => (
+              <li
+                key={d.id}
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2.5 text-sm"
+              >
+                <span className="min-w-0 truncate font-medium">{d.title}</span>
+                <span className="flex shrink-0 items-center gap-2 text-xs">
+                  <span
+                    className={cn(
+                      "tabular-nums",
+                      isDeliverableLate(d)
+                        ? "font-semibold text-destructive"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {d.due_date ? `Due ${formatDate(d.due_date)}` : "No due date"}
+                  </span>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 font-medium",
+                      DELIVERABLE_STATUS_TONE[d.status],
+                    )}
+                  >
+                    {DELIVERABLE_STATUS_LABELS[d.status]}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="ws-panel">
+        <SummaryHeading
+          title="Next tasks"
+          viewAllLabel={`All tasks (${tasks.length})`}
+          show={tasks.length > 0}
+          onViewAll={() => onOpenSection("tasks")}
+        />
         {upcoming.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">
-            {tasks.length > 0
-              ? "All tasks are done."
-              : canManage
-                ? "No tasks yet. Add the first one above."
-                : "No tasks yet."}
+          <p className="mt-2 text-sm text-muted-foreground">
+            {tasks.length > 0 ? "All tasks are done." : "No tasks logged yet."}
           </p>
         ) : (
-          <ul className="mt-3 divide-y rounded-lg border">
+          <ul className="mt-2 divide-y rounded-lg border">
             {upcoming.map((t) => {
               const who = nameOf(t.assignee_id);
               return (
@@ -222,90 +295,64 @@ export function HrProjectOverview({
         )}
       </div>
 
-      <MilestonesPanel projectId={project.id} milestones={milestones} canManage={canManage} />
-
-      <TimelinePanel projectId={project.id} />
+      <div className="ws-panel">
+        <SummaryHeading
+          title="Next milestones"
+          viewAllLabel={`All milestones (${milestones.length})`}
+          show={milestones.length > 0}
+          onViewAll={() => onOpenSection("milestones")}
+        />
+        {nextMilestones.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            {milestones.length > 0 ? "All milestones reached." : "No milestones logged yet."}
+          </p>
+        ) : (
+          <ul className="mt-2 divide-y rounded-lg border">
+            {nextMilestones.map((m) => {
+              const isLate = m.due_date < today();
+              return (
+                <li
+                  key={m.id}
+                  className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2.5 text-sm"
+                >
+                  <span className="min-w-0 truncate font-medium">{m.title}</span>
+                  <span
+                    className={cn(
+                      "shrink-0 text-xs tabular-nums",
+                      isLate ? "font-semibold text-destructive" : "text-muted-foreground",
+                    )}
+                  >
+                    {isLate ? `Late · was due ${formatDate(m.due_date)}` : formatDate(m.due_date)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
 
-function QuickAddTask({ projectId }: { projectId: string }) {
-  const createTask = useCreateTask();
-  const [title, setTitle] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [assigneeId, setAssigneeId] = useState("");
-  const [error, setError] = useState<string>();
-  const { nameOf } = useStaffOptions();
-
+function SummaryHeading({
+  title,
+  viewAllLabel,
+  show,
+  onViewAll,
+}: {
+  title: string;
+  viewAllLabel: string;
+  show: boolean;
+  onViewAll: () => void;
+}) {
   return (
-    <form
-      noValidate
-      className="mt-3 space-y-1"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!title.trim()) {
-          setError("Type what needs doing first.");
-          return;
-        }
-        setError(undefined);
-        createTask.mutate(
-          {
-            projectId,
-            title: title.trim(),
-            dueDate: dueDate || undefined,
-            assigneeId: assigneeId || undefined,
-            priority: "medium",
-          },
-          {
-            onSuccess: () => {
-              const who = nameOf(assigneeId);
-              setTitle("");
-              setDueDate("");
-              setAssigneeId("");
-              toast.success(who ? `Task added and assigned to ${who}` : "Task added");
-            },
-            onError: (err) =>
-              toast.error(err instanceof Error ? err.message : "Failed to add task"),
-          },
-        );
-      }}
-    >
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(12rem,1fr)_10rem_12rem_auto]">
-        <Input
-          id={`quick-task-${projectId}`}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Add a task… e.g. Shortlist candidates"
-          aria-label="New task title"
-          aria-invalid={!!error}
-          aria-describedby={error ? `quick-task-${projectId}-error` : undefined}
-        />
-        <Input
-          type="date"
-          value={dueDate}
-          onChange={(e) => setDueDate(e.target.value)}
-          aria-label="Due date (optional)"
-        />
-        <StaffSelect
-          value={assigneeId}
-          onChange={setAssigneeId}
-          placeholder="Assign to (optional)"
-          ariaLabel="Assign to (optional)"
-        />
-        <Button type="submit" disabled={createTask.isPending}>
-          {createTask.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4" />
-          )}
-          <span className="ml-1">Add task</span>
+    <div className="flex items-center justify-between gap-2">
+      <h3>{title}</h3>
+      {show && (
+        <Button size="sm" variant="ghost" onClick={onViewAll}>
+          {viewAllLabel}
         </Button>
-      </div>
-      {error && (
-        <p id={`quick-task-${projectId}-error`} role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
       )}
-    </form>
+    </div>
   );
 }

@@ -210,7 +210,9 @@ function ZoneDetailPage() {
         <StatTile
           label="Its own plots (m³)"
           value={formatUnits(d.direct_household_total)}
-          hint={plural(d.active_household_meters, "active meter")}
+          hint={`${plural(d.active_household_meters, "active meter")} · ${
+            d.consumption_basis === "readings" ? "from balances" : "from purchases"
+          }${d.adjustment_total > 0 ? ` · ${formatUnits(d.adjustment_total)} known losses` : ""}`}
         />
         <StatTile
           label="Zones inside it (m³)"
