@@ -32,6 +32,7 @@ import {
   buildWaterNav,
   DEPARTMENT_CODES,
 } from "@/lib/department-nav";
+import { useProjects } from "@/features/projects/use-projects";
 import { NotificationBell } from "@/components/notification-bell";
 import { HeaderSearch } from "@/components/header-search";
 import { ViewAsBanner, ViewAsButton } from "@/components/view-as";
@@ -177,6 +178,7 @@ const CEO_NAV: NavItem[] = [
     match: ["/projects", "/water", "/it/inventory"],
     children: [
       { to: "/projects", label: "All projects", exact: true },
+      { to: "/projects/company", label: "Company projects" },
       { to: "/water", label: "Water Project" },
       { to: "/it/inventory", label: "Inventory" },
     ],
@@ -397,10 +399,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   const departmentScope =
     workspace && workspace !== "water" ? workspace : departmentScopeFor(roles);
   const hasAnyDepartment = isAdminOrCeo || DEPARTMENT_CODES.some((c) => canReadDepartment(c));
+  const companyProjectsQ = useProjects({ scope: "company", enabled: !isCeo && !!departmentScope });
+  const companyProjects = (companyProjectsQ.data ?? [])
+    .filter((p) => p.status !== "completed" && p.status !== "cancelled")
+    .map((p) => ({ id: p.id, name: p.name }));
   const visibleNav = isCeo
     ? CEO_NAV
     : departmentScope
-      ? buildDepartmentNav(departmentScope, hasRole("water"), hasRole("department_head"))
+      ? buildDepartmentNav(
+          departmentScope,
+          hasRole("water"),
+          hasRole("department_head"),
+          companyProjects,
+        )
       : workspace === "water" || home === "/water"
         ? buildWaterNav()
         : !hasAnyDepartment

@@ -186,7 +186,7 @@ export function notificationLink(row: NotificationRow): string | null {
     case "document":
       return "/documents";
     case "project":
-      return isReply ? `/projects/${id}?view=comms` : `/projects/${id}`;
+      return isReply ? `/projects/${id}?view=discussions` : `/projects/${id}`;
     case "contract":
       return `/clients/contracts/${id}`;
     case "invoice": {

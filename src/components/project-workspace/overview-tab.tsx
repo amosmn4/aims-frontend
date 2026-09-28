@@ -325,7 +325,7 @@ export function TimelinePanel({ projectId }: { projectId: string }) {
 }
 
 // IT only: which step of building a system this project is at.
-function SdlcPanel({ project, canManage }: { project: Project; canManage: boolean }) {
+export function SdlcPanel({ project, canManage }: { project: Project; canManage: boolean }) {
   const updateProject = useUpdateProject();
   const isSystemDevelopment = project.methodology === SYSTEM_DEVELOPMENT_METHODOLOGY;
 

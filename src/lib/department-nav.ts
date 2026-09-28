@@ -69,11 +69,32 @@ function reportsChildren(code: DepartmentCode, isDepartmentHead: boolean): NavCh
   ];
 }
 
+// Company projects someone is on sit under Projects, one click away; more than this adds "All".
+const MAX_COMPANY_PROJECTS_IN_MENU = 5;
+
+/** Projects: the department's own, then company projects, then each one this person is on. */
+function projectsChildren(
+  code: DepartmentCode,
+  departmentPath: string,
+  companyProjects: { id: string; name: string }[],
+): NavChild[] {
+  return [
+    { to: departmentPath, label: `${DEPARTMENT_NAMES[code]} projects`, exact: true },
+    { to: "/projects/company", label: "Company projects", exact: true },
+    ...companyProjects.slice(0, MAX_COMPANY_PROJECTS_IN_MENU).map((p, i) => ({
+      to: `/projects/${p.id}`,
+      label: p.name,
+      divider: i === 0,
+    })),
+  ];
+}
+
 /** Same seven items, same order, for every department. */
 export function buildDepartmentNav(
   code: DepartmentCode,
   hasWaterAccess = false,
   isDepartmentHead = false,
+  companyProjects: { id: string; name: string }[] = [],
 ): NavItem[] {
   const base = `/${code}`;
   const own = DOMAIN_ITEMS[code];
@@ -109,6 +130,7 @@ export function buildDepartmentNav(
         "/pipeline/projects",
         ...(code === "tender" ? [] : ["/tender"]),
       ],
+      children: projectsChildren(code, projects, companyProjects),
     },
     {
       to: requests,

@@ -73,6 +73,7 @@ import { Route as AuthenticatedReportsMineRouteImport } from './routes/_authenti
 import { Route as AuthenticatedReportsDepartmentsRouteImport } from './routes/_authenticated.reports.departments'
 import { Route as AuthenticatedProjectsMineRouteImport } from './routes/_authenticated.projects.mine'
 import { Route as AuthenticatedProjectsDepartmentRouteImport } from './routes/_authenticated.projects.department'
+import { Route as AuthenticatedProjectsCompanyRouteImport } from './routes/_authenticated.projects.company'
 import { Route as AuthenticatedProjectsProjectIdRouteImport } from './routes/_authenticated.projects.$projectId'
 import { Route as AuthenticatedPipelineTendersRouteImport } from './routes/_authenticated.pipeline.tenders'
 import { Route as AuthenticatedPipelineProjectsRouteImport } from './routes/_authenticated.pipeline.projects'
@@ -510,6 +511,12 @@ const AuthenticatedProjectsDepartmentRoute =
   AuthenticatedProjectsDepartmentRouteImport.update({
     id: '/department',
     path: '/department',
+    getParentRoute: () => AuthenticatedProjectsRoute,
+  } as any)
+const AuthenticatedProjectsCompanyRoute =
+  AuthenticatedProjectsCompanyRouteImport.update({
+    id: '/company',
+    path: '/company',
     getParentRoute: () => AuthenticatedProjectsRoute,
   } as any)
 const AuthenticatedProjectsProjectIdRoute =
@@ -1081,6 +1088,7 @@ export interface FileRoutesByFullPath {
   '/pipeline/projects': typeof AuthenticatedPipelineProjectsRoute
   '/pipeline/tenders': typeof AuthenticatedPipelineTendersRoute
   '/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
+  '/projects/company': typeof AuthenticatedProjectsCompanyRoute
   '/projects/department': typeof AuthenticatedProjectsDepartmentRoute
   '/projects/mine': typeof AuthenticatedProjectsMineRoute
   '/reports/departments': typeof AuthenticatedReportsDepartmentsRouteWithChildren
@@ -1212,6 +1220,7 @@ export interface FileRoutesByTo {
   '/pipeline/projects': typeof AuthenticatedPipelineProjectsRoute
   '/pipeline/tenders': typeof AuthenticatedPipelineTendersRoute
   '/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
+  '/projects/company': typeof AuthenticatedProjectsCompanyRoute
   '/projects/department': typeof AuthenticatedProjectsDepartmentRoute
   '/projects/mine': typeof AuthenticatedProjectsMineRoute
   '/reports/departments': typeof AuthenticatedReportsDepartmentsRouteWithChildren
@@ -1361,6 +1370,7 @@ export interface FileRoutesById {
   '/_authenticated/pipeline/projects': typeof AuthenticatedPipelineProjectsRoute
   '/_authenticated/pipeline/tenders': typeof AuthenticatedPipelineTendersRoute
   '/_authenticated/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
+  '/_authenticated/projects/company': typeof AuthenticatedProjectsCompanyRoute
   '/_authenticated/projects/department': typeof AuthenticatedProjectsDepartmentRoute
   '/_authenticated/projects/mine': typeof AuthenticatedProjectsMineRoute
   '/_authenticated/reports/departments': typeof AuthenticatedReportsDepartmentsRouteWithChildren
@@ -1510,6 +1520,7 @@ export interface FileRouteTypes {
     | '/pipeline/projects'
     | '/pipeline/tenders'
     | '/projects/$projectId'
+    | '/projects/company'
     | '/projects/department'
     | '/projects/mine'
     | '/reports/departments'
@@ -1641,6 +1652,7 @@ export interface FileRouteTypes {
     | '/pipeline/projects'
     | '/pipeline/tenders'
     | '/projects/$projectId'
+    | '/projects/company'
     | '/projects/department'
     | '/projects/mine'
     | '/reports/departments'
@@ -1789,6 +1801,7 @@ export interface FileRouteTypes {
     | '/_authenticated/pipeline/projects'
     | '/_authenticated/pipeline/tenders'
     | '/_authenticated/projects/$projectId'
+    | '/_authenticated/projects/company'
     | '/_authenticated/projects/department'
     | '/_authenticated/projects/mine'
     | '/_authenticated/reports/departments'
@@ -2305,6 +2318,13 @@ declare module '@tanstack/react-router' {
       path: '/department'
       fullPath: '/projects/department'
       preLoaderRoute: typeof AuthenticatedProjectsDepartmentRouteImport
+      parentRoute: typeof AuthenticatedProjectsRoute
+    }
+    '/_authenticated/projects/company': {
+      id: '/_authenticated/projects/company'
+      path: '/company'
+      fullPath: '/projects/company'
+      preLoaderRoute: typeof AuthenticatedProjectsCompanyRouteImport
       parentRoute: typeof AuthenticatedProjectsRoute
     }
     '/_authenticated/projects/$projectId': {
@@ -3168,6 +3188,7 @@ const AuthenticatedPipelineRouteWithChildren =
 
 interface AuthenticatedProjectsRouteChildren {
   AuthenticatedProjectsProjectIdRoute: typeof AuthenticatedProjectsProjectIdRoute
+  AuthenticatedProjectsCompanyRoute: typeof AuthenticatedProjectsCompanyRoute
   AuthenticatedProjectsDepartmentRoute: typeof AuthenticatedProjectsDepartmentRoute
   AuthenticatedProjectsMineRoute: typeof AuthenticatedProjectsMineRoute
   AuthenticatedProjectsIndexRoute: typeof AuthenticatedProjectsIndexRoute
@@ -3175,6 +3196,7 @@ interface AuthenticatedProjectsRouteChildren {
 
 const AuthenticatedProjectsRouteChildren: AuthenticatedProjectsRouteChildren = {
   AuthenticatedProjectsProjectIdRoute: AuthenticatedProjectsProjectIdRoute,
+  AuthenticatedProjectsCompanyRoute: AuthenticatedProjectsCompanyRoute,
   AuthenticatedProjectsDepartmentRoute: AuthenticatedProjectsDepartmentRoute,
   AuthenticatedProjectsMineRoute: AuthenticatedProjectsMineRoute,
   AuthenticatedProjectsIndexRoute: AuthenticatedProjectsIndexRoute,

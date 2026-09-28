@@ -48,10 +48,23 @@ function ReportPage() {
     );
   }
 
-  const backTo =
-    report.kind === "individual" && report.subjectUserId === user?.id
-      ? "/reports/mine"
-      : "/reports";
+  // A company project's report goes back to that project's Reports tab.
+  const leave = () => {
+    if (report.kind === "project" && !report.departmentId) {
+      void navigate({
+        to: "/projects/$projectId",
+        params: { projectId: report.subjectId },
+        search: { view: "reports" },
+      });
+      return;
+    }
+    void navigate({
+      to:
+        report.kind === "individual" && report.subjectUserId === user?.id
+          ? "/reports/mine"
+          : "/reports",
+    });
+  };
 
-  return <ReportEditor report={report} onLeave={() => void navigate({ to: backTo })} />;
+  return <ReportEditor report={report} onLeave={leave} />;
 }

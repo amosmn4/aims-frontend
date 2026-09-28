@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
 
-export type ReportStatus = "draft" | "submitted" | "changes_requested" | "approved";
+export type ReportStatus = "draft" | "submitted" | "changes_requested" | "approved" | "shared";
 export type ReportPeriodType = "monthly" | "quarterly" | "annual" | "other";
 export type ReportMessageKind =
   "comment" | "submitted" | "resubmitted" | "changes_requested" | "approved";
@@ -90,6 +90,7 @@ export const REPORT_STATUS_LABEL: Record<ReportStatus, string> = {
   submitted: "With the CEO",
   changes_requested: "Changes requested",
   approved: "Approved",
+  shared: "Shared with the team",
 };
 
 export const PERIOD_TYPE_LABEL: Record<ReportPeriodType, string> = {

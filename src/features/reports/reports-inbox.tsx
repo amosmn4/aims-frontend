@@ -61,7 +61,7 @@ interface InboxItem {
   summary: string | null;
   /** What the report is about, and who is expected to decide on it. */
   reportKind?: "department" | "project" | "individual";
-  decidedBy?: "ceo" | "department_head";
+  decidedBy?: "ceo" | "department_head" | "none";
   subjectName?: string | null;
 }
 
@@ -72,7 +72,7 @@ const VIEWS: { id: View; label: string; match: (r: InboxItem) => boolean }[] = [
     id: "waiting",
     label: "Waiting on you",
     // A report a department head owns is not yours to decide on.
-    match: (r) => r.status === "submitted" && r.decidedBy !== "department_head",
+    match: (r) => r.status === "submitted" && r.decidedBy === "ceo",
   },
   {
     id: "with_heads",

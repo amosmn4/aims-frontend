@@ -1,0 +1,218 @@
+import type {
+  WaterHouseholdFlagRow,
+  WaterReportSummary,
+  WaterTrendPoint,
+} from "@/features/water/use-water";
+import { WATER_BALANCE_FLAG_LABELS, WATER_METER_TYPE_LABELS } from "@/features/water/use-water";
+import { formatPeriodKey } from "@/features/water/water-ui";
+import { formatDate, formatDateTime } from "@/lib/format-date";
+import {
+  slugForFile,
+  type ReportBlock,
+  type ReportDocument,
+} from "@/features/exports/report-document";
+
+// Above this share of water lost, a figure is marked high (same line the dashboard uses).
+const NRW_LIMIT = 8;
+
+const units = (n: number) => Math.round(n).toLocaleString();
+const pct = (n: number | null) => (n === null ? "—" : `${n.toFixed(1)}%`);
+const kes = (n: number) => `KES ${Math.round(n).toLocaleString()}`;
+
+function change(curr: number, prev: number) {
+  if (prev === 0) return "—";
+  const d = ((curr - prev) / prev) * 100;
+  return Math.abs(d) < 0.5 ? "No change" : `${d > 0 ? "+" : ""}${d.toFixed(1)}%`;
+}
+
+function pointsChange(curr: number | null, prev: number | null) {
+  if (curr === null || prev === null) return "—";
+  const d = curr - prev;
+  return Math.abs(d) < 0.05 ? "No change" : `${d > 0 ? "+" : ""}${d.toFixed(1)} points`;
+}
+
+/** The monthly Water Project report, ready to save as PDF or Word. */
+export function buildWaterReportDocument({
+  summary: s,
+  trend,
+  flags,
+  preparedBy,
+}: {
+  summary: WaterReportSummary;
+  trend: WaterTrendPoint[];
+  /** Only for the current month; flags cover the last 30 days. */
+  flags: WaterHouseholdFlagRow[] | null;
+  preparedBy: string | null;
+}): ReportDocument {
+  const monthLabel = formatPeriodKey(s.month);
+  const d = s.dashboard;
+  const p = s.prev_dashboard;
+  const nrwNote = (v: number | null) =>
+    v === null ? "—" : v > NRW_LIMIT ? `${pct(v)} (high)` : pct(v);
+
+  const blocks: ReportBlock[] = [
+    { kind: "heading", text: "Key points" },
+    s.insights.length > 0
+      ? { kind: "bullets", items: s.insights }
+      : {
+          kind: "paragraph",
+          text: "Not enough data yet to draw out key points for this month.",
+          muted: true,
+        },
+
+    { kind: "heading", text: "The month in figures" },
+    {
+      kind: "table",
+      columns: ["Measure", monthLabel, "Previous month", "Change"],
+      numeric: [1, 2, 3],
+      rows: [
+        [
+          "Main meter volume (m³)",
+          units(d.main_reading_total),
+          units(p.main_reading_total),
+          change(d.main_reading_total, p.main_reading_total),
+        ],
+        [
+          "Zone bulk meters (m³)",
+          units(d.bulk_reading_total),
+          units(p.bulk_reading_total),
+          change(d.bulk_reading_total, p.bulk_reading_total),
+        ],
+        [
+          "Water paid for by households (m³)",
+          units(d.units_sold),
+          units(p.units_sold),
+          change(d.units_sold, p.units_sold),
+        ],
+        [
+          "Water lost overall (NRW)",
+          nrwNote(d.nrw_overall_pct),
+          pct(p.nrw_overall_pct),
+          pointsChange(d.nrw_overall_pct, p.nrw_overall_pct),
+        ],
+        [
+          "Lost between borehole and tank",
+          nrwNote(d.nrw_borehole_to_tank_pct),
+          pct(p.nrw_borehole_to_tank_pct),
+          pointsChange(d.nrw_borehole_to_tank_pct, p.nrw_borehole_to_tank_pct),
+        ],
+        [
+          "Lost between tank and households",
+          nrwNote(d.nrw_tank_to_network_pct),
+          pct(p.nrw_tank_to_network_pct),
+          pointsChange(d.nrw_tank_to_network_pct, p.nrw_tank_to_network_pct),
+        ],
+        ["Revenue", kes(d.revenue), kes(p.revenue), change(d.revenue, p.revenue)],
+        [
+          "Households buying water",
+          d.active_households.toLocaleString(),
+          p.active_households.toLocaleString(),
+          change(d.active_households, p.active_households),
+        ],
+      ],
+    },
+
+    { kind: "heading", text: "Water lost by zone" },
+    {
+      kind: "paragraph",
+      text: "What each zone's bulk meter measured, what its households used, and the difference.",
+      muted: true,
+    },
+    {
+      kind: "table",
+      columns: ["Zone", "Bulk meter (m³)", "Households (m³)", "Lost (m³)", "Lost %"],
+      numeric: [1, 2, 3, 4],
+      emptyText: "No zone figures for this month.",
+      rows: s.zone_loss.map((z) => [
+        z.zone_name,
+        units(z.bulk_total),
+        units(z.household_total),
+        units(z.loss_units),
+        nrwNote(z.loss_pct),
+      ]),
+    },
+
+    { kind: "heading", text: "Meters in use" },
+    {
+      kind: "table",
+      columns: ["Meter type", "In use", "Out of use", "Total"],
+      numeric: [1, 2, 3],
+      rows: (["main", "bulk", "household"] as const).map((type) => {
+        const c = d.meter_status[type];
+        return [
+          WATER_METER_TYPE_LABELS[type],
+          c.active.toLocaleString(),
+          c.inactive.toLocaleString(),
+          (c.active + c.inactive).toLocaleString(),
+        ];
+      }),
+    },
+    {
+      kind: "paragraph",
+      text: "Meters out of use are replaced or removed. Their past readings and sales still count in the months they happened.",
+      muted: true,
+    },
+
+    { kind: "heading", text: "The last six months" },
+    {
+      kind: "table",
+      columns: ["Month", "Main meter (m³)", "Zone bulk (m³)", "Households (m³)"],
+      numeric: [1, 2, 3],
+      emptyText: "No readings recorded yet.",
+      rows: trend.map((t) => [
+        formatPeriodKey(t.month),
+        units(t.main_total),
+        units(t.bulk_total),
+        units(t.household_total),
+      ]),
+    },
+  ];
+
+  if (flags) {
+    blocks.push(
+      { kind: "heading", text: "Households to check" },
+      {
+        kind: "paragraph",
+        text: "From household meter balances in the last 30 days. A flag is a reason to look, not proof.",
+        muted: true,
+      },
+      {
+        kind: "table",
+        columns: ["Meter", "Customer", "Zone", "Check", "Period", "Used per day"],
+        numeric: [5],
+        emptyText: "No household needs checking.",
+        rows: flags.map((f) => [
+          f.meter_number,
+          f.customer_name ?? "—",
+          f.zone_name ?? "—",
+          WATER_BALANCE_FLAG_LABELS[f.flag],
+          `${formatDate(f.period.from)} – ${formatDate(f.period.to)}`,
+          f.period.per_day == null ? "—" : f.period.per_day.toFixed(2),
+        ]),
+      },
+    );
+  }
+
+  blocks.push(
+    { kind: "heading", text: "Terms used" },
+    {
+      kind: "bullets",
+      items: [
+        "m³: cubic metre, 1,000 litres. One unit on a prepaid meter.",
+        `NRW (non-revenue water): water that left the borehole but was not paid for. Above ${NRW_LIMIT}% is marked high.`,
+        "Bulk meter: measures everything that goes into one zone.",
+      ],
+    },
+  );
+
+  return {
+    title: "Water Project report",
+    subtitle: `Monthly report · ${monthLabel}`,
+    meta: [
+      ...(preparedBy ? [`Prepared by ${preparedBy}`] : []),
+      `Generated ${formatDateTime(new Date())}`,
+    ],
+    blocks,
+    fileName: slugForFile(`water-report-${monthLabel}`),
+  };
+}

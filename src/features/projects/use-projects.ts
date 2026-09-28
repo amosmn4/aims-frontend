@@ -4,6 +4,15 @@ import { apiJson } from "@/lib/api-client";
 export type ProjectStatus = "planning" | "active" | "on_hold" | "completed" | "cancelled";
 export type ProjectHealth = "green" | "amber" | "red";
 export type ProjectVisibility = "department" | "restricted";
+/** "company": owned by a lead and team, not a department. */
+export type ProjectScope = "department" | "company";
+export type ProjectMemberAccess = "lead" | "member" | "viewer";
+
+export const MEMBER_ACCESS_LABELS: Record<ProjectMemberAccess, string> = {
+  lead: "Lead",
+  member: "Member",
+  viewer: "Viewer",
+};
 export type ProjectEngagementType = "one_off" | "ongoing";
 export type ExtensionAttribution = "client" | "internal" | "third_party" | "other";
 export type TimelineEntityType = "project" | "task" | "milestone" | "contract";
@@ -111,9 +120,15 @@ export type Project = {
   tender_title: string | null;
   client_request_id: string | null;
   client_request_title: string | null;
+  scope: ProjectScope;
+  /** Empty for company projects. */
   department_id: string;
   department_name: string;
   department_code: string | null;
+  lead_id: string | null;
+  lead_name: string | null;
+  /** Company projects: who is on the team and what each may do. */
+  members: { user_id: string; access: ProjectMemberAccess }[];
   status: ProjectStatus;
   methodology: string | null;
   sdlc_stage: SdlcStage | null;
@@ -277,8 +292,12 @@ type BackendProject = {
   tender?: { id: string; referenceNumber: string | null; title: string } | null;
   clientRequestId?: string | null;
   clientRequest?: { id: string; referenceNumber: string | null; title: string } | null;
-  departmentId: string;
+  scope?: ProjectScope;
+  departmentId: string | null;
   department?: { name: string; code?: string } | null;
+  leadId?: string | null;
+  lead?: { id: string; fullName: string | null } | null;
+  team?: { userId: string | null; access: ProjectMemberAccess }[];
   status: ProjectStatus;
   methodology: string | null;
   sdlcStage: SdlcStage | null;
@@ -372,9 +391,15 @@ function mapProject(p: BackendProject): Project {
     client_request_title: p.clientRequest
       ? (p.clientRequest.referenceNumber ?? p.clientRequest.title)
       : null,
-    department_id: p.departmentId,
-    department_name: p.department?.name ?? "—",
+    scope: p.scope ?? "department",
+    department_id: p.departmentId ?? "",
+    department_name: p.department?.name ?? (p.scope === "company" ? "Company project" : "—"),
     department_code: p.department?.code ?? null,
+    lead_id: p.leadId ?? null,
+    lead_name: p.lead?.fullName ?? null,
+    members: (p.team ?? [])
+      .filter((m): m is { userId: string; access: ProjectMemberAccess } => !!m.userId)
+      .map((m) => ({ user_id: m.userId, access: m.access })),
     status: p.status,
     methodology: p.methodology,
     sdlc_stage: p.sdlcStage,
@@ -471,9 +496,11 @@ export function useProjects(filters?: {
   clientId?: string;
   serviceLineId?: string;
   sharedWithMe?: boolean;
+  scope?: ProjectScope;
   enabled?: boolean;
 }) {
   const qs = toQuery({
+    scope: filters?.scope,
     departmentId: filters?.departmentId,
     status: filters?.status,
     clientId: filters?.clientId,
@@ -489,6 +516,7 @@ export function useProjects(filters?: {
       filters?.clientId,
       filters?.sharedWithMe,
       filters?.serviceLineId,
+      filters?.scope,
     ],
     queryFn: async () => (await apiJson<BackendProject[]>(`/projects${qs}`)).map(mapProject),
   });
@@ -531,6 +559,37 @@ export function useCreateProject() {
       qc.invalidateQueries({ queryKey: ["pipeline-projects"] });
     },
   });
+}
+
+/** Sets up a company project: the creator leads it, the listed people join it. */
+export function useCreateCompanyProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      name: string;
+      description?: string;
+      startDate?: string;
+      endDate?: string;
+      members: { userId: string; access: "member" | "viewer" }[];
+    }) =>
+      apiJson<{ id: string; name: string }>("/projects", {
+        method: "POST",
+        body: JSON.stringify({ ...input, scope: "company" }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
+  });
+}
+
+/** What this person may do on a company project; null when they aren't on it. */
+export function companyRole(
+  project: Pick<Project, "lead_id" | "members">,
+  userId: string | undefined,
+  isAdminOrCeo: boolean,
+): "admin" | ProjectMemberAccess | null {
+  if (isAdminOrCeo) return "admin";
+  if (!userId) return null;
+  if (project.lead_id === userId) return "lead";
+  return project.members.find((m) => m.user_id === userId)?.access ?? null;
 }
 
 export function useUpdateProject() {
