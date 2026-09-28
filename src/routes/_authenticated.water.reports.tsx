@@ -16,6 +16,7 @@ import {
 import {
   useWaterReportSummary,
   useWaterTrend,
+  useWaterHouseholdFlags,
   useWaterZoneComparison,
   useWaterAllZones,
   useWaterReadingSeries,
@@ -47,6 +48,9 @@ import { ComparisonCharts } from "@/features/water/comparison-charts";
 import { WaterTables } from "@/features/water/water-tables";
 import { NetworkDiagram } from "@/features/water/network-diagram";
 import { PageHeader } from "@/components/app-shell";
+import { DownloadReportMenu } from "@/features/exports/download-report-menu";
+import { buildWaterReportDocument } from "@/features/water/water-report-document";
+import { useAuth } from "@/lib/auth";
 import { LoadError } from "@/components/load-error";
 import { DateRangeFilter, type DateRange } from "@/components/date-range-filter";
 import { formatDateTime, formatMonth, formatWeekRange } from "@/lib/format-date";
@@ -132,6 +136,11 @@ function WaterReportsPage() {
   const windowLabel = granularity === "week" ? week.label : formatMonth(month || currentMonth());
 
   const summaryQ = useWaterReportSummary({ month });
+  const { profile } = useAuth();
+  const isThisMonth = (month || currentMonth()) === currentMonth();
+  // The downloaded report always shows six months, whatever the charts are set to.
+  const exportTrendQ = useWaterTrend({ granularity: "month", periods: 6 });
+  const flagsQ = useWaterHouseholdFlags(1);
   const trendQ = useWaterTrend({ granularity, periods: TREND_PERIODS[granularity] });
   const zoneCompQ = useWaterZoneComparison(chartWindow);
   const s = summaryQ.data;
@@ -160,16 +169,30 @@ function WaterReportsPage() {
         title="Reports"
         description="Monthly figures for the water network: volumes, revenue, water loss by zone and meter reading comparisons."
         actions={
-          <div>
-            <Label htmlFor="report-period" className="text-xs">
-              Month
-            </Label>
-            <Input
-              id="report-period"
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="h-9 w-40"
+          <div className="flex flex-wrap items-end gap-2">
+            <div>
+              <Label htmlFor="report-period" className="text-xs">
+                Month
+              </Label>
+              <Input
+                id="report-period"
+                type="month"
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="h-9 w-40"
+              />
+            </div>
+            <DownloadReportMenu
+              build={() =>
+                summaryQ.data
+                  ? buildWaterReportDocument({
+                      summary: summaryQ.data,
+                      trend: exportTrendQ.data ?? [],
+                      flags: isThisMonth ? (flagsQ.data ?? []) : null,
+                      preparedBy: profile?.fullName ?? profile?.email ?? null,
+                    })
+                  : null
+              }
             />
           </div>
         }
