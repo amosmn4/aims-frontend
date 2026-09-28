@@ -1,20 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import {
+  mainStageFromName,
   useSaveWaterMeter,
   useWaterAllZones,
   useWaterCustomers,
   useWaterMeters,
+  WATER_MAIN_STAGE_LABELS,
   WATER_METER_TYPE_LABELS,
   WATER_VENDING_SYSTEM_LABELS,
-  MAIN_METER_NAMES,
+  type WaterMainStage,
   type WaterMeterRow,
   type WaterMeterType,
   type WaterVendingSystem,
   type WaterZoneTreeNode,
 } from "@/features/water/use-water";
-import { WATER_TERMS } from "@/features/water/water-ui";
 import { FormField, RequiredNote } from "@/components/form-field";
 import { LoadError } from "@/components/load-error";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
@@ -55,9 +56,80 @@ export type MeterFormValue = Pick<
   | "is_active"
   | "vending_system"
   | "replaces_meter_id"
+> &
+  // Optional so callers built from the meter detail endpoint still type-check.
+  Partial<Pick<WaterMeterRow, "main_stage">>;
+
+type MeterErrors = Partial<
+  Record<"meterNumber" | "customer" | "name" | "mainStage" | "zone", string>
 >;
 
-type MeterErrors = Partial<Record<"meterNumber" | "customer" | "name", string>>;
+interface ZoneOption {
+  id: string;
+  name: string;
+  depth: number;
+}
+
+/** The zone tree flattened depth-first, so the picker can indent any depth. */
+function zoneTreeOptions(zones: WaterZoneTreeNode[]): ZoneOption[] {
+  const ids = new Set(zones.map((z) => z.id));
+  const byParent = new Map<string, WaterZoneTreeNode[]>();
+  for (const z of zones) {
+    const key = z.parent_zone_id && ids.has(z.parent_zone_id) ? z.parent_zone_id : "";
+    byParent.set(key, [...(byParent.get(key) ?? []), z]);
+  }
+  const out: ZoneOption[] = [];
+  const seen = new Set<string>();
+  const walk = (parent: string, depth: number) => {
+    const children = [...(byParent.get(parent) ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+    for (const z of children) {
+      // Guards a cycle in the stored parents.
+      if (seen.has(z.id)) continue;
+      seen.add(z.id);
+      out.push({ id: z.id, name: z.name, depth });
+      walk(z.id, depth + 1);
+    }
+  };
+  walk("", 0);
+  return out;
+}
+
+/** One picker for the whole zone tree; indentation carries the nesting. */
+function ZoneTreeSelect({
+  id,
+  value,
+  onChange,
+  options,
+  emptyLabel,
+  invalid,
+}: {
+  id: string;
+  value: string;
+  onChange: (zoneId: string) => void;
+  options: ZoneOption[];
+  /** Given when no zone is a valid answer — the label for that choice. */
+  emptyLabel?: string;
+  invalid?: Record<string, unknown>;
+}) {
+  return (
+    <Select
+      value={value || (emptyLabel ? NONE : undefined)}
+      onValueChange={(v) => onChange(v === NONE ? "" : v)}
+    >
+      <SelectTrigger id={id} {...invalid}>
+        <SelectValue placeholder={emptyLabel ?? "Select zone…"} />
+      </SelectTrigger>
+      <SelectContent>
+        {emptyLabel && <SelectItem value={NONE}>{emptyLabel}</SelectItem>}
+        {options.map((z) => (
+          <SelectItem key={z.id} value={z.id} style={{ paddingLeft: 8 + z.depth * 16 }}>
+            {z.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
 
 // Add ("new") or edit a meter of any type; shared by the Meters Registry and meter detail page.
 export function MeterFormDialog({
@@ -121,10 +193,10 @@ function MeterForm({
   const customersQ = useWaterCustomers();
   const allMetersQ = useWaterMeters();
 
-  const currentZoneNode = allZones.find((z) => z.id === value?.zone_id);
   const initial = {
     meterNumber: value?.meter_number ?? "",
     meterType: value?.meter_type ?? defaultType,
+    mainStage: value?.main_stage ?? mainStageFromName(value?.name) ?? ("" as WaterMainStage | ""),
     name: value?.name ?? "",
     location: value?.location ?? "",
     customerId: value?.customer_id ?? "",
@@ -133,16 +205,15 @@ function MeterForm({
     installedAt: value?.installed_at?.slice(0, 10) ?? "",
     vendingSystem: value?.vending_system ?? ("amsol" as WaterVendingSystem),
     replacesMeterId: value?.replaces_meter_id ?? "",
-    zoneId: currentZoneNode?.parent_zone_id
-      ? currentZoneNode.parent_zone_id
-      : (value?.zone_id ?? ""),
-    subzoneId: currentZoneNode?.parent_zone_id ? (value?.zone_id ?? "") : "",
+    zoneId: value?.zone_id ?? "",
     isActive: value?.is_active ?? true,
   };
 
   const [meterNumber, setMeterNumber] = useState(initial.meterNumber);
   const [meterType, setMeterType] = useState<WaterMeterType>(initial.meterType);
   const isHousehold = meterType === "household";
+  const isMain = meterType === "main";
+  const [mainStage, setMainStage] = useState<WaterMainStage | "">(initial.mainStage);
   const [name, setName] = useState(initial.name);
   const [location, setLocation] = useState(initial.location);
   const [customerMode, setCustomerMode] = useState<"existing" | "new">(
@@ -155,17 +226,25 @@ function MeterForm({
   const [vendingSystem, setVendingSystem] = useState<WaterVendingSystem>(initial.vendingSystem);
   const [replacesMeterId, setReplacesMeterId] = useState(initial.replacesMeterId);
   const [zoneId, setZoneId] = useState(initial.zoneId);
-  const [subzoneId, setSubzoneId] = useState(initial.subzoneId);
   const [isActive, setIsActive] = useState(initial.isActive);
   const [errors, setErrors] = useState<MeterErrors>({});
 
-  const replaceableMeters = (allMetersQ.data ?? []).filter((m) => m.id !== value?.id);
-  const topLevelZones = allZones.filter((z) => !z.parent_zone_id);
-  const subzoneOptions = allZones.filter((z) => z.parent_zone_id === zoneId);
+  const allMeters = useMemo(() => allMetersQ.data ?? [], [allMetersQ.data]);
+  const replaceableMeters = allMeters.filter((m) => m.id !== value?.id);
+  const zoneOptions = useMemo(() => zoneTreeOptions(allZones), [allZones]);
+
+  // Two bulk meters on one zone are added together, so flag it before a second is added.
+  const zoneAlreadyMetered =
+    !value &&
+    meterType === "bulk" &&
+    !!zoneId &&
+    allMeters.some((m) => m.meter_type === "bulk" && m.zone_id === zoneId && m.is_active);
+  const zoneName = zoneOptions.find((z) => z.id === zoneId)?.name ?? "This zone";
 
   const current = {
     meterNumber,
     meterType,
+    mainStage,
     name,
     location,
     customerId,
@@ -175,7 +254,6 @@ function MeterForm({
     vendingSystem,
     replacesMeterId,
     zoneId,
-    subzoneId,
     isActive,
   };
   const dirty = (Object.keys(initial) as (keyof typeof initial)[]).some(
@@ -196,9 +274,10 @@ function MeterForm({
       if (customerMode === "existing" && !customerId) {
         found.customer = "Choose a customer, or add a new one";
       }
-    } else if (!name.trim()) {
-      found.name =
-        meterType === "main" ? "Choose which stage this meter measures" : "Give this meter a name";
+    } else {
+      if (!name.trim()) found.name = "Give this meter a name";
+      if (isMain && !mainStage) found.mainStage = "Choose the stage this meter measures";
+      if (!isMain && !zoneId) found.zone = "Choose the zone this meter feeds";
     }
     setErrors(found);
     if (Object.values(found).some(Boolean)) return;
@@ -208,13 +287,15 @@ function MeterForm({
         id: value?.id,
         meterNumber: meterNumber.trim(),
         meterType,
+        mainStage: isMain ? (mainStage as WaterMainStage) : null,
         name: isHousehold ? undefined : name.trim(),
         location: isHousehold ? undefined : location.trim(),
         customerId: isHousehold && customerMode === "existing" ? customerId : undefined,
         customerName: isHousehold && customerMode === "new" ? customerName.trim() : undefined,
         plotNo: isHousehold ? plotNo.trim() : undefined,
         installedAt,
-        zoneId: subzoneId || zoneId,
+        // A main meter sits above every zone; keep whatever it already had.
+        zoneId: isMain ? initial.zoneId : zoneId,
         isActive,
         vendingSystem,
         replacesMeterId,
@@ -246,23 +327,16 @@ function MeterForm({
     >
       <DialogHeader>
         <DialogTitle>{value ? `Edit meter ${value.meter_number}` : "Add meter"}</DialogTitle>
-        <DialogDescription>
-          Register a main, bulk or household meter and where it sits in the network.
-        </DialogDescription>
+        <DialogDescription>Meter details and where it sits in the network.</DialogDescription>
       </DialogHeader>
       <RequiredNote />
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FormField
-            id="meter-number"
-            label="Meter number"
-            required
-            error={errors.meterNumber}
-            hint="As printed on the meter, e.g. 58000185700"
-          >
+          <FormField id="meter-number" label="Meter number" required error={errors.meterNumber}>
             <Input
               id="meter-number"
               value={meterNumber}
+              placeholder="e.g. 58000185700"
               onChange={(e) => {
                 setMeterNumber(e.target.value);
                 clearError("meterNumber");
@@ -270,7 +344,7 @@ function MeterForm({
               {...invalid("meterNumber", "meter-number")}
             />
           </FormField>
-          <FormField id="meter-type" label="Type" required hint={WATER_TERMS[meterType].body}>
+          <FormField id="meter-type" label="Meter type" required>
             <Select
               value={meterType}
               onValueChange={(v) => {
@@ -368,60 +442,49 @@ function MeterForm({
             </div>
           </>
         ) : (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {isMain && (
+              <FormField id="meter-stage" label="Stage measured" required error={errors.mainStage}>
+                <Select
+                  value={mainStage || undefined}
+                  onValueChange={(v) => {
+                    setMainStage(v as WaterMainStage);
+                    clearError("mainStage");
+                  }}
+                >
+                  <SelectTrigger id="meter-stage" {...invalid("mainStage", "meter-stage")}>
+                    <SelectValue placeholder="Select stage…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(WATER_MAIN_STAGE_LABELS).map(([stage, label]) => (
+                      <SelectItem key={stage} value={stage}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            )}
+            <FormField id="meter-name" label="Meter name" required error={errors.name}>
+              <Input
                 id="meter-name"
-                label={meterType === "main" ? "Stage measured" : "Name"}
-                required
-                error={errors.name}
-                hint={
-                  meterType === "main"
-                    ? "Borehole into the tank, or tank into the network"
-                    : undefined
-                }
-              >
-                {meterType === "main" ? (
-                  <Select
-                    value={name}
-                    onValueChange={(v) => {
-                      setName(v);
-                      clearError("name");
-                    }}
-                  >
-                    <SelectTrigger id="meter-name" {...invalid("name", "meter-name")}>
-                      <SelectValue placeholder="Select stage…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MAIN_METER_NAMES.map((n) => (
-                        <SelectItem key={n} value={n}>
-                          {n}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    id="meter-name"
-                    value={name}
-                    onChange={(e) => {
-                      setName(e.target.value);
-                      clearError("name");
-                    }}
-                    placeholder="e.g. Zone A Bulk Meter"
-                    {...invalid("name", "meter-name")}
-                  />
-                )}
-              </FormField>
-              <FormField id="meter-location" label="Location (optional)">
-                <Input
-                  id="meter-location"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="e.g. Borehole pump house"
-                />
-              </FormField>
-            </div>
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  clearError("name");
+                }}
+                placeholder={isMain ? "e.g. Main Zone Meter" : "e.g. Zone A Bulk Meter"}
+                {...invalid("name", "meter-name")}
+              />
+            </FormField>
+            <FormField id="meter-location" label="Location (optional)">
+              <Input
+                id="meter-location"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="e.g. Borehole pump house"
+              />
+            </FormField>
             <FormField id="meter-installed" label="Date of installation (optional)">
               <Input
                 id="meter-installed"
@@ -430,75 +493,37 @@ function MeterForm({
                 onChange={(e) => setInstalledAt(e.target.value)}
               />
             </FormField>
-          </>
+          </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {!isMain && (
           <FormField
             id="meter-zone"
-            label={isHousehold ? "Zone (optional)" : "Zone covered (optional)"}
+            label={isHousehold ? "Zone (optional)" : "Zone covered"}
+            required={!isHousehold}
+            error={errors.zone}
+            hint={
+              zoneAlreadyMetered ? (
+                <span className="text-warning">{zoneName} already has a bulk meter</span>
+              ) : undefined
+            }
           >
-            <Select
-              value={zoneId || NONE}
-              onValueChange={(v) => {
-                setZoneId(v === NONE ? "" : v);
-                setSubzoneId("");
+            <ZoneTreeSelect
+              id="meter-zone"
+              value={zoneId}
+              onChange={(v) => {
+                setZoneId(v);
+                clearError("zone");
               }}
-            >
-              <SelectTrigger id="meter-zone">
-                <SelectValue placeholder="Unassigned" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE}>Unassigned</SelectItem>
-                {topLevelZones.map((z) => (
-                  <SelectItem key={z.id} value={z.id}>
-                    {z.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={zoneOptions}
+              emptyLabel={isHousehold ? "On the main line" : undefined}
+              invalid={invalid("zone", "meter-zone")}
+            />
           </FormField>
-          <FormField
-            id="meter-subzone"
-            label="Sub-zone (optional)"
-            hint={zoneId && subzoneOptions.length === 0 ? "This zone has no sub-zones." : undefined}
-          >
-            <Select
-              value={subzoneId || NONE}
-              onValueChange={(v) => setSubzoneId(v === NONE ? "" : v)}
-              disabled={!zoneId || subzoneOptions.length === 0}
-            >
-              <SelectTrigger id="meter-subzone">
-                <SelectValue placeholder="Unassigned" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE}>Unassigned</SelectItem>
-                {subzoneOptions.map((z) => (
-                  <SelectItem key={z.id} value={z.id}>
-                    {z.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormField>
-        </div>
-        {!isHousehold && zoneId && (
-          <p className="text-xs text-muted-foreground -mt-2">
-            Readings from this meter are compared against{" "}
-            {subzoneId
-              ? (allZones.find((z) => z.id === subzoneId)?.name ?? "the selected sub-zone")
-              : (allZones.find((z) => z.id === zoneId)?.name ?? "the selected zone")}{" "}
-            and every sub-zone inside it.
-          </p>
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FormField
-            id="meter-vending"
-            label="Vending system"
-            required
-            hint={WATER_TERMS.vending.body}
-          >
+          <FormField id="meter-vending" label="Vending system" required>
             <Select
               value={vendingSystem}
               onValueChange={(v) => setVendingSystem(v as WaterVendingSystem)}
@@ -520,8 +545,8 @@ function MeterForm({
             label="Replaces meter (optional)"
             hint={
               replacesMeterId && replacesMeterId !== value?.replaces_meter_id
-                ? "The replaced meter will be set to Inactive when you save."
-                : "Pick the old meter if this one was fitted in its place."
+                ? "The replaced meter will be set to Inactive."
+                : undefined
             }
           >
             <Select
@@ -543,28 +568,12 @@ function MeterForm({
             </Select>
           </FormField>
         </div>
-        {isHousehold && replacesMeterId && !customerId && customerMode === "existing" && (
-          <p className="text-xs text-muted-foreground -mt-2">
-            The replaced meter's customer carries forward unless you pick a different one above.
-          </p>
-        )}
 
-        <div className="flex items-start gap-2 pt-1">
-          <Switch
-            id="meter-active"
-            checked={isActive}
-            onCheckedChange={setIsActive}
-            className="mt-0.5"
-          />
-          <div>
-            <Label htmlFor="meter-active">
-              {isActive ? "Active (in use)" : "Inactive (not in use)"}
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              Switch off when the meter is no longer in use. Its history stays, but it's left out of
-              new readings and active meter counts.
-            </p>
-          </div>
+        <div className="flex items-center gap-2 pt-1">
+          <Switch id="meter-active" checked={isActive} onCheckedChange={setIsActive} />
+          <Label htmlFor="meter-active">
+            {isActive ? "Active (in use)" : "Inactive (not in use)"}
+          </Label>
         </div>
       </div>
       <DialogFooter className="gap-2">

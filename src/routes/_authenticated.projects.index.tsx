@@ -33,6 +33,7 @@ const searchSchema = z.object({
   dept: z.string().optional().catch(undefined),
   status: z.enum(STATUSES).optional().catch(undefined),
   q: z.string().optional().catch(undefined),
+  show: z.enum(["tasks"]).optional().catch(undefined),
 });
 
 export const Route = createFileRoute("/_authenticated/projects/")({

@@ -43,6 +43,9 @@ import {
   PeriodTooltip,
   ZoneDonut,
 } from "@/features/water/water-charts";
+import { ComparisonCharts } from "@/features/water/comparison-charts";
+import { WaterTables } from "@/features/water/water-tables";
+import { NetworkDiagram } from "@/features/water/network-diagram";
 import { PageHeader } from "@/components/app-shell";
 import { LoadError } from "@/components/load-error";
 import { DateRangeFilter, type DateRange } from "@/components/date-range-filter";
@@ -574,6 +577,12 @@ function WaterReportsPage() {
           </div>
         </>
       )}
+
+      <ComparisonCharts />
+
+      <NetworkDiagram />
+
+      <WaterTables month={month} />
 
       <MeterReadingComparison />
     </div>

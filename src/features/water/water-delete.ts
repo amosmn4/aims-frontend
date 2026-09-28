@@ -66,13 +66,17 @@ export function confirmDeleteMeter(meter: {
   const history: string[] = [];
   if (meter.reading_count > 0) history.push(plural(meter.reading_count, "reading"));
   if (meter.vend_count > 0) history.push(plural(meter.vend_count, "vending record"));
-  const description =
-    history.length > 0
-      ? `Meter ${meter.meter_number} will be permanently deleted together with its ${joinWithAnd(history)}, and usage figures will be recalculated. This can't be undone. To keep its history, edit the meter and switch it to Inactive instead.`
-      : `Meter ${meter.meter_number} will be permanently deleted. This can't be undone.`;
+  // A meter with history is never deleted; it is taken out of use so reports keep it.
+  if (history.length > 0) {
+    return confirmDialog({
+      title: `Meter ${meter.meter_number} can't be deleted`,
+      description: `It has ${joinWithAnd(history)}. Open the meter and use "Take out of use" instead; its history stays in reports.`,
+      confirmLabel: "OK",
+    }).then(() => false);
+  }
   return confirmDialog({
     title: `Delete meter ${meter.meter_number}?`,
-    description,
+    description: `Meter ${meter.meter_number} will be permanently deleted. This can't be undone.`,
     confirmLabel: "Delete meter",
     destructive: true,
   });

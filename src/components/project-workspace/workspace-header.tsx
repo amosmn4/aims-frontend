@@ -1,8 +1,9 @@
 import { Lock, Repeat, Target } from "lucide-react";
-import type { Project, Task } from "@/features/projects/use-projects";
+import type { Deliverable, Milestone, Project, Task } from "@/features/projects/use-projects";
 import { HEALTH_STYLES, money } from "@/features/project-workspace/workspace-theme";
 import { computePercentComplete, daysLeft } from "@/features/project-workspace/workspace-calcs";
 import {
+  loggedProgress,
   taskCompletion,
   isTaskOverdue,
   methodologyLabel,
@@ -14,15 +15,22 @@ export function WorkspaceHeader({
   project,
   tasks,
   actualCost,
+  hrLog,
 }: {
   project: Project;
   tasks: Task[];
   actualCost: number;
+  /** HR: progress counts deliverables and milestones as well as tasks. */
+  hrLog?: { deliverables: Deliverable[]; milestones: Milestone[] };
 }) {
   // Only IT tracks hours and budget burn; everyone else counts tasks done.
   const detailed = tracksDeliveryMetrics(project.department_code);
   const health = HEALTH_STYLES[project.health];
-  const pct = detailed ? computePercentComplete(tasks) : taskCompletion(tasks);
+  const pct = hrLog
+    ? loggedProgress(hrLog.deliverables, tasks, hrLog.milestones)
+    : detailed
+      ? computePercentComplete(tasks)
+      : taskCompletion(tasks);
   const done = tasks.filter((t) => t.status === "completed").length;
   const overdue = tasks.filter((t) => isTaskOverdue(t)).length;
   const budget = project.budget ?? 0;
@@ -94,7 +102,7 @@ export function WorkspaceHeader({
             <div className="ring-label">{pct}%</div>
           </div>
           <div className="l" style={{ marginTop: 6 }}>
-            {detailed ? "Complete (by hours)" : "Tasks done"}
+            {hrLog ? "Progress" : detailed ? "Complete (by hours)" : "Tasks done"}
           </div>
         </div>
         <div className="ws-stat">
@@ -129,6 +137,15 @@ export function WorkspaceHeader({
           </>
         ) : (
           <>
+            {hrLog && (
+              <div className="ws-stat">
+                <div className="n">
+                  {hrLog.deliverables.filter((d) => d.status === "delivered").length}/
+                  {hrLog.deliverables.length}
+                </div>
+                <div className="l">Deliverables</div>
+              </div>
+            )}
             <div className="ws-stat">
               <div className="n">
                 {done}/{tasks.length}

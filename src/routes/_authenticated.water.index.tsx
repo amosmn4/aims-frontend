@@ -62,6 +62,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+import { NetworkDiagram } from "@/features/water/network-diagram";
+import { WaterBalance } from "@/features/water/water-balance";
 import { OwnWorkPanels } from "@/features/my-work/own-work-panels";
 export const Route = createFileRoute("/_authenticated/water/")({
   head: () => ({ meta: [{ title: "Water Project — Dashboard — AIMS" }] }),
@@ -148,6 +150,11 @@ function WaterDashboardPage() {
         }
       />
       {!canManage && <ViewOnlyBanner area="the Water Project" />}
+
+      <WaterBalance month={month} />
+
+      <NetworkDiagram />
+
       <OwnWorkPanels departmentCode="water" role="water" />
 
       <div className="flex flex-wrap items-end justify-between gap-3">

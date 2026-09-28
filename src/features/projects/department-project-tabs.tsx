@@ -12,6 +12,7 @@ import { PROJECT_STATUS_TONE, EngagementBadge } from "@/features/hr/hr-project-t
 import { EditProjectDialog, useDeleteProjectAction } from "@/features/projects/edit-project-dialog";
 import { useHereHref } from "@/features/projects/project-back-link";
 import { NewProjectDialog } from "@/features/projects/new-project-dialog";
+import { DepartmentTaskBoard } from "@/routes/_authenticated.projects.department";
 import { matchesQuery } from "@/components/pipeline/board-search";
 import { RowActions } from "@/components/row-actions";
 import { LoadError } from "@/components/load-error";
@@ -32,7 +33,14 @@ export type DepartmentProjectFilters = {
   dept?: string;
   status?: ProjectStatus;
   q?: string;
+  show?: "tasks";
 };
+
+function projectProgress(p: Project) {
+  const total = (p.deliverable_count ?? 0) + (p.task_count ?? 0) + (p.milestone_count ?? 0);
+  const done = (p.deliverables_done ?? 0) + (p.tasks_done ?? 0) + (p.milestones_done ?? 0);
+  return total === 0 ? null : Math.round((done / total) * 100);
+}
 
 /** Every project, one tab per department, as a simple list. */
 export function DepartmentProjectTabs({
@@ -52,6 +60,7 @@ export function DepartmentProjectTabs({
   const tab = filters.dept ?? "all";
   const status = filters.status ?? "all";
   const query = filters.q ?? "";
+  const showTasks = tab !== "all" && filters.show === "tasks";
 
   const departments = departmentsQ.data ?? [];
   const projects = projectsQ.data ?? [];
@@ -93,143 +102,197 @@ export function DepartmentProjectTabs({
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full sm:w-72">
-          <Search
-            className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            value={query}
-            onChange={(e) => onFiltersChange({ q: e.target.value || undefined })}
-            placeholder="Search project, client or service line"
-            aria-label="Search projects"
-            className="pl-7"
-          />
+      {tab !== "all" && (
+        <div className="inline-flex rounded-md border p-0.5" role="group" aria-label="Show">
+          {(
+            [
+              [undefined, "Projects"],
+              ["tasks", "Tasks"],
+            ] as const
+          ).map(([value, label]) => (
+            <Button
+              key={label}
+              size="sm"
+              variant={filters.show === value ? "secondary" : "ghost"}
+              aria-pressed={filters.show === value}
+              onClick={() => onFiltersChange({ show: value })}
+            >
+              {label}
+            </Button>
+          ))}
         </div>
-        <Select
-          value={status}
-          onValueChange={(v) =>
-            onFiltersChange({ status: v === "all" ? undefined : (v as ProjectStatus) })
-          }
-        >
-          <SelectTrigger className="w-40" aria-label="Status">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
-            {Object.entries(PROJECT_STATUS_LABELS).map(([v, label]) => (
-              <SelectItem key={v} value={v}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Link to="/pipeline/projects" className="text-xs font-medium text-primary hover:underline">
-          Board view
-        </Link>
-        <div className="ml-auto">
-          <NewProjectDialog />
-        </div>
-      </div>
+      )}
 
-      <div className="rounded-lg border bg-card overflow-x-auto">
-        {projectsQ.isLoading ? (
-          <div className="py-12 flex justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      {showTasks ? (
+        <DepartmentTaskBoard key={tab} departmentId={tab} showHeader={false} />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-72">
+              <Search
+                className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                value={query}
+                onChange={(e) => onFiltersChange({ q: e.target.value || undefined })}
+                placeholder="Search project, client or service line"
+                aria-label="Search projects"
+                className="pl-7"
+              />
+            </div>
+            <Select
+              value={status}
+              onValueChange={(v) =>
+                onFiltersChange({ status: v === "all" ? undefined : (v as ProjectStatus) })
+              }
+            >
+              <SelectTrigger className="w-40" aria-label="Status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {Object.entries(PROJECT_STATUS_LABELS).map(([v, label]) => (
+                  <SelectItem key={v} value={v}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Link
+              to="/pipeline/projects"
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Board view
+            </Link>
+            <div className="ml-auto">
+              <NewProjectDialog />
+            </div>
           </div>
-        ) : projectsQ.isError ? (
-          <LoadError
-            what="projects"
-            error={projectsQ.error}
-            onRetry={() => projectsQ.refetch()}
-            className="m-4"
-          />
-        ) : rows.length === 0 ? (
-          inTab.length > 0 ? (
-            <div className="py-12 text-center text-sm text-muted-foreground space-y-2">
-              <p>No matches</p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onFiltersChange({ q: undefined, status: undefined })}
-              >
-                Clear filters
-              </Button>
-            </div>
-          ) : (
-            <div className="py-12 text-center text-sm text-muted-foreground">
-              No projects here yet.
-            </div>
-          )
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-secondary/40 text-left text-xs text-muted-foreground">
-                <th className="px-4 py-2.5 font-medium">Project</th>
-                {tab === "all" && <th className="px-4 py-2.5 font-medium">Department</th>}
-                <th className="px-4 py-2.5 font-medium">Client</th>
-                <th className="px-4 py-2.5 font-medium">Service line</th>
-                <th className="px-4 py-2.5 font-medium">Type</th>
-                <th className="px-4 py-2.5 font-medium">Dates</th>
-                <th className="px-4 py-2.5 font-medium">Status</th>
-                <th className="w-20">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((p) => (
-                <tr key={p.id} className="border-b last:border-0 hover:bg-secondary/30">
-                  <td className="px-4 py-2.5">
-                    <Link
-                      to="/projects/$projectId"
-                      params={{ projectId: p.id }}
-                      search={{ from: here }}
-                      className="font-medium text-foreground hover:text-primary hover:underline"
-                    >
-                      {p.name}
-                    </Link>
-                  </td>
-                  {tab === "all" && (
-                    <td className="px-4 py-2.5 text-muted-foreground">{p.department_name}</td>
-                  )}
-                  <td className="px-4 py-2.5">{p.client_name ?? "—"}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">
-                    {p.service_line_name ?? "—"}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <EngagementBadge type={p.engagement_type} />
-                  </td>
-                  <td className="px-4 py-2.5 whitespace-nowrap text-xs text-muted-foreground">
-                    {formatDate(p.start_date)} → {formatDate(p.end_date)}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-xs font-medium",
-                        PROJECT_STATUS_TONE[p.status],
+
+          <div className="rounded-lg border bg-card overflow-x-auto">
+            {projectsQ.isLoading ? (
+              <div className="py-12 flex justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : projectsQ.isError ? (
+              <LoadError
+                what="projects"
+                error={projectsQ.error}
+                onRetry={() => projectsQ.refetch()}
+                className="m-4"
+              />
+            ) : rows.length === 0 ? (
+              inTab.length > 0 ? (
+                <div className="py-12 text-center text-sm text-muted-foreground space-y-2">
+                  <p>No matches</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onFiltersChange({ q: undefined, status: undefined })}
+                  >
+                    Clear filters
+                  </Button>
+                </div>
+              ) : (
+                <div className="py-12 text-center text-sm text-muted-foreground">
+                  No projects here yet.
+                </div>
+              )
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-secondary/40 text-left text-xs text-muted-foreground">
+                    <th className="px-4 py-2.5 font-medium">Project</th>
+                    {tab === "all" && <th className="px-4 py-2.5 font-medium">Department</th>}
+                    <th className="px-4 py-2.5 font-medium">Client</th>
+                    <th className="px-4 py-2.5 font-medium">Service line</th>
+                    <th className="px-4 py-2.5 font-medium">Type</th>
+                    <th className="px-4 py-2.5 font-medium">Dates</th>
+                    <th className="px-4 py-2.5 font-medium">Status</th>
+                    <th className="px-4 py-2.5 font-medium">Progress</th>
+                    <th className="w-20">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((p) => (
+                    <tr key={p.id} className="border-b last:border-0 hover:bg-secondary/30">
+                      <td className="px-4 py-2.5">
+                        <Link
+                          to="/projects/$projectId"
+                          params={{ projectId: p.id }}
+                          search={{ from: here }}
+                          className="font-medium text-foreground hover:text-primary hover:underline"
+                        >
+                          {p.name}
+                        </Link>
+                      </td>
+                      {tab === "all" && (
+                        <td className="px-4 py-2.5 text-muted-foreground">{p.department_name}</td>
                       )}
-                    >
-                      {PROJECT_STATUS_LABELS[p.status]}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2.5">
-                    {perms.canManageProject(p) && (
-                      <RowActions
-                        label={p.name}
-                        onEdit={() => setEditing(p)}
-                        onDelete={() => deleteProject(p)}
-                      />
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                      <td className="px-4 py-2.5">{p.client_name ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">
+                        {p.service_line_name ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <EngagementBadge type={p.engagement_type} />
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap text-xs text-muted-foreground">
+                        {formatDate(p.start_date)} → {formatDate(p.end_date)}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-xs font-medium",
+                            PROJECT_STATUS_TONE[p.status],
+                          )}
+                        >
+                          {PROJECT_STATUS_LABELS[p.status]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <ProgressCell project={p} />
+                      </td>
+                      <td className="px-2 py-2.5">
+                        {perms.canManageProject(p) && (
+                          <RowActions
+                            label={p.name}
+                            onEdit={() => setEditing(p)}
+                            onDelete={() => deleteProject(p)}
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
+      )}
       {editing && <EditProjectDialog project={editing} onClose={() => setEditing(null)} />}
+    </div>
+  );
+}
+
+function ProgressCell({ project }: { project: Project }) {
+  const pct = projectProgress(project);
+  if (pct == null) return <span className="text-xs text-muted-foreground">Nothing logged</span>;
+  return (
+    <div className="w-32">
+      <div className="flex items-center gap-2">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary">
+          <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="text-xs tabular-nums">{pct}%</span>
+      </div>
+      {!!project.deliverable_count && (
+        <div className="mt-0.5 text-xs text-muted-foreground">
+          {project.deliverables_done}/{project.deliverable_count} deliverables
+        </div>
+      )}
     </div>
   );
 }

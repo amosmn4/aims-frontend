@@ -46,6 +46,7 @@ export function TeamTab({
   projectId,
   canManage = false,
   detailed = false,
+  showRaci = true,
   departmentName,
   restricted = false,
 }: {
@@ -53,11 +54,12 @@ export function TeamTab({
   canManage?: boolean;
   /** IT projects: show time allocation, hours and the RACI table. */
   detailed?: boolean;
+  showRaci?: boolean;
   departmentName: string;
   restricted?: boolean;
 }) {
   const teamQ = useTeamMembers(projectId);
-  const raciQ = useRaciEntries(projectId);
+  const raciQ = useRaciEntries(showRaci ? projectId : undefined);
   const removeMember = useDeleteTeamMember(projectId);
   const [adding, setAdding] = useState(false);
   const members = teamQ.data ?? [];
@@ -191,7 +193,7 @@ export function TeamTab({
         )}
       </div>
 
-      {(detailed || raci.length > 0) && (
+      {showRaci && (detailed || raci.length > 0) && (
         <div className="ws-panel">
           <h3>
             Who does what (RACI)

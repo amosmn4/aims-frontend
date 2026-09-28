@@ -11,6 +11,7 @@ import {
   useCreateTask,
   useUpdateTask,
   useMilestones,
+  useDeliverables,
   useDeleteProject,
   tracksDeliveryMetrics,
   TASK_PRIORITY_LABELS,
@@ -32,6 +33,8 @@ import { FinancialsTab } from "@/components/project-workspace/financials-tab";
 import { CalendarTab } from "@/components/project-workspace/calendar-tab";
 import { RaidTab } from "@/components/project-workspace/raid-tab";
 import { HrProjectOverview } from "@/features/hr/hr-project-overview";
+import { DeliverablesPanel } from "@/features/projects/deliverables-panel";
+import { MilestonesPanel } from "@/features/projects/milestones-panel";
 import { EditProjectDialog } from "@/features/projects/edit-project-dialog";
 import { useProjectAccess } from "@/features/projects/use-project-sharing";
 import { ShareDialog } from "@/features/permissions/share-dialog";
@@ -42,12 +45,6 @@ import { ViewOnlyBanner } from "@/components/view-only-banner";
 import { FormField, RequiredNote } from "@/components/form-field";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { cn } from "@/lib/utils";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -78,27 +75,24 @@ const TABS = [
   ["documents", "Documents"],
 ] as const;
 
-type TabKey = (typeof TABS)[number][0];
+type TabKey = (typeof TABS)[number][0] | "deliverables" | "milestones";
 
-// HR sees the everyday tabs up front; specialist views sit under "More".
-const HR_PRIMARY_TABS: [TabKey, string][] = [
+// HR logs only what the CEO reports on: deliverables, tasks, milestones, documents, people.
+const HR_TABS: [TabKey, string][] = [
   ["overview", "Overview"],
+  ["deliverables", "Deliverables"],
   ["tasks", "Tasks"],
+  ["milestones", "Milestones"],
   ["documents", "Documents"],
-  ["comms", "Activity"],
-  ["financials", "Costs & invoices"],
   ["team", "Team"],
-];
-const HR_MORE_TABS: [TabKey, string][] = [
-  ["gantt", "Timeline"],
-  ["calendar", "Calendar"],
-  ["raid", "Risks and issues"],
 ];
 
 const searchSchema = z.object({
   view: z
     .union([
       z.literal("overview"),
+      z.literal("deliverables"),
+      z.literal("milestones"),
       z.literal("tasks"),
       z.literal("gantt"),
       z.literal("team"),
@@ -119,12 +113,13 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
 
 function ProjectDetail() {
   const { projectId } = Route.useParams();
-  const { view, from } = Route.useSearch();
+  const { view: requestedView, from } = Route.useSearch();
   const navigate = Route.useNavigate();
 
   const projectQ = useProject(projectId);
   const tasksQ = useTasks({ projectId });
   const milestonesQ = useMilestones(projectId);
+  const deliverablesQ = useDeliverables(projectId);
   const costItemsQ = useCostItems(projectId);
   const updateTask = useUpdateTask();
   const deleteProject = useDeleteProject();
@@ -171,11 +166,10 @@ function ProjectDetail() {
   const canManage = access.canEdit;
   const isHr = departmentCode === "hr";
   const detailed = tracksDeliveryMetrics(departmentCode);
-  const primaryTabs: [TabKey, string][] = isHr
-    ? HR_PRIMARY_TABS
+  const tabs: [TabKey, string][] = isHr
+    ? HR_TABS
     : TABS.map(([v, label]): [TabKey, string] => [v, label]);
-  const moreTabs = isHr ? HR_MORE_TABS : [];
-  const activeMore = moreTabs.find(([v]) => v === view);
+  const view: TabKey = tabs.some(([v]) => v === requestedView) ? requestedView : "overview";
 
   const handleStatusChange = (taskId: string, status: TaskStatus) => {
     updateTask.mutate(
@@ -236,10 +230,19 @@ function ProjectDetail() {
         <ViewOnlyBanner area="this project" action="change it, apart from tasks assigned to you" />
       )}
 
-      <WorkspaceHeader project={project} tasks={tasks} actualCost={actualCost} />
+      <WorkspaceHeader
+        project={project}
+        tasks={tasks}
+        actualCost={actualCost}
+        hrLog={
+          isHr
+            ? { deliverables: deliverablesQ.data ?? [], milestones: milestonesQ.data ?? [] }
+            : undefined
+        }
+      />
 
       <div className="ws-tabbar" role="tablist" aria-label="Project sections">
-        {primaryTabs.map(([v, label]) => (
+        {tabs.map(([v, label]) => (
           <button
             key={v}
             type="button"
@@ -251,25 +254,6 @@ function ProjectDetail() {
             {label}
           </button>
         ))}
-        {moreTabs.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn("ws-tabbtn inline-flex items-center gap-1", activeMore && "active")}
-              >
-                {activeMore ? activeMore[1] : "More"} <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {moreTabs.map(([v, label]) => (
-                <DropdownMenuItem key={v} onSelect={() => setView(v)}>
-                  {label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
       </div>
 
       <div>
@@ -278,9 +262,20 @@ function ProjectDetail() {
             project={project}
             tasks={tasks}
             milestones={milestonesQ.data ?? []}
+            deliverables={deliverablesQ.data ?? []}
             canManage={canManage}
             onOpenTask={setSelectedTaskId}
-            onViewTasks={() => setView("tasks")}
+            onOpenSection={setView}
+          />
+        )}
+        {view === "deliverables" && (
+          <DeliverablesPanel projectId={projectId} canManage={canManage} />
+        )}
+        {view === "milestones" && (
+          <MilestonesPanel
+            projectId={projectId}
+            milestones={milestonesQ.data ?? []}
+            canManage={canManage}
           />
         )}
         {view === "overview" && !isHr && (
@@ -323,6 +318,7 @@ function ProjectDetail() {
             projectId={projectId}
             canManage={canManage}
             detailed={detailed}
+            showRaci={!isHr}
             departmentName={project.department_name}
             restricted={project.visibility === "restricted"}
           />
