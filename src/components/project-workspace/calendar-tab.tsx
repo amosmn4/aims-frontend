@@ -29,7 +29,13 @@ export function CalendarTab({ tasks, milestones }: { tasks: Task[]; milestones: 
   const todayStr = today.toISOString().slice(0, 10);
   const cells: ReactNode[] = [];
   for (let i = 0; i < startOffset; i++) {
-    cells.push(<div key={`pad-${i}`} className="cal-cell" style={{ background: "transparent", border: "none" }} />);
+    cells.push(
+      <div
+        key={`pad-${i}`}
+        className="cal-cell"
+        style={{ background: "transparent", border: "none" }}
+      />,
+    );
   }
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;

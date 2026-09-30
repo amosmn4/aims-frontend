@@ -29,6 +29,9 @@ export interface FinanceReportCommentRow {
   id: string;
   report_id: string;
   author_id: string;
+  author_name: string;
+  kind: "comment" | "submitted" | "resubmitted" | "changes_requested" | "approved";
+  parent_id: string | null;
   body: string;
   created_at: string;
   updated_at: string;
@@ -78,6 +81,9 @@ type BackendComment = {
   id: string;
   reportId: string;
   authorId: string;
+  author?: { fullName: string | null; email: string } | null;
+  kind?: FinanceReportCommentRow["kind"];
+  parentId?: string | null;
   body: string;
   createdAt: string;
   updatedAt: string;
@@ -88,6 +94,9 @@ function mapComment(c: BackendComment): FinanceReportCommentRow {
     id: c.id,
     report_id: c.reportId,
     author_id: c.authorId,
+    author_name: c.author?.fullName || c.author?.email || "AIMS",
+    kind: c.kind ?? "comment",
+    parent_id: c.parentId ?? null,
     body: c.body,
     created_at: c.createdAt,
     updated_at: c.updatedAt,
@@ -191,10 +200,18 @@ export function useUpdateReportStatus() {
 export function useAddComment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ report_id, body }: { report_id: string; body: string }) =>
+    mutationFn: async ({
+      report_id,
+      body,
+      parent_id,
+    }: {
+      report_id: string;
+      body: string;
+      parent_id?: string;
+    }) =>
       apiJson(`/finance-reports/${report_id}/comments`, {
         method: "POST",
-        body: JSON.stringify({ body }),
+        body: JSON.stringify({ body, parentId: parent_id }),
       }),
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["finance-reports", vars.report_id, "comments"] });
@@ -209,5 +226,32 @@ export function useDeleteReport() {
       await apiJson(`/finance-reports/${id}`, { method: "DELETE" });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["finance-reports"] }),
+  });
+}
+
+/** Edit a draft or changes-requested report; `submit` sends it (back) to the CEO. */
+export function useUpdateFinanceReport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      title: string;
+      narrative: string;
+      snapshot?: FinanceReportSnapshot;
+      submit?: boolean;
+    }) =>
+      apiJson(`/finance-reports/${input.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: input.title,
+          narrative: input.narrative,
+          snapshot: input.snapshot,
+          submit: input.submit,
+        }),
+      }),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["finance-reports"] });
+      qc.invalidateQueries({ queryKey: ["finance-reports", vars.id] });
+    },
   });
 }

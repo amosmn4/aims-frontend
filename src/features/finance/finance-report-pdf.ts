@@ -4,9 +4,10 @@ import html2canvas from "html2canvas";
 import type { FinanceReportRow, FinanceReportCommentRow } from "./use-finance-reports";
 import { REPORT_TYPE_LABELS, STATUS_LABELS, type KpiEntry } from "./finance-report-snapshot";
 import { formatCurrency } from "./finance";
+import { formatDate, formatDateTime } from "@/lib/format-date";
 
-function fmtKpi(k: KpiEntry) {
-  if (k.format === "currency") return formatCurrency(k.value);
+function fmtKpi(k: KpiEntry, currency: string) {
+  if (k.format === "currency") return formatCurrency(k.value, currency);
   if (k.format === "percent") return `${k.value.toFixed(1)}%`;
   return k.value.toLocaleString();
 }
@@ -22,7 +23,10 @@ export async function exportFinanceReportPdf({
   comments,
   authors,
   chartElementIds,
+  currency,
 }: {
+  /** Company currency, used when an older report has none saved. */
+  currency: string;
   report: FinanceReportRow;
   comments: FinanceReportCommentRow[];
   authors: Map<string, Author>;
@@ -71,7 +75,7 @@ export async function exportFinanceReportPdf({
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.text(
-    `${REPORT_TYPE_LABELS[report.report_type]}  ·  ${report.period_start} → ${report.period_end}  ·  Status: ${STATUS_LABELS[report.status]}`,
+    `${REPORT_TYPE_LABELS[report.report_type]}  ·  ${formatDate(report.period_start)} – ${formatDate(report.period_end)}  ·  Status: ${STATUS_LABELS[report.status]}`,
     margin,
     52,
   );
@@ -80,11 +84,11 @@ export async function exportFinanceReportPdf({
   const reviewer = report.reviewed_by ? authors.get(report.reviewed_by) : null;
   const metaBits = [
     author ? `Prepared by ${author.full_name ?? author.email}` : null,
-    report.submitted_at ? `Submitted ${new Date(report.submitted_at).toLocaleDateString()}` : null,
+    report.submitted_at ? `Submitted ${formatDate(report.submitted_at)}` : null,
     reviewer && report.reviewed_at
-      ? `Reviewed by ${reviewer.full_name ?? reviewer.email} on ${new Date(report.reviewed_at).toLocaleDateString()}`
+      ? `Reviewed by ${reviewer.full_name ?? reviewer.email} on ${formatDate(report.reviewed_at)}`
       : null,
-    `Generated ${new Date().toLocaleString()}`,
+    `Generated ${formatDateTime(new Date())}`,
   ].filter(Boolean) as string[];
   body(metaBits.join("  ·  "), 9);
   y += 6;
@@ -104,6 +108,9 @@ export async function exportFinanceReportPdf({
   }
 
   const snap = report.snapshot;
+  const cur = snap.currency ?? currency;
+  const money = (v: number) => formatCurrency(v, cur);
+  body(`Amounts in ${cur}.`, 9);
 
   // --- KPIs ---
   if (snap.kpis?.length) {
@@ -111,7 +118,7 @@ export async function exportFinanceReportPdf({
     autoTable(doc, {
       startY: y,
       head: [["Metric", "Value"]],
-      body: snap.kpis.map((k) => [k.label, fmtKpi(k)]),
+      body: snap.kpis.map((k) => [k.label, fmtKpi(k, cur)]),
       styles: { fontSize: 9, cellPadding: 4 },
       headStyles: { fillColor: [8, 85, 153], textColor: 255 },
       margin: { left: margin, right: margin },
@@ -122,16 +129,16 @@ export async function exportFinanceReportPdf({
 
   // --- Income vs Expenses by service line ---
   if (snap.by_service_line?.length) {
-    heading("Income vs Expenses — by service line");
+    heading("Revenue and direct cost by service line");
     const rows = snap.by_service_line.map((l) => {
       const profit = l.total - l.cost;
       const margin = l.total > 0 ? ((profit / l.total) * 100).toFixed(1) + "%" : "—";
       return [
         l.name,
         l.recurring ? "Recurring" : "One-off",
-        formatCurrency(l.total),
-        formatCurrency(l.cost),
-        formatCurrency(profit),
+        money(l.total),
+        money(l.cost),
+        money(profit),
         margin,
       ];
     });
@@ -139,15 +146,15 @@ export async function exportFinanceReportPdf({
     const totCost = snap.by_service_line.reduce((s, l) => s + l.cost, 0);
     autoTable(doc, {
       startY: y,
-      head: [["Service line", "Type", "Income", "Expense", "Profit", "Margin"]],
+      head: [["Service line", "Type", "Revenue", "Direct cost", "Profit", "Margin"]],
       body: rows,
       foot: [
         [
           "TOTAL",
           "",
-          formatCurrency(totIncome),
-          formatCurrency(totCost),
-          formatCurrency(totIncome - totCost),
+          money(totIncome),
+          money(totCost),
+          money(totIncome - totCost),
           totIncome > 0 ? `${(((totIncome - totCost) / totIncome) * 100).toFixed(1)}%` : "—",
         ],
       ],
@@ -168,18 +175,12 @@ export async function exportFinanceReportPdf({
 
   // --- Income by client (using top debtors as client-level income snapshot) ---
   if (snap.top_debtors?.length) {
-    heading("Client outstanding balances");
+    heading("What clients still owe");
     autoTable(doc, {
       startY: y,
-      head: [["Client", "Outstanding", "Oldest overdue (days)"]],
-      body: snap.top_debtors.map((d) => [
-        d.client,
-        formatCurrency(d.outstanding),
-        `${d.oldest_days}d`,
-      ]),
-      foot: [
-        ["TOTAL", formatCurrency(snap.top_debtors.reduce((s, d) => s + d.outstanding, 0)), ""],
-      ],
+      head: [["Client", "Still owed", "Most days late"]],
+      body: snap.top_debtors.map((d) => [d.client, money(d.outstanding), `${d.oldest_days}d`]),
+      foot: [["TOTAL", money(snap.top_debtors.reduce((s, d) => s + d.outstanding, 0)), ""]],
       styles: { fontSize: 9, cellPadding: 4 },
       headStyles: { fillColor: [8, 85, 153], textColor: 255 },
       footStyles: { fillColor: [235, 240, 245], textColor: 20, fontStyle: "bold" },
@@ -192,16 +193,11 @@ export async function exportFinanceReportPdf({
 
   // --- Monthly P&L table ---
   if (snap.monthly?.length) {
-    heading("Monthly P&L");
+    heading("Profit and loss by month");
     autoTable(doc, {
       startY: y,
       head: [["Month", "Revenue", "Cost", "Profit"]],
-      body: snap.monthly.map((m) => [
-        m.label,
-        formatCurrency(m.revenue),
-        formatCurrency(m.cost),
-        formatCurrency(m.profit),
-      ]),
+      body: snap.monthly.map((m) => [m.label, money(m.revenue), money(m.cost), money(m.profit)]),
       styles: { fontSize: 9, cellPadding: 4 },
       headStyles: { fillColor: [8, 85, 153], textColor: 255 },
       columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" } },
@@ -213,11 +209,11 @@ export async function exportFinanceReportPdf({
 
   // --- Ageing table ---
   if (snap.aging?.length) {
-    heading("AR Ageing");
+    heading("Money owed to us, by days late");
     autoTable(doc, {
       startY: y,
-      head: [["Bucket", "Amount", "Invoices"]],
-      body: snap.aging.map((a) => [a.label, formatCurrency(a.amount), String(a.count)]),
+      head: [["How late", "Amount", "Invoices"]],
+      body: snap.aging.map((a) => [a.label, money(a.amount), String(a.count)]),
       styles: { fontSize: 9, cellPadding: 4 },
       headStyles: { fillColor: [8, 85, 153], textColor: 255 },
       columnStyles: { 1: { halign: "right" }, 2: { halign: "right" } },
@@ -260,7 +256,7 @@ export async function exportFinanceReportPdf({
     for (const c of comments) {
       const p = authors.get(c.author_id);
       const who = p?.full_name ?? p?.email ?? "User";
-      const when = new Date(c.created_at).toLocaleString();
+      const when = formatDateTime(c.created_at);
       ensureSpace(40);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);

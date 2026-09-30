@@ -3,8 +3,58 @@ import { apiJson } from "@/lib/api-client";
 
 export type ProjectStatus = "planning" | "active" | "on_hold" | "completed" | "cancelled";
 export type ProjectHealth = "green" | "amber" | "red";
+export type ProjectVisibility = "department" | "restricted";
+/** "company": owned by a lead and team, not a department. */
+export type ProjectScope = "department" | "company";
+export type ProjectMemberAccess = "lead" | "member" | "viewer";
+
+export const MEMBER_ACCESS_LABELS: Record<ProjectMemberAccess, string> = {
+  lead: "Lead",
+  member: "Member",
+  viewer: "Viewer",
+};
+export type ProjectEngagementType = "one_off" | "ongoing";
+export type ExtensionAttribution = "client" | "internal" | "third_party" | "other";
+export type TimelineEntityType = "project" | "task" | "milestone" | "contract";
+
+export const EXTENSION_ATTRIBUTION_LABELS: Record<ExtensionAttribution, string> = {
+  client: "Client",
+  internal: "Internal",
+  third_party: "Third party",
+  other: "Other",
+};
 export type TaskStatus = "not_started" | "in_progress" | "review" | "blocked" | "completed";
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
+export type SdlcStage =
+  "requirements" | "design" | "development" | "testing" | "deployment" | "maintenance";
+
+export const SYSTEM_DEVELOPMENT_METHODOLOGY = "system_development";
+
+/** Plain name for a project's methodology value. */
+export const methodologyLabel = (m: string | null) =>
+  m === SYSTEM_DEVELOPMENT_METHODOLOGY ? "System development" : m;
+
+/** IT projects track hours, phases and schedule/cost health; other departments don't. */
+export const tracksDeliveryMetrics = (departmentCode: string | null | undefined) =>
+  departmentCode === "it";
+
+export const SDLC_STAGES: SdlcStage[] = [
+  "requirements",
+  "design",
+  "development",
+  "testing",
+  "deployment",
+  "maintenance",
+];
+
+export const SDLC_STAGE_LABELS: Record<SdlcStage, string> = {
+  requirements: "Requirements",
+  design: "Design",
+  development: "Development",
+  testing: "Testing",
+  deployment: "Deployment",
+  maintenance: "Maintenance",
+};
 
 export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   planning: "Planning",
@@ -15,15 +65,15 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
 };
 
 export const PROJECT_HEALTH_LABELS: Record<ProjectHealth, string> = {
-  green: "On Track",
-  amber: "At Risk",
-  red: "Off Track",
+  green: "On track",
+  amber: "At risk",
+  red: "Late / off track",
 };
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  not_started: "Not Started",
-  in_progress: "In Progress",
-  review: "In Review",
+  not_started: "Not started",
+  in_progress: "In progress",
+  review: "In review",
   blocked: "Blocked",
   completed: "Completed",
 };
@@ -57,15 +107,45 @@ export type Project = {
   client_id: string | null;
   client_name: string | null;
   contract_id: string | null;
+  contract_number: string | null;
+  contract_status: string | null;
+  contract_value: number | null;
+  contract_currency: string | null;
+  contract_billing: string | null;
+  contract_end_date: string | null;
+  service_line_id: string | null;
+  service_line_code: string | null;
+  service_line_name: string | null;
+  tender_id: string | null;
+  tender_title: string | null;
+  client_request_id: string | null;
+  client_request_title: string | null;
+  scope: ProjectScope;
+  /** Empty for company projects. */
   department_id: string;
   department_name: string;
+  department_code: string | null;
+  lead_id: string | null;
+  lead_name: string | null;
+  /** Company projects: who is on the team and what each may do. */
+  members: { user_id: string; access: ProjectMemberAccess }[];
   status: ProjectStatus;
   methodology: string | null;
+  sdlc_stage: SdlcStage | null;
   health: ProjectHealth;
+  visibility: ProjectVisibility;
+  engagement_type: ProjectEngagementType;
+  created_by: string | null;
   budget: number | null;
   start_date: string | null;
   end_date: string | null;
   task_count: number | null;
+  /** Only on list rows: done vs total, for progress columns. */
+  tasks_done: number | null;
+  deliverable_count: number | null;
+  deliverables_done: number | null;
+  milestone_count: number | null;
+  milestones_done: number | null;
   created_at: string;
 };
 
@@ -100,6 +180,51 @@ export type Milestone = {
   created_at: string;
 };
 
+export type DeliverableStatus = "not_started" | "in_progress" | "delivered";
+
+export const DELIVERABLE_STATUS_LABELS: Record<DeliverableStatus, string> = {
+  not_started: "Not started",
+  in_progress: "In progress",
+  delivered: "Delivered",
+};
+
+export type Deliverable = {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string | null;
+  due_date: string | null;
+  status: DeliverableStatus;
+  delivered_at: string | null;
+  created_at: string;
+};
+
+export const DELIVERABLE_STATUS_TONE: Record<DeliverableStatus, string> = {
+  not_started: "bg-secondary text-muted-foreground",
+  in_progress: "bg-warning/15 text-warning",
+  delivered: "bg-success/15 text-success",
+};
+
+export function isDeliverableLate(d: Pick<Deliverable, "status" | "due_date">) {
+  return (
+    d.status !== "delivered" && !!d.due_date && d.due_date < new Date().toISOString().slice(0, 10)
+  );
+}
+
+/** Share of deliverables, tasks and milestones that are done. */
+export function loggedProgress(
+  deliverables: Pick<Deliverable, "status">[],
+  tasks: Pick<Task, "status">[],
+  milestones: Pick<Milestone, "is_complete">[],
+) {
+  const total = deliverables.length + tasks.length + milestones.length;
+  const done =
+    deliverables.filter((d) => d.status === "delivered").length +
+    tasks.filter((t) => t.status === "completed").length +
+    milestones.filter((m) => m.is_complete).length;
+  return total === 0 ? 0 : Math.round((done / total) * 100);
+}
+
 export type TaskComment = {
   id: string;
   task_id: string;
@@ -108,6 +233,8 @@ export type TaskComment = {
   body: string;
   created_at: string;
   updated_at: string;
+  /** The thread's first comment when this is a reply. */
+  parent_id: string | null;
 };
 
 export type ProjectFinancials =
@@ -150,15 +277,41 @@ type BackendProject = {
   clientId: string | null;
   client?: { name: string } | null;
   contractId: string | null;
-  departmentId: string;
-  department?: { name: string } | null;
+  contract?: {
+    id: string;
+    contractNumber: string;
+    status?: string;
+    value?: string | number;
+    currency?: string;
+    billingFrequency?: string;
+    endDate?: string | null;
+  } | null;
+  serviceLineId?: string | null;
+  serviceLine?: { id: string; code: string; name: string; isRecurring: boolean } | null;
+  tenderId?: string | null;
+  tender?: { id: string; referenceNumber: string | null; title: string } | null;
+  clientRequestId?: string | null;
+  clientRequest?: { id: string; referenceNumber: string | null; title: string } | null;
+  scope?: ProjectScope;
+  departmentId: string | null;
+  department?: { name: string; code?: string } | null;
+  leadId?: string | null;
+  lead?: { id: string; fullName: string | null } | null;
+  team?: { userId: string | null; access: ProjectMemberAccess }[];
   status: ProjectStatus;
   methodology: string | null;
+  sdlcStage: SdlcStage | null;
   health: ProjectHealth;
+  visibility: ProjectVisibility;
+  engagementType: ProjectEngagementType;
+  createdBy: string | null;
   budget: string | number | null;
   startDate: string | null;
   endDate: string | null;
   _count?: { tasks: number };
+  tasks?: { status: TaskStatus }[];
+  deliverables?: { status: DeliverableStatus }[];
+  milestones?: { isComplete: boolean }[];
   createdAt: string;
 };
 
@@ -193,6 +346,17 @@ type BackendMilestone = {
   createdAt: string;
 };
 
+type BackendDeliverable = {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  dueDate: string | null;
+  status: DeliverableStatus;
+  deliveredAt: string | null;
+  createdAt: string;
+};
+
 type BackendTaskComment = {
   id: string;
   taskId: string;
@@ -201,6 +365,7 @@ type BackendTaskComment = {
   body: string;
   createdAt: string;
   updatedAt: string;
+  parentId?: string | null;
 };
 
 function mapProject(p: BackendProject): Project {
@@ -211,15 +376,48 @@ function mapProject(p: BackendProject): Project {
     client_id: p.clientId,
     client_name: p.client?.name ?? null,
     contract_id: p.contractId,
-    department_id: p.departmentId,
-    department_name: p.department?.name ?? "—",
+    contract_number: p.contract?.contractNumber ?? null,
+    contract_status: p.contract?.status ?? null,
+    contract_value: p.contract?.value != null ? Number(p.contract.value) : null,
+    contract_currency: p.contract?.currency ?? null,
+    contract_billing: p.contract?.billingFrequency ?? null,
+    contract_end_date: p.contract?.endDate ? p.contract.endDate.slice(0, 10) : null,
+    service_line_id: p.serviceLineId ?? null,
+    service_line_code: p.serviceLine?.code ?? null,
+    service_line_name: p.serviceLine?.name ?? null,
+    tender_id: p.tender?.id ?? null,
+    tender_title: p.tender ? (p.tender.referenceNumber ?? p.tender.title) : null,
+    client_request_id: p.clientRequest?.id ?? null,
+    client_request_title: p.clientRequest
+      ? (p.clientRequest.referenceNumber ?? p.clientRequest.title)
+      : null,
+    scope: p.scope ?? "department",
+    department_id: p.departmentId ?? "",
+    department_name: p.department?.name ?? (p.scope === "company" ? "Company project" : "—"),
+    department_code: p.department?.code ?? null,
+    lead_id: p.leadId ?? null,
+    lead_name: p.lead?.fullName ?? null,
+    members: (p.team ?? [])
+      .filter((m): m is { userId: string; access: ProjectMemberAccess } => !!m.userId)
+      .map((m) => ({ user_id: m.userId, access: m.access })),
     status: p.status,
     methodology: p.methodology,
+    sdlc_stage: p.sdlcStage,
     health: p.health,
+    visibility: p.visibility,
+    engagement_type: p.engagementType,
+    created_by: p.createdBy,
     budget: p.budget == null ? null : Number(p.budget),
     start_date: p.startDate ? p.startDate.slice(0, 10) : null,
     end_date: p.endDate ? p.endDate.slice(0, 10) : null,
     task_count: p._count?.tasks ?? null,
+    tasks_done: p.tasks ? p.tasks.filter((t) => t.status === "completed").length : null,
+    deliverable_count: p.deliverables ? p.deliverables.length : null,
+    deliverables_done: p.deliverables
+      ? p.deliverables.filter((d) => d.status === "delivered").length
+      : null,
+    milestone_count: p.milestones ? p.milestones.length : null,
+    milestones_done: p.milestones ? p.milestones.filter((m) => m.isComplete).length : null,
     created_at: p.createdAt,
   };
 }
@@ -257,6 +455,19 @@ function mapMilestone(m: BackendMilestone): Milestone {
   };
 }
 
+function mapDeliverable(d: BackendDeliverable): Deliverable {
+  return {
+    id: d.id,
+    project_id: d.projectId,
+    title: d.title,
+    description: d.description,
+    due_date: d.dueDate ? d.dueDate.slice(0, 10) : null,
+    status: d.status,
+    delivered_at: d.deliveredAt,
+    created_at: d.createdAt,
+  };
+}
+
 function mapComment(c: BackendTaskComment): TaskComment {
   return {
     id: c.id,
@@ -266,6 +477,7 @@ function mapComment(c: BackendTaskComment): TaskComment {
     body: c.body,
     created_at: c.createdAt,
     updated_at: c.updatedAt,
+    parent_id: c.parentId ?? null,
   };
 }
 
@@ -282,14 +494,30 @@ export function useProjects(filters?: {
   departmentId?: string;
   status?: ProjectStatus;
   clientId?: string;
+  serviceLineId?: string;
+  sharedWithMe?: boolean;
+  scope?: ProjectScope;
+  enabled?: boolean;
 }) {
   const qs = toQuery({
+    scope: filters?.scope,
     departmentId: filters?.departmentId,
     status: filters?.status,
     clientId: filters?.clientId,
+    serviceLineId: filters?.serviceLineId,
+    sharedWithMe: filters?.sharedWithMe ? "true" : undefined,
   });
   return useQuery({
-    queryKey: ["projects", filters?.departmentId, filters?.status, filters?.clientId],
+    enabled: filters?.enabled ?? true,
+    queryKey: [
+      "projects",
+      filters?.departmentId,
+      filters?.status,
+      filters?.clientId,
+      filters?.sharedWithMe,
+      filters?.serviceLineId,
+      filters?.scope,
+    ],
     queryFn: async () => (await apiJson<BackendProject[]>(`/projects${qs}`)).map(mapProject),
   });
 }
@@ -311,15 +539,57 @@ export function useCreateProject() {
       clientId?: string;
       contractId?: string;
       departmentId: string;
+      serviceLineId?: string;
       status?: ProjectStatus;
       methodology?: string;
       health?: ProjectHealth;
+      visibility?: ProjectVisibility;
+      engagementType?: ProjectEngagementType;
+      memberIds?: string[];
       budget?: number;
       startDate?: string;
       endDate?: string;
-    }) => apiJson("/projects", { method: "POST", body: JSON.stringify(input) }),
+    }) =>
+      apiJson<{ id: string; name: string }>("/projects", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["pipeline-projects"] });
+    },
+  });
+}
+
+/** Sets up a company project: the creator leads it, the listed people join it. */
+export function useCreateCompanyProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      name: string;
+      description?: string;
+      startDate?: string;
+      endDate?: string;
+      members: { userId: string; access: "member" | "viewer" }[];
+    }) =>
+      apiJson<{ id: string; name: string }>("/projects", {
+        method: "POST",
+        body: JSON.stringify({ ...input, scope: "company" }),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
   });
+}
+
+/** What this person may do on a company project; null when they aren't on it. */
+export function companyRole(
+  project: Pick<Project, "lead_id" | "members">,
+  userId: string | undefined,
+  isAdminOrCeo: boolean,
+): "admin" | ProjectMemberAccess | null {
+  if (isAdminOrCeo) return "admin";
+  if (!userId) return null;
+  if (project.lead_id === userId) return "lead";
+  return project.members.find((m) => m.user_id === userId)?.access ?? null;
 }
 
 export function useUpdateProject() {
@@ -339,7 +609,11 @@ export function useDeleteProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiJson(`/projects/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["projects"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["pipeline-projects"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
   });
 }
 
@@ -350,6 +624,7 @@ export function useTasks(filters?: {
   departmentId?: string;
   assigneeId?: string;
   status?: TaskStatus;
+  enabled?: boolean;
 }) {
   const qs = toQuery({
     projectId: filters?.projectId,
@@ -358,6 +633,7 @@ export function useTasks(filters?: {
     status: filters?.status,
   });
   return useQuery({
+    enabled: filters?.enabled ?? true,
     queryKey: [
       "tasks",
       filters?.projectId,
@@ -462,6 +738,64 @@ export function useDeleteMilestone(projectId: string) {
   });
 }
 
+/* ---------- Deliverables ---------- */
+
+export function useDeliverables(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["deliverables", projectId],
+    enabled: !!projectId,
+    queryFn: async () =>
+      (await apiJson<BackendDeliverable[]>(`/projects/${projectId}/deliverables`)).map(
+        mapDeliverable,
+      ),
+  });
+}
+
+export type DeliverableInput = {
+  title?: string;
+  description?: string;
+  dueDate?: string | null;
+  status?: DeliverableStatus;
+};
+
+export function useCreateDeliverable(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DeliverableInput & { title: string }) =>
+      apiJson(`/projects/${projectId}/deliverables`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deliverables", projectId] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+export function useUpdateDeliverable(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...input }: DeliverableInput & { id: string }) =>
+      apiJson(`/projects/deliverables/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deliverables", projectId] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+export function useDeleteDeliverable(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiJson(`/projects/deliverables/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["deliverables", projectId] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
 /* ---------- Task comments ---------- */
 
 export function useTaskComments(taskId: string | undefined) {
@@ -476,8 +810,11 @@ export function useTaskComments(taskId: string | undefined) {
 export function useCreateComment(taskId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: string) =>
-      apiJson(`/tasks/${taskId}/comments`, { method: "POST", body: JSON.stringify({ body }) }),
+    mutationFn: (input: string | { body: string; parentId?: string }) =>
+      apiJson(`/tasks/${taskId}/comments`, {
+        method: "POST",
+        body: JSON.stringify(typeof input === "string" ? { body: input } : input),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["task-comments", taskId] }),
   });
 }
@@ -499,4 +836,64 @@ export function useProjectFinancials(projectId: string | undefined) {
     enabled: !!projectId,
     queryFn: () => apiJson<ProjectFinancials>(`/projects/${projectId}/financials`),
   });
+}
+
+/* ---------- Timeline extensions ---------- */
+
+export type TimelineExtension = {
+  id: string;
+  previous_date: string;
+  new_date: string;
+  reason: string;
+  attributed_to: ExtensionAttribution;
+  created_by_name: string | null;
+  created_at: string;
+};
+
+type BackendTimelineExtension = {
+  id: string;
+  previousDate: string;
+  newDate: string;
+  reason: string;
+  attributedTo: ExtensionAttribution;
+  creator?: { fullName: string | null; email: string } | null;
+  createdAt: string;
+};
+
+export function useTimelineExtensions(
+  entityType: TimelineEntityType,
+  entityId: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["timeline-extensions", entityType, entityId],
+    enabled: !!entityId,
+    queryFn: async () => {
+      const rows = await apiJson<BackendTimelineExtension[]>(
+        `/timeline-extensions?entityType=${entityType}&entityId=${entityId}`,
+      );
+      return rows.map((e): TimelineExtension => ({
+        id: e.id,
+        previous_date: e.previousDate,
+        new_date: e.newDate,
+        reason: e.reason,
+        attributed_to: e.attributedTo,
+        created_by_name: e.creator?.fullName ?? e.creator?.email ?? null,
+        created_at: e.createdAt,
+      }));
+    },
+  });
+}
+
+/** Share of tasks completed — a plain progress measure that needs no hour estimates. */
+export function taskCompletion(tasks: Pick<Task, "status">[]): number {
+  if (tasks.length === 0) return 0;
+  return Math.round((tasks.filter((t) => t.status === "completed").length / tasks.length) * 100);
+}
+
+export function isTaskOverdue(
+  task: Pick<Task, "status" | "due_date">,
+  today = new Date(),
+): boolean {
+  if (!task.due_date || task.status === "completed") return false;
+  return task.due_date < today.toISOString().slice(0, 10);
 }

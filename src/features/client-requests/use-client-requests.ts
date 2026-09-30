@@ -1,7 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
+import type { PaginatedResponse } from "@/hooks/use-pagination";
 
-export type ClientRequestStage = "new" | "assigned" | "engaging" | "proposal" | "won" | "lost" | "withdrawn";
+export type ClientRequestStage =
+  "new" | "assigned" | "engaging" | "proposal" | "won" | "lost" | "withdrawn";
 export type ClientRequestSource = "operations" | "marketing" | "referral" | "website" | "other";
 export type ClientRequestConversionType = "project" | "recurring_contract";
 export type ClientRequestActivityType = "note" | "call" | "email" | "meeting";
@@ -86,12 +88,21 @@ export interface ClientRequestRow {
   converted_project_name: string | null;
   converted_contract_id: string | null;
   converted_contract_number: string | null;
+  converted_from_lead_id: string | null;
+  converted_from_lead_name: string | null;
 }
 
 export interface ClientRequestPipelineStage {
   stage: ClientRequestStage;
+  /** How many requests currently sit in exactly this stage right now — for "needs attention". */
   count: number;
   total_value: number;
+  /** How many requests have EVER reached at least this stage (pass-through funnel: never shrinks
+   * as requests advance, only when one is deleted) — this is what the funnel chart should render,
+   * not `count`. */
+  cumulative_count: number;
+  /** cumulative_count / previous stage's cumulative_count * 100 — null for the first stage. */
+  conversion_pct: number | null;
 }
 
 export interface LostBreakdownEntry {
@@ -105,8 +116,11 @@ export interface ClientRequestActivityRow {
   type: ClientRequestActivityType;
   summary: string;
   occurred_at: string;
+  created_by_id: string | null;
   created_by_name: string | null;
   created_at: string;
+  /** The thread's first entry when this is a reply. */
+  parent_id: string | null;
 }
 
 type BackendRequest = {
@@ -141,6 +155,7 @@ type BackendRequest = {
   updatedAt: string;
   convertedProject?: { id: string; name: string } | null;
   convertedContract?: { id: string; contractNumber: string } | null;
+  convertedFromLead?: { id: string; name: string } | null;
 };
 
 function mapRequest(r: BackendRequest): ClientRequestRow {
@@ -179,6 +194,8 @@ function mapRequest(r: BackendRequest): ClientRequestRow {
     converted_project_name: r.convertedProject?.name ?? null,
     converted_contract_id: r.convertedContract?.id ?? null,
     converted_contract_number: r.convertedContract?.contractNumber ?? null,
+    converted_from_lead_id: r.convertedFromLead?.id ?? null,
+    converted_from_lead_name: r.convertedFromLead?.name ?? null,
   };
 }
 
@@ -188,7 +205,9 @@ type BackendActivity = {
   type: ClientRequestActivityType;
   summary: string;
   occurredAt: string;
+  createdBy: string | null;
   creator?: { id: string; fullName: string | null; email: string } | null;
+  parentId?: string | null;
   createdAt: string;
 };
 
@@ -199,8 +218,10 @@ function mapActivity(a: BackendActivity): ClientRequestActivityRow {
     type: a.type,
     summary: a.summary,
     occurred_at: a.occurredAt,
+    created_by_id: a.createdBy,
     created_by_name: a.creator?.fullName ?? a.creator?.email ?? null,
     created_at: a.createdAt,
+    parent_id: a.parentId ?? null,
   };
 }
 
@@ -226,10 +247,26 @@ function buildQuery(filters: object): string {
 
 /* ---------- Queries ---------- */
 
-export function useClientRequests(filters: ClientRequestFilters = {}) {
+// See useTenders' matching overload comment (use-tender.ts) — same reasoning.
+export function useClientRequests(
+  filters?: ClientRequestFilters,
+): UseQueryResult<ClientRequestRow[]>;
+export function useClientRequests(
+  filters: ClientRequestFilters,
+  pagination: { page: number; pageSize: number },
+): UseQueryResult<ClientRequestRow[] | PaginatedResponse<ClientRequestRow>>;
+export function useClientRequests(
+  filters: ClientRequestFilters = {},
+  pagination: { page?: number; pageSize?: number } = {},
+) {
   return useQuery({
-    queryKey: ["client-requests", filters],
-    queryFn: async () => (await apiJson<BackendRequest[]>(`/client-requests${buildQuery(filters)}`)).map(mapRequest),
+    queryKey: ["client-requests", filters, pagination],
+    queryFn: async () => {
+      const raw = await apiJson<BackendRequest[] | PaginatedResponse<BackendRequest>>(
+        `/client-requests${buildQuery({ ...filters, ...pagination })}`,
+      );
+      return Array.isArray(raw) ? raw.map(mapRequest) : { ...raw, data: raw.data.map(mapRequest) };
+    },
   });
 }
 
@@ -238,25 +275,51 @@ export function useClientRequest(id: string | undefined) {
     queryKey: ["client-requests", id],
     enabled: !!id,
     queryFn: async () => mapRequest(await apiJson<BackendRequest>(`/client-requests/${id}`)),
+    // A missing or forbidden record won't appear on retry.
+    retry: (count, err) =>
+      ![403, 404].includes((err as { status?: number }).status ?? 0) && count < 3,
   });
 }
 
 export function useClientRequestPipelineSummary(
-  filters: Pick<ClientRequestFilters, "departmentId" | "serviceLineId" | "dateFrom" | "dateTo"> = {},
+  filters: Pick<
+    ClientRequestFilters,
+    "departmentId" | "serviceLineId" | "dateFrom" | "dateTo"
+  > = {},
 ) {
   return useQuery({
     queryKey: ["client-requests", "pipeline-summary", filters],
-    queryFn: async () =>
-      apiJson<ClientRequestPipelineStage[]>(`/client-requests/pipeline-summary${buildQuery(filters)}`),
+    queryFn: async () => {
+      const raw = await apiJson<
+        {
+          stage: ClientRequestStage;
+          count: number;
+          totalValue: number;
+          cumulativeCount: number;
+          conversionPct: number | null;
+        }[]
+      >(`/client-requests/pipeline-summary${buildQuery(filters)}`);
+      return raw.map((r): ClientRequestPipelineStage => ({
+        stage: r.stage,
+        count: r.count,
+        total_value: r.totalValue,
+        cumulative_count: r.cumulativeCount,
+        conversion_pct: r.conversionPct,
+      }));
+    },
   });
 }
 
 export function useLostBreakdown(
-  filters: Pick<ClientRequestFilters, "departmentId" | "serviceLineId" | "dateFrom" | "dateTo"> = {},
+  filters: Pick<
+    ClientRequestFilters,
+    "departmentId" | "serviceLineId" | "dateFrom" | "dateTo"
+  > = {},
 ) {
   return useQuery({
     queryKey: ["client-requests", "lost-breakdown", filters],
-    queryFn: async () => apiJson<LostBreakdownEntry[]>(`/client-requests/lost-breakdown${buildQuery(filters)}`),
+    queryFn: async () =>
+      apiJson<LostBreakdownEntry[]>(`/client-requests/lost-breakdown${buildQuery(filters)}`),
   });
 }
 
@@ -269,23 +332,30 @@ export interface TimeInStageEntry {
 }
 
 export function useClientRequestTimeInStage(
-  filters: Pick<ClientRequestFilters, "departmentId" | "serviceLineId" | "dateFrom" | "dateTo"> = {},
+  filters: Pick<
+    ClientRequestFilters,
+    "departmentId" | "serviceLineId" | "dateFrom" | "dateTo"
+  > = {},
 ) {
   return useQuery({
     queryKey: ["client-requests", "time-in-stage", filters],
     queryFn: async () => {
       const raw = await apiJson<
-        { stage: "new" | "assigned" | "engaging" | "proposal"; avgDays: number | null; sampleSize: number; stuckCount: number; oldestStuck: { id: string; title: string; days: number } | null }[]
+        {
+          stage: "new" | "assigned" | "engaging" | "proposal";
+          avgDays: number | null;
+          sampleSize: number;
+          stuckCount: number;
+          oldestStuck: { id: string; title: string; days: number } | null;
+        }[]
       >(`/client-requests/time-in-stage${buildQuery(filters)}`);
-      return raw.map(
-        (r): TimeInStageEntry => ({
-          stage: r.stage,
-          avg_days: r.avgDays,
-          sample_size: r.sampleSize,
-          stuck_count: r.stuckCount,
-          oldest_stuck: r.oldestStuck,
-        }),
-      );
+      return raw.map((r): TimeInStageEntry => ({
+        stage: r.stage,
+        avg_days: r.avgDays,
+        sample_size: r.sampleSize,
+        stuck_count: r.stuckCount,
+        oldest_stuck: r.oldestStuck,
+      }));
     },
   });
 }
@@ -295,7 +365,9 @@ export function useClientRequestActivities(requestId: string | undefined) {
     queryKey: ["client-requests", requestId, "activities"],
     enabled: !!requestId,
     queryFn: async () =>
-      (await apiJson<BackendActivity[]>(`/client-requests/${requestId}/activities`)).map(mapActivity),
+      (await apiJson<BackendActivity[]>(`/client-requests/${requestId}/activities`)).map(
+        mapActivity,
+      ),
   });
 }
 
@@ -304,24 +376,33 @@ export function useClientRequestActivities(requestId: string | undefined) {
 export function useSaveClientRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (
-      input: Partial<ClientRequestRow> & { title: string },
-    ) => {
+    mutationFn: async (input: Partial<ClientRequestRow> & { title: string }) => {
+      // On edit, a field passed as empty is sent as null so it clears; omitted fields stay untouched.
+      const field = <K extends keyof ClientRequestRow>(key: K) => {
+        const v = input[key];
+        if (v !== undefined && v !== null && v !== "") return v;
+        return input.id && key in input ? null : undefined;
+      };
       const body = {
         title: input.title,
-        description: input.description || undefined,
-        clientId: input.client_id || undefined,
-        prospectClientName: input.prospect_client_name || undefined,
-        contactName: input.contact_name || undefined,
-        contactEmail: input.contact_email || undefined,
-        contactPhone: input.contact_phone || undefined,
+        description: field("description"),
+        clientId: field("client_id"),
+        prospectClientName: field("prospect_client_name"),
+        contactName: field("contact_name"),
+        contactEmail: field("contact_email"),
+        contactPhone: field("contact_phone"),
         source: input.source || undefined,
-        serviceLineId: input.service_line_id || undefined,
-        estimatedValue: input.estimated_value ?? undefined,
+        serviceLineId: field("service_line_id"),
+        estimatedValue: field("estimated_value"),
         currency: input.currency || undefined,
+        departmentId: field("department_id"),
+        assignedToId: field("assigned_to_id"),
       };
       if (input.id) {
-        await apiJson(`/client-requests/${input.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        await apiJson(`/client-requests/${input.id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        });
         return input.id;
       }
       const created = await apiJson<BackendRequest>("/client-requests", {
@@ -341,7 +422,10 @@ export function useRouteClientRequest() {
       return mapRequest(
         await apiJson<BackendRequest>(`/client-requests/${input.id}/route`, {
           method: "PATCH",
-          body: JSON.stringify({ departmentId: input.department_id, assignedToId: input.assigned_to_id }),
+          body: JSON.stringify({
+            departmentId: input.department_id,
+            assignedToId: input.assigned_to_id,
+          }),
         }),
       );
     },
@@ -377,14 +461,25 @@ export function useDeleteClientRequest() {
 export function useConvertToProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { requestId: string; name?: string; clientId?: string; startDate?: string }) => {
+    mutationFn: async (input: {
+      requestId: string;
+      name?: string;
+      clientId?: string;
+      startDate?: string;
+    }) => {
       const { requestId, ...body } = input;
-      return apiJson(`/client-requests/${requestId}/convert-to-project`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      return apiJson<{ id: string; name: string }>(
+        `/client-requests/${requestId}/convert-to-project`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      );
     },
-    onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ["client-requests", vars.requestId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client-requests"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
   });
 }
 
@@ -403,25 +498,40 @@ export function useConvertClientRequestToContract() {
       notes?: string;
     }) => {
       const { requestId, ...body } = input;
-      return apiJson(`/client-requests/${requestId}/convert-to-contract`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      return apiJson<{ id: string; contractNumber: string }>(
+        `/client-requests/${requestId}/convert-to-contract`,
+        { method: "POST", body: JSON.stringify(body) },
+      );
     },
-    onSuccess: (_d, vars) => qc.invalidateQueries({ queryKey: ["client-requests", vars.requestId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client-requests"] });
+      qc.invalidateQueries({ queryKey: ["contracts"] });
+    },
   });
 }
 
 export function useLogActivity(requestId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { type?: ClientRequestActivityType; summary: string; occurred_at?: string }) => {
+    mutationFn: async (input: {
+      type?: ClientRequestActivityType;
+      summary: string;
+      occurred_at?: string;
+      /** Replying: the entry being replied to. */
+      parent_id?: string;
+    }) => {
       await apiJson(`/client-requests/${requestId}/activities`, {
         method: "POST",
-        body: JSON.stringify({ type: input.type, summary: input.summary, occurredAt: input.occurred_at }),
+        body: JSON.stringify({
+          type: input.type,
+          summary: input.summary,
+          occurredAt: input.occurred_at,
+          parentId: input.parent_id,
+        }),
       });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["client-requests", requestId, "activities"] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["client-requests", requestId, "activities"] }),
   });
 }
 
@@ -431,6 +541,7 @@ export function useDeleteActivity(requestId: string) {
     mutationFn: async (activityId: string) => {
       await apiJson(`/client-requests/activities/${activityId}`, { method: "DELETE" });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["client-requests", requestId, "activities"] }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["client-requests", requestId, "activities"] }),
   });
 }

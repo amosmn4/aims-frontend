@@ -39,7 +39,8 @@ export function computeEvm(opts: {
   let elapsedFrac = 0;
   if (startDate && endDate) {
     const total = daysBetween(startDate, endDate);
-    elapsedFrac = total > 0 ? Math.max(0, Math.min(1, daysBetween(startDate, new Date()) / total)) : 0;
+    elapsedFrac =
+      total > 0 ? Math.max(0, Math.min(1, daysBetween(startDate, new Date()) / total)) : 0;
   }
   const pv = budget * elapsedFrac;
   const ev = (budget * percentComplete) / 100;
