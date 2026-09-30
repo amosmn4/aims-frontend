@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Plus, Search } from "lucide-react";
 import {
@@ -11,6 +11,10 @@ import {
   useUpdateWaterZone,
   useDeleteWaterZone,
   useCanManageWater,
+  WATER_VERDICT_LABELS,
+  WATER_VERDICT_TONES,
+  type WaterVerdict,
+  type WaterZoneComparisonRow,
   type WaterZoneRow,
 } from "@/features/water/use-water";
 import { currentMonth, orderZoneTree, zoneIndent } from "@/features/water/zone-tree";
@@ -19,6 +23,7 @@ import { ListEmpty, ListNoMatches } from "@/features/water/water-ui";
 import { RowActions } from "@/components/row-actions";
 import { confirmDeleteZone, deleteErrorToast } from "@/features/water/water-delete";
 import { PageHeader } from "@/components/app-shell";
+import { formatDate } from "@/lib/format-date";
 import { FormField, RequiredNote } from "@/components/form-field";
 import { LoadError } from "@/components/load-error";
 import { ViewOnlyBanner } from "@/components/view-only-banner";
@@ -58,11 +63,51 @@ export const Route = createFileRoute("/_authenticated/water/zones")({
 
 const NONE = "__none__";
 
-function lossTone(pct: number | null): string {
-  if (pct === null) return "text-muted-foreground";
-  if (pct >= 15) return "text-destructive";
-  if (pct >= 5) return "text-warning";
-  return "text-foreground";
+/** Loss for a whole zone or the zone only. Water bought ahead of use is never shown as a loss. */
+function LossCell({
+  stats,
+  units,
+  pct,
+  verdict,
+}: {
+  stats: WaterZoneComparisonRow | undefined;
+  units: number;
+  pct: number | null;
+  verdict: WaterVerdict;
+}) {
+  const base = "text-right text-xs tabular-nums";
+  if (!stats?.has_bulk_meter) {
+    return <TableCell className={`${base} text-muted-foreground`}>Not measured</TableCell>;
+  }
+  if (verdict === "not_measured") {
+    return (
+      <TableCell className={`${base} text-muted-foreground`}>
+        Not read
+        <span className="block">Needs two readings</span>
+      </TableCell>
+    );
+  }
+  if (verdict === "bought_ahead" || verdict === "over_read") {
+    return (
+      <TableCell className={`${base} ${WATER_VERDICT_TONES[verdict]}`}>
+        None
+        <span className="block">
+          {verdict === "bought_ahead"
+            ? `${formatUnits(-units)} m³ bought ahead`
+            : `${formatUnits(-units)} m³ over, check readings`}
+        </span>
+      </TableCell>
+    );
+  }
+  return (
+    <TableCell
+      className={`${base} ${verdict === "within_limit" ? "" : WATER_VERDICT_TONES[verdict]}`}
+    >
+      {formatUnits(units)}
+      {pct !== null && ` · ${pct.toFixed(1)}%`}
+      <span className="block">{WATER_VERDICT_LABELS[verdict]}</span>
+    </TableCell>
+  );
 }
 
 function indentLabel(name: string, depth: number): string {
@@ -89,17 +134,11 @@ function WaterZonesPage() {
   const meters = useMemo(() => metersQ.data ?? [], [metersQ.data]);
   const comparison = useMemo(() => comparisonQ.data ?? [], [comparisonQ.data]);
 
-  const metersByZone = useMemo(() => {
-    const map = new Map<string, { bulk: string[]; households: number; active: number }>();
+  const bulkByZone = useMemo(() => {
+    const map = new Map<string, string[]>();
     for (const m of meters) {
-      if (!m.zone_id) continue;
-      const entry = map.get(m.zone_id) ?? { bulk: [], households: 0, active: 0 };
-      if (m.meter_type === "bulk") entry.bulk.push(m.meter_number);
-      if (m.meter_type === "household") {
-        entry.households += 1;
-        if (m.is_active) entry.active += 1;
-      }
-      map.set(m.zone_id, entry);
+      if (!m.zone_id || m.meter_type !== "bulk") continue;
+      map.set(m.zone_id, [...(map.get(m.zone_id) ?? []), m.meter_number]);
     }
     return map;
   }, [meters]);
@@ -109,7 +148,6 @@ function WaterZonesPage() {
     [comparison],
   );
   const mainLine = comparison.find((c) => c.zone_id === null);
-  const mainLineMeters = meters.filter((m) => !m.zone_id && m.meter_type === "household").length;
 
   // A match keeps its ancestors on screen, so the tree never loses its shape.
   const rows = useMemo(() => {
@@ -201,8 +239,8 @@ function WaterZonesPage() {
                 <TableRow>
                   <TableHead>Zone</TableHead>
                   <TableHead>Bulk meter</TableHead>
-                  <TableHead className="text-right">Household meters</TableHead>
-                  <TableHead className="text-right">Bulk reading (m³)</TableHead>
+                  <TableHead className="text-right">Meters in use</TableHead>
+                  <TableHead className="text-right">Through the meter (m³)</TableHead>
                   <TableHead className="text-right">Plots used (m³)</TableHead>
                   <TableHead className="text-right">Loss</TableHead>
                   {canManage && (
@@ -214,89 +252,123 @@ function WaterZonesPage() {
               </TableHeader>
               <TableBody>
                 {rows.map((z) => {
-                  const zoneMeters = metersByZone.get(z.id);
+                  const bulkMeters = bulkByZone.get(z.id) ?? [];
                   const stats = statsByZone.get(z.id);
-                  const hasBulk = (zoneMeters?.bulk.length ?? 0) > 0;
+                  const hasBulk = bulkMeters.length > 0;
+                  // A zone with zones inside it is shown twice: all of it, then itself only.
+                  const split = !!stats && (stats.has_sub_zones || stats.is_estate);
+                  const measured = hasBulk && !!stats?.bulk_measured;
+                  const num = "text-right text-xs tabular-nums";
                   return (
-                    <TableRow key={z.id}>
-                      <TableCell style={{ paddingLeft: 12 + zoneIndent(z.depth) }}>
-                        <Link
-                          to="/water/zones/$zoneId"
-                          params={{ zoneId: z.id }}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          {z.depth > 0 && (
+                    <Fragment key={z.id}>
+                      <TableRow>
+                        <TableCell style={{ paddingLeft: 12 + zoneIndent(z.depth) }}>
+                          <Link
+                            to="/water/zones/$zoneId"
+                            params={{ zoneId: z.id }}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {z.depth > 0 && (
+                              <span className="text-muted-foreground mr-1" aria-hidden="true">
+                                ↳
+                              </span>
+                            )}
+                            {z.name}
+                          </Link>
+                          {split && (
+                            <span className="block text-xs text-muted-foreground">
+                              {stats.is_estate ? "Whole estate" : "With the zones inside it"}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {hasBulk ? (
+                            bulkMeters.join(", ")
+                          ) : (
+                            <Badge variant="secondary" className="font-sans text-warning">
+                              No bulk meter
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className={num}>
+                          {(stats?.whole_meters ?? 0).toLocaleString()}
+                        </TableCell>
+                        <TableCell className={num}>
+                          {!hasBulk ? "—" : measured ? formatUnits(stats.bulk_total) : "Not read"}
+                          {measured && stats.bulk_from && stats.bulk_to && (
+                            <span className="block text-muted-foreground">
+                              {formatDate(stats.bulk_from)} – {formatDate(stats.bulk_to)}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className={num}>
+                          {formatUnits(stats?.whole_household_total ?? 0)}
+                        </TableCell>
+                        <LossCell
+                          stats={stats}
+                          units={stats?.whole_loss_units ?? 0}
+                          pct={stats?.whole_loss_pct ?? null}
+                          verdict={stats?.whole_verdict ?? "not_measured"}
+                        />
+                        {canManage && (
+                          <TableCell>
+                            <RowActions
+                              label={`zone ${z.name}`}
+                              onEdit={() => setEditing(z)}
+                              onDelete={() => handleDelete(z)}
+                            />
+                          </TableCell>
+                        )}
+                      </TableRow>
+                      {split && !term && (
+                        <TableRow className="bg-muted/30">
+                          <TableCell style={{ paddingLeft: 12 + zoneIndent(z.depth + 1) }}>
                             <span className="text-muted-foreground mr-1" aria-hidden="true">
                               ↳
                             </span>
-                          )}
-                          {z.name}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">
-                        {hasBulk ? (
-                          zoneMeters?.bulk.join(", ")
-                        ) : (
-                          <Badge variant="secondary" className="font-sans text-warning">
-                            No bulk meter
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">
-                        {zoneMeters?.households ?? 0}
-                        {!!zoneMeters && zoneMeters.households > zoneMeters.active && (
-                          <span className="block text-muted-foreground">
-                            {zoneMeters.households - zoneMeters.active} inactive
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">
-                        {hasBulk ? formatUnits(stats?.bulk_total ?? 0) : "—"}
-                        {hasBulk && z.child_count > 0 && (
-                          <span className="block text-muted-foreground">incl. sub-zones</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">
-                        {formatUnits(stats?.household_total ?? 0)}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right text-xs tabular-nums ${
-                          hasBulk ? lossTone(stats?.loss_pct ?? null) : "text-muted-foreground"
-                        }`}
-                      >
-                        {hasBulk && stats ? (
-                          <>
-                            {formatUnits(stats.loss_units)}
-                            <span className="block">
-                              {stats.loss_pct === null ? "—" : `${stats.loss_pct.toFixed(1)}%`}
+                            <span className="font-medium">{z.name} only</span>
+                            <span className="block text-xs text-muted-foreground">
+                              {stats.is_estate
+                                ? "On the main line, in no inner zone"
+                                : "Not in a zone inside it"}
                             </span>
-                          </>
-                        ) : (
-                          "Not measured"
-                        )}
-                      </TableCell>
-                      {canManage && (
-                        <TableCell>
-                          <RowActions
-                            label={`zone ${z.name}`}
-                            onEdit={() => setEditing(z)}
-                            onDelete={() => handleDelete(z)}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                          <TableCell className={num}>{stats.own_meters.toLocaleString()}</TableCell>
+                          <TableCell className={num}>
+                            {measured ? formatUnits(stats.own_passed) : "—"}
+                            {measured && stats.child_zones_bulk_total > 0 && (
+                              <span className="block text-muted-foreground">
+                                {formatUnits(stats.bulk_total)} −{" "}
+                                {formatUnits(stats.child_zones_bulk_total)} inside
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className={num}>
+                            {formatUnits(stats.household_total)}
+                          </TableCell>
+                          <LossCell
+                            stats={stats}
+                            units={stats.loss_units}
+                            pct={stats.loss_pct}
+                            verdict={stats.verdict}
                           />
-                        </TableCell>
+                          {canManage && <TableCell />}
+                        </TableRow>
                       )}
-                    </TableRow>
+                    </Fragment>
                   );
                 })}
-                {!term && (mainLine || mainLineMeters > 0) && (
+                {!term && mainLine && (
                   <TableRow className="bg-muted/30">
                     <TableCell className="font-medium">On the main line</TableCell>
                     <TableCell className="text-xs text-muted-foreground">No zone</TableCell>
                     <TableCell className="text-right text-xs tabular-nums">
-                      {mainLineMeters}
+                      {mainLine.own_meters.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-right text-xs tabular-nums">—</TableCell>
                     <TableCell className="text-right text-xs tabular-nums">
-                      {formatUnits(mainLine?.household_total ?? 0)}
+                      {formatUnits(mainLine.household_total)}
                     </TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">
                       Not measured

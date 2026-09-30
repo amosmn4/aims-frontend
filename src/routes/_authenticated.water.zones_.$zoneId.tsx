@@ -41,6 +41,7 @@ import { ListEmpty } from "@/features/water/water-ui";
 import { RowActions } from "@/components/row-actions";
 import { confirmDeleteMeter, deleteErrorToast } from "@/features/water/water-delete";
 import { SectionHeading } from "@/components/section-heading";
+import { formatDate } from "@/lib/format-date";
 import { StatTile } from "@/features/finance/stat-tile";
 import { LoadError } from "@/components/load-error";
 import { ViewOnlyBanner } from "@/components/view-only-banner";
@@ -102,9 +103,14 @@ function ZoneDetailPage() {
 
   const usageQ = useWaterUsageRecords({ zoneId, ...monthWindow(month || currentMonth()) });
 
+  // The estate zone also holds the main-line meters, which have no zone of their own.
+  const isEstate = detailQ.data?.is_estate ?? false;
   const zoneMeters = useMemo(
-    () => (metersQ.data ?? []).filter((m) => m.zone_id === zoneId),
-    [metersQ.data, zoneId],
+    () =>
+      (metersQ.data ?? []).filter(
+        (m) => m.zone_id === zoneId || (isEstate && !m.zone_id && m.meter_type === "household"),
+      ),
+    [metersQ.data, zoneId, isEstate],
   );
   const bulkMeters = zoneMeters.filter((m) => m.meter_type === "bulk");
   const householdMeters = zoneMeters.filter((m) => m.meter_type === "household");
@@ -158,6 +164,9 @@ function ZoneDetailPage() {
     });
   };
 
+  // More bought than the bulk meter passed is credit on the meters, not a loss.
+  const boughtAhead = d.bulk_measured && d.loss_units < -0.5;
+
   return (
     <div className="space-y-4">
       <BackLink />
@@ -200,10 +209,21 @@ function ZoneDetailPage() {
         <StatTile
           label="Bulk meter (m³)"
           value={formatUnits(d.bulk_total)}
-          emptyText={d.has_bulk_meter ? undefined : "No bulk meter"}
+          emptyText={
+            !d.has_bulk_meter ? "No bulk meter" : d.bulk_measured ? undefined : "Needs two readings"
+          }
           hint={
             bulkMeters.length > 0 ? (
-              <span className="font-mono">{bulkMeters.map((m) => m.meter_number).join(", ")}</span>
+              <>
+                <span className="font-mono">
+                  {bulkMeters.map((m) => m.meter_number).join(", ")}
+                </span>
+                {d.bulk_from && d.bulk_to && (
+                  <span className="block">
+                    {formatDate(d.bulk_from)} – {formatDate(d.bulk_to)}
+                  </span>
+                )}
+              </>
             ) : undefined
           }
         />
@@ -221,11 +241,21 @@ function ZoneDetailPage() {
           hint={plural(d.children.length, "sub-zone")}
         />
         <StatTile
-          label="Loss (m³)"
-          value={formatUnits(d.loss_units)}
-          emptyText={d.has_bulk_meter ? undefined : "No bulk meter"}
-          tone={lossTone(d.loss_pct)}
-          hint={d.loss_pct === null ? undefined : `${d.loss_pct.toFixed(1)}%`}
+          label={boughtAhead ? "Bought ahead (m³)" : "Loss (m³)"}
+          value={formatUnits(Math.abs(d.loss_units))}
+          emptyText={
+            !d.has_bulk_meter ? "No bulk meter" : d.bulk_measured ? undefined : "Needs two readings"
+          }
+          tone={boughtAhead ? "default" : lossTone(d.loss_pct)}
+          hint={
+            boughtAhead
+              ? d.consumption_basis === "tokens"
+                ? "Credit on meters, not a loss"
+                : "More used than passed, check readings"
+              : d.loss_pct === null
+                ? undefined
+                : `${d.loss_pct.toFixed(1)}%`
+          }
         />
         <StatTile label="Revenue" value={d.revenue.toLocaleString(undefined, KES)} />
       </div>

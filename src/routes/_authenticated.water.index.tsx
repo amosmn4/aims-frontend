@@ -28,6 +28,7 @@ import {
   useWaterAllZones,
   useCanManageWater,
   type WaterTankBalance,
+  type WaterVerdict,
 } from "@/features/water/use-water";
 import { TermInfo, WithTerm } from "@/features/water/water-ui";
 import {
@@ -87,6 +88,15 @@ function fmt(n: number): string {
 function pct(n: number | null): string {
   return n === null ? "—" : `${n.toFixed(1)}%`;
 }
+
+const NRW_VERDICT_TEXT: Record<WaterVerdict, string> = {
+  not_measured: "Main meter needs two readings",
+  bought_ahead: "No loss: households bought ahead of use",
+  over_read: "Used more than released — check readings",
+  within_limit: "Within the normal range",
+  possible_loss: "Provisional: could be unused credit",
+  likely_loss: `Above the ${NRW_LIMIT}% limit — likely loss, investigate`,
+};
 
 function formatCurrency(n: number): string {
   return `KES ${fmt(n)}`;
@@ -246,14 +256,15 @@ function WaterDashboardPage() {
                 </>
               }
               value={pct(d.nrw_overall_pct)}
-              sub={
-                d.nrw_overall_pct !== null && d.nrw_overall_pct > NRW_LIMIT
-                  ? `Above the ${NRW_LIMIT}% limit — investigate`
-                  : d.nrw_overall_pct !== null
-                    ? "Within the normal range"
-                    : "No main meter readings yet"
+              sub={NRW_VERDICT_TEXT[d.reconciliation.verdict]}
+              tone={
+                d.reconciliation.verdict === "likely_loss" ||
+                d.reconciliation.verdict === "over_read"
+                  ? "bad"
+                  : d.reconciliation.verdict === "within_limit"
+                    ? "good"
+                    : "neutral"
               }
-              tone={d.nrw_overall_pct !== null && d.nrw_overall_pct > NRW_LIMIT ? "bad" : "good"}
             />
           </div>
 
@@ -520,7 +531,7 @@ function FlowLadder({
           ) : (
             <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
           )}
-          {pct(value)} loss{high ? " (high)" : ""}
+          {value === null ? "Not measured" : `${pct(value)} loss${high ? " (high)" : ""}`}
         </div>
       </div>
     );

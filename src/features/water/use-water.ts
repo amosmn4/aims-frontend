@@ -164,6 +164,71 @@ export interface WaterTankBalance {
   held: number | null;
 }
 
+/**
+ * How released water compares with what households took over the same dates.
+ * A gap is "possible" while typical use and unused credit could explain it, "likely" once they can't.
+ */
+export type WaterVerdict =
+  "not_measured" | "bought_ahead" | "over_read" | "within_limit" | "possible_loss" | "likely_loss";
+
+/** Shown beside a loss figure, or in its place when there is no loss to show. */
+export const WATER_VERDICT_LABELS: Record<WaterVerdict, string> = {
+  not_measured: "Not measured yet",
+  bought_ahead: "None: bought ahead of use",
+  over_read: "Check the readings",
+  within_limit: "Within the limit",
+  possible_loss: "May be unused credit",
+  likely_loss: "Likely loss",
+};
+
+export const WATER_VERDICT_TONES: Record<WaterVerdict, string> = {
+  not_measured: "text-muted-foreground",
+  bought_ahead: "text-muted-foreground",
+  over_read: "text-destructive",
+  within_limit: "text-success",
+  possible_loss: "text-warning",
+  likely_loss: "text-destructive",
+};
+
+/** Released against taken, over the dates the main meter was read. `note` says it in words. */
+export interface WaterReconciliation {
+  verdict: WaterVerdict;
+  measured: boolean;
+  from: string | null;
+  to: string | null;
+  released: number;
+  household_units: number;
+  gap: number;
+  gap_pct: number | null;
+  note: string;
+}
+
+type BackendReconciliation = {
+  verdict: WaterVerdict;
+  measured: boolean;
+  from: string | null;
+  to: string | null;
+  released: number;
+  householdUnits: number;
+  gap: number;
+  gapPct: number | null;
+  note: string;
+};
+
+function mapReconciliation(r: BackendReconciliation | undefined): WaterReconciliation {
+  return {
+    verdict: r?.verdict ?? "not_measured",
+    measured: r?.measured ?? false,
+    from: r?.from ?? null,
+    to: r?.to ?? null,
+    released: r?.released ?? 0,
+    household_units: r?.householdUnits ?? 0,
+    gap: r?.gap ?? 0,
+    gap_pct: r?.gapPct ?? null,
+    note: r?.note ?? "",
+  };
+}
+
 export interface WaterDashboard {
   month: string;
   averages: WaterMeterAverages;
@@ -179,7 +244,9 @@ export interface WaterDashboard {
   tank: WaterTankBalance;
   // Tank -> distribution, and overall: borehole vs. all households.
   nrw_tank_to_network_pct: number | null;
+  /** Null unless water is actually missing. `reconciliation.verdict` says why. */
   nrw_overall_pct: number | null;
+  reconciliation: WaterReconciliation;
 }
 
 export interface WaterTrendPoint {
@@ -194,14 +261,37 @@ export interface WaterTrendPoint {
   household_total: number;
 }
 
+/**
+ * A zone as two sets: the whole zone (with the zones inside it) and the zone only.
+ * `household_total` and `loss_*` are the zone only; `whole_*` covers everything inside.
+ */
 export interface WaterZoneComparisonRow {
   zone_id: string | null;
   zone_name: string;
   parent_zone_id: string | null;
+  /** The single top-level zone: every meter is under it, zoned or not. */
+  is_estate: boolean;
+  has_sub_zones: boolean;
+  has_bulk_meter: boolean;
+  /** False when the bulk dial was not read twice, so there is no figure to show. */
+  bulk_measured: boolean;
+  bulk_from: string | null;
+  bulk_to: string | null;
+  own_meters: number;
+  whole_meters: number;
   bulk_total: number;
+  child_zones_bulk_total: number;
+  own_passed: number;
   household_total: number;
+  whole_household_total: number;
+  consumption_basis: WaterConsumptionBasis;
   loss_units: number;
   loss_pct: number | null;
+  whole_loss_units: number;
+  whole_loss_pct: number | null;
+  /** Whether the zone-only gap is a loss, once typical use and credit are allowed for. */
+  verdict: WaterVerdict;
+  whole_verdict: WaterVerdict;
 }
 
 /** A zone's household water against its meter count and spend. */
@@ -373,7 +463,13 @@ export interface WaterZoneDetail {
   household_meters: WaterZoneMeter[];
   customer_count: number;
   active_household_meters: number;
+  /** The whole estate: meters with no zone are on its main line. */
+  is_estate: boolean;
   has_bulk_meter: boolean;
+  /** False when the bulk dial was not read twice this month. */
+  bulk_measured: boolean;
+  bulk_from: string | null;
+  bulk_to: string | null;
   /** This zone's bulk meter — already contains every bulk meter beneath it. */
   bulk_total: number;
   child_bulk_total: number;
@@ -409,7 +505,11 @@ type BackendZoneDetail = {
   householdMeters: BackendZoneMeter[];
   customerCount: number;
   activeHouseholdMeters: number;
+  isEstate?: boolean;
   hasBulkMeter: boolean;
+  bulkMeasured?: boolean;
+  bulkFrom?: string | null;
+  bulkTo?: string | null;
   bulkTotal: number;
   childBulkTotal: number;
   directHouseholdTotal: number;
@@ -446,7 +546,11 @@ function mapZoneDetail(d: BackendZoneDetail): WaterZoneDetail {
     household_meters: d.householdMeters.map(mapZoneMeter),
     customer_count: d.customerCount,
     active_household_meters: d.activeHouseholdMeters,
+    is_estate: d.isEstate ?? false,
     has_bulk_meter: d.hasBulkMeter,
+    bulk_measured: d.bulkMeasured ?? d.bulkTotal > 0,
+    bulk_from: d.bulkFrom ?? null,
+    bulk_to: d.bulkTo ?? null,
     bulk_total: d.bulkTotal,
     child_bulk_total: d.childBulkTotal,
     direct_household_total: d.directHouseholdTotal,
@@ -1328,6 +1432,7 @@ type BackendDashboard = {
   tank?: { pumped: number; sentOut: number; outletMeasured: boolean; held: number | null };
   nrwTankToNetworkPct: number | null;
   nrwOverallPct: number | null;
+  reconciliation?: BackendReconciliation;
 };
 
 function mapDashboard(raw: BackendDashboard): WaterDashboard {
@@ -1360,6 +1465,7 @@ function mapDashboard(raw: BackendDashboard): WaterDashboard {
     },
     nrw_tank_to_network_pct: raw.nrwTankToNetworkPct,
     nrw_overall_pct: raw.nrwOverallPct,
+    reconciliation: mapReconciliation(raw.reconciliation),
   };
 }
 
@@ -1416,10 +1522,26 @@ type BackendZoneComparisonRow = {
   zoneId: string | null;
   zoneName: string;
   parentZoneId: string | null;
+  isEstate?: boolean;
+  hasSubZones?: boolean;
+  hasBulkMeter?: boolean;
+  bulkMeasured?: boolean;
+  bulkFrom?: string | null;
+  bulkTo?: string | null;
+  ownMeters?: number;
+  wholeMeters?: number;
   bulkTotal: number;
+  childZonesBulkTotal?: number;
+  ownPassed?: number;
   householdTotal: number;
+  wholeHouseholdTotal?: number;
+  consumptionBasis?: WaterConsumptionBasis;
   lossUnits: number;
   lossPct: number | null;
+  wholeLossUnits?: number;
+  wholeLossPct?: number | null;
+  verdict?: WaterVerdict;
+  wholeVerdict?: WaterVerdict;
 };
 
 function mapZoneComparisonRow(r: BackendZoneComparisonRow): WaterZoneComparisonRow {
@@ -1427,10 +1549,26 @@ function mapZoneComparisonRow(r: BackendZoneComparisonRow): WaterZoneComparisonR
     zone_id: r.zoneId,
     zone_name: r.zoneName,
     parent_zone_id: r.parentZoneId,
+    is_estate: r.isEstate ?? false,
+    has_sub_zones: r.hasSubZones ?? false,
+    has_bulk_meter: r.hasBulkMeter ?? r.bulkTotal > 0,
+    bulk_measured: r.bulkMeasured ?? r.bulkTotal > 0,
+    bulk_from: r.bulkFrom ?? null,
+    bulk_to: r.bulkTo ?? null,
+    own_meters: r.ownMeters ?? 0,
+    whole_meters: r.wholeMeters ?? 0,
     bulk_total: r.bulkTotal,
+    child_zones_bulk_total: r.childZonesBulkTotal ?? 0,
+    own_passed: r.ownPassed ?? r.bulkTotal,
     household_total: r.householdTotal,
+    whole_household_total: r.wholeHouseholdTotal ?? r.householdTotal,
+    consumption_basis: r.consumptionBasis ?? "tokens",
     loss_units: r.lossUnits,
     loss_pct: r.lossPct,
+    whole_loss_units: r.wholeLossUnits ?? r.lossUnits,
+    whole_loss_pct: r.wholeLossPct ?? r.lossPct,
+    verdict: r.verdict ?? "not_measured",
+    whole_verdict: r.wholeVerdict ?? r.verdict ?? "not_measured",
   };
 }
 
@@ -2033,6 +2171,7 @@ export interface WaterBalance {
   unused_credit: number | null;
   unaccounted: number;
   unaccounted_pct: number | null;
+  reconciliation: WaterReconciliation;
 }
 
 type BackendBalance = {
@@ -2046,11 +2185,11 @@ type BackendBalance = {
   householdMetersRead?: number;
   provisional?: boolean;
   unusedCredit?: number | null;
+  reconciliation?: BackendReconciliation;
 };
 
 function mapBalance(w: BackendBalance): WaterBalance {
-  // Water in the pipe was written down, so it is accounted for, not missing.
-  const unaccounted = w.released - w.used - w.accountedAdjustments;
+  const reconciliation = mapReconciliation(w.reconciliation);
   return {
     released: w.released,
     into_network: w.intoNetwork,
@@ -2062,8 +2201,9 @@ function mapBalance(w: BackendBalance): WaterBalance {
     household_meters_read: w.householdMetersRead ?? 0,
     provisional: w.provisional ?? w.consumptionBasis === "tokens",
     unused_credit: w.unusedCredit ?? null,
-    unaccounted,
-    unaccounted_pct: w.released > 0 ? (unaccounted / w.released) * 100 : null,
+    unaccounted: reconciliation.gap,
+    unaccounted_pct: reconciliation.gap_pct,
+    reconciliation,
   };
 }
 

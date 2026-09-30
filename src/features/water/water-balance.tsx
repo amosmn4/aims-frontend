@@ -4,6 +4,8 @@ import {
   useWaterMonthBalance,
   useWaterSettled,
   WATER_ADJUSTMENT_LABELS,
+  WATER_VERDICT_LABELS,
+  WATER_VERDICT_TONES,
   type WaterBalance as Balance,
 } from "@/features/water/use-water";
 import { formatUnits } from "@/features/water/chart-periods";
@@ -20,7 +22,6 @@ import {
 } from "@/components/ui/select";
 
 const THIS_MONTH = "month";
-const NRW_LIMIT = 8;
 
 const WINDOWS = [
   { value: THIS_MONTH, label: "This month" },
@@ -51,7 +52,9 @@ export function WaterBalance({ month }: { month: string }) {
   const b: Balance | null | undefined = isMonth ? monthQ.data : settledQ.data;
 
   const settled = !isMonth || !b?.provisional;
-  const highLoss = b?.unaccounted_pct !== null && (b?.unaccounted_pct ?? 0) > NRW_LIMIT;
+  const verdict = b?.reconciliation.verdict ?? "not_measured";
+  // More bought than released is credit on the meters, never shown as a negative loss.
+  const surplus = verdict === "bought_ahead" || verdict === "over_read";
   const kinds = Object.entries(b?.adjustments_by_kind ?? {});
 
   return (
@@ -102,14 +105,28 @@ export function WaterBalance({ month }: { month: string }) {
             <Figure label="Into network" value={`${formatUnits(b.into_network)} m³`} />
             <Figure label="Adjustments" value={`${formatUnits(b.accounted_adjustments)} m³`} />
             <div className="rounded-md border bg-secondary/20 px-3 py-2">
-              <div className="text-xs font-semibold text-muted-foreground">Unaccounted</div>
+              <div className="text-xs font-semibold text-muted-foreground">
+                {verdict === "bought_ahead"
+                  ? "Bought ahead"
+                  : verdict === "over_read"
+                    ? "Used over released"
+                    : "Unaccounted"}
+              </div>
               <div
                 className={`mt-0.5 font-mono text-sm tabular-nums ${
-                  highLoss ? "text-destructive" : ""
+                  verdict === "within_limit" ? "" : WATER_VERDICT_TONES[verdict]
                 }`}
               >
-                {formatUnits(b.unaccounted)} m³
-                {b.unaccounted_pct !== null && ` · ${b.unaccounted_pct.toFixed(1)}%`}
+                {verdict === "not_measured"
+                  ? "—"
+                  : surplus
+                    ? `${formatUnits(-b.unaccounted)} m³`
+                    : `${formatUnits(b.unaccounted)} m³${
+                        b.unaccounted_pct === null ? "" : ` · ${b.unaccounted_pct.toFixed(1)}%`
+                      }`}
+                {(verdict === "possible_loss" || verdict === "likely_loss") && (
+                  <span className="block font-sans text-xs">{WATER_VERDICT_LABELS[verdict]}</span>
+                )}
               </div>
             </div>
             <Figure
@@ -139,6 +156,9 @@ export function WaterBalance({ month }: { month: string }) {
               </Badge>
             ))}
           </div>
+          {b.reconciliation.note && (
+            <p className="text-xs text-muted-foreground">{b.reconciliation.note}</p>
+          )}
         </div>
       )}
     </div>

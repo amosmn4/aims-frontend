@@ -3,7 +3,11 @@ import type {
   WaterReportSummary,
   WaterTrendPoint,
 } from "@/features/water/use-water";
-import { WATER_BALANCE_FLAG_LABELS, WATER_METER_TYPE_LABELS } from "@/features/water/use-water";
+import {
+  WATER_BALANCE_FLAG_LABELS,
+  WATER_METER_TYPE_LABELS,
+  WATER_VERDICT_LABELS,
+} from "@/features/water/use-water";
 import { formatPeriodKey } from "@/features/water/water-ui";
 import { formatDate, formatDateTime } from "@/lib/format-date";
 import {
@@ -92,7 +96,9 @@ export function buildWaterReportDocument({
         ],
         [
           "Water lost overall (NRW)",
-          nrwNote(d.nrw_overall_pct),
+          d.nrw_overall_pct === null
+            ? WATER_VERDICT_LABELS[d.reconciliation.verdict]
+            : nrwNote(d.nrw_overall_pct),
           pct(p.nrw_overall_pct),
           pointsChange(d.nrw_overall_pct, p.nrw_overall_pct),
         ],
@@ -135,15 +141,16 @@ export function buildWaterReportDocument({
     },
     {
       kind: "table",
-      columns: ["Zone", "Bulk meter (m³)", "Households (m³)", "Lost (m³)", "Lost %"],
+      columns: ["Zone", "Bulk meter (m³)", "Households (m³)", "Gap (m³)", "Gap %", "Verdict"],
       numeric: [1, 2, 3, 4],
       emptyText: "No zone figures for this month.",
       rows: s.zone_loss.map((z) => [
         z.zone_name,
         units(z.bulk_total),
         units(z.household_total),
-        units(z.loss_units),
-        nrwNote(z.loss_pct),
+        z.loss_pct === null || z.loss_units < 0 ? "—" : units(z.loss_units),
+        z.loss_pct === null || z.loss_pct < 0 ? "—" : pct(z.loss_pct),
+        z.has_bulk_meter ? WATER_VERDICT_LABELS[z.verdict] : "No bulk meter",
       ]),
     },
 

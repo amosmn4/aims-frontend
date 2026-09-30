@@ -22,6 +22,8 @@ import {
   useWaterReadingSeries,
   useWaterReadingsWithDelta,
   WATER_METER_TYPE_LABELS,
+  WATER_VERDICT_LABELS,
+  WATER_VERDICT_TONES,
   type WaterHighUsageRow,
   type WaterMeterType,
   type WaterZoneUsageRow,
@@ -283,13 +285,16 @@ function WaterReportsPage() {
                       <WithTerm term="nrw">Non-revenue water (NRW)</WithTerm>
                     </TableCell>
                     <TableCell className="text-right text-sm">
-                      {s.dashboard.nrw_overall_pct !== null &&
-                      s.dashboard.nrw_overall_pct > NRW_LIMIT ? (
-                        <span className="text-destructive">
-                          {pct(s.dashboard.nrw_overall_pct)} (high)
+                      {s.dashboard.nrw_overall_pct === null ? (
+                        <span className="text-muted-foreground">
+                          {WATER_VERDICT_LABELS[s.dashboard.reconciliation.verdict]}
                         </span>
                       ) : (
-                        <span className="text-success">{pct(s.dashboard.nrw_overall_pct)}</span>
+                        <span className={WATER_VERDICT_TONES[s.dashboard.reconciliation.verdict]}>
+                          {pct(s.dashboard.nrw_overall_pct)}
+                          {s.dashboard.reconciliation.verdict !== "within_limit" &&
+                            ` (${WATER_VERDICT_LABELS[s.dashboard.reconciliation.verdict].toLowerCase()})`}
+                        </span>
                       )}
                     </TableCell>
                     <TableCell className="text-right text-sm text-muted-foreground">
@@ -580,23 +585,20 @@ function WaterReportsPage() {
                           {fmt(z.household_total)}
                         </TableCell>
                         <TableCell className="text-right text-sm font-mono tabular-nums">
-                          {z.loss_pct !== null ? fmt(z.loss_units) : "—"}
+                          {z.loss_pct !== null && z.loss_units >= 0 ? fmt(z.loss_units) : "—"}
                         </TableCell>
-                        <TableCell className="text-sm">{pct(z.loss_pct)}</TableCell>
+                        <TableCell className="text-sm">
+                          {pct(z.loss_pct !== null && z.loss_pct < 0 ? null : z.loss_pct)}
+                        </TableCell>
                         <TableCell>
-                          {z.loss_pct === null ? (
+                          {!z.has_bulk_meter ? (
                             <Badge variant="secondary">No bulk meter</Badge>
-                          ) : z.loss_pct > NRW_LIMIT ? (
-                            <Badge
-                              className="bg-destructive/15 text-destructive"
-                              variant="secondary"
-                            >
-                              Investigate
-                            </Badge>
+                          ) : z.verdict === "not_measured" ? (
+                            <Badge variant="secondary">Bulk meter not read</Badge>
                           ) : (
-                            <Badge className="bg-success/15 text-success" variant="secondary">
-                              Normal
-                            </Badge>
+                            <span className={`text-xs ${WATER_VERDICT_TONES[z.verdict]}`}>
+                              {WATER_VERDICT_LABELS[z.verdict]}
+                            </span>
                           )}
                         </TableCell>
                       </TableRow>
