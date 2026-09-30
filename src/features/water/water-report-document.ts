@@ -9,6 +9,7 @@ import {
   WATER_VERDICT_LABELS,
 } from "@/features/water/use-water";
 import { formatPeriodKey } from "@/features/water/water-ui";
+import { zoneSetLines } from "@/features/water/zone-tree";
 import { formatDate, formatDateTime } from "@/lib/format-date";
 import {
   slugForFile,
@@ -33,6 +34,9 @@ function change(curr: number, prev: number) {
 const stock = (held: number | null) =>
   held === null ? "—" : held >= 0 ? units(held) : `${units(-held)} drawn from stock`;
 const perMeter = (n: number | null) => (n === null ? "—" : n.toFixed(1));
+// A dial not read twice has no figure; it is never shown as 0.
+const volume = (f: { units: number; measured: boolean } | null) =>
+  f?.measured ? units(f.units) : "Not read";
 const share = (n: number | null) => (n === null ? "—" : `${n.toFixed(1)}%`);
 
 function pointsChange(curr: number | null, prev: number | null) {
@@ -77,16 +81,30 @@ export function buildWaterReportDocument({
       numeric: [1, 2, 3],
       rows: [
         [
-          "Main meter volume (m³)",
+          "Water pumped from the borehole (m³)",
           units(d.main_reading_total),
           units(p.main_reading_total),
           change(d.main_reading_total, p.main_reading_total),
         ],
+        ...(d.bulk.estate
+          ? [
+              [
+                `Main meter volume: ${d.bulk.estate.name} bulk meter, whole estate (m³)`,
+                volume(d.bulk.estate),
+                volume(p.bulk.estate),
+                d.bulk.estate.measured && p.bulk.estate?.measured
+                  ? change(d.bulk.estate.units, p.bulk.estate.units)
+                  : "—",
+              ],
+            ]
+          : []),
         [
-          "Zone bulk meters (m³)",
-          units(d.bulk_reading_total),
-          units(p.bulk_reading_total),
-          change(d.bulk_reading_total, p.bulk_reading_total),
+          `Bulk meters total${d.bulk.zones.names.length > 0 ? `: ${d.bulk.zones.names.join(" + ")}` : ""} (m³)`,
+          volume(d.bulk.zones),
+          volume(p.bulk.zones),
+          d.bulk.zones.measured && p.bulk.zones.measured
+            ? change(d.bulk.zones.units, p.bulk.zones.units)
+            : "—",
         ],
         [
           "Water paid for by households (m³)",
@@ -133,25 +151,39 @@ export function buildWaterReportDocument({
       ],
     },
 
-    { kind: "heading", text: "Water lost by zone" },
+    { kind: "heading", text: "Water loss by zone" },
     {
       kind: "paragraph",
-      text: "What each zone's bulk meter measured, what its households used, and the difference.",
+      text: "A zone with zones inside it is shown twice: the whole zone, then the zone only. The zone only is its bulk meter less the bulk meters inside it, set against its own household meters. Household meter counts never include bulk meters.",
       muted: true,
     },
     {
       kind: "table",
-      columns: ["Zone", "Bulk meter (m³)", "Households (m³)", "Gap (m³)", "Gap %", "Verdict"],
-      numeric: [1, 2, 3, 4],
+      columns: [
+        "Zone",
+        "Household meters",
+        "Through the meter (m³)",
+        "Households (m³)",
+        "Gap (m³)",
+        "Gap %",
+        "Verdict",
+      ],
+      numeric: [1, 2, 3, 4, 5],
       emptyText: "No zone figures for this month.",
-      rows: s.zone_loss.map((z) => [
-        z.zone_name,
-        units(z.bulk_total),
-        units(z.household_total),
-        z.loss_pct === null || z.loss_units < 0 ? "—" : units(z.loss_units),
-        z.loss_pct === null || z.loss_pct < 0 ? "—" : pct(z.loss_pct),
-        z.has_bulk_meter ? WATER_VERDICT_LABELS[z.verdict] : "No bulk meter",
-      ]),
+      rows: zoneSetLines(s.zone_loss).map((z) => {
+        const showGap = z.measured && z.gap >= 0;
+        return [
+          `${"↳ ".repeat(z.depth)}${z.name}${z.kind === "whole" ? " (with the zones inside it)" : ""}`,
+          z.meters.toLocaleString(),
+          z.measured ? units(z.passed) : "—",
+          units(z.households),
+          showGap ? units(z.gap) : "—",
+          showGap ? pct(z.gap_pct) : "—",
+          !z.has_bulk_meter
+            ? "No bulk meter"
+            : `${WATER_VERDICT_LABELS[z.verdict]}${z.gap < 0 ? `: ${units(-z.gap)} m³` : ""}`,
+        ];
+      }),
     },
 
     { kind: "heading", text: "Zone usage by meters and spend" },
@@ -235,7 +267,7 @@ export function buildWaterReportDocument({
     { kind: "heading", text: "The last six months" },
     {
       kind: "table",
-      columns: ["Month", "Main meter (m³)", "Zone bulk (m³)", "Households (m³)"],
+      columns: ["Month", "Borehole (m³)", "Estate bulk meter (m³)", "Households (m³)"],
       numeric: [1, 2, 3],
       emptyText: "No readings recorded yet.",
       rows: trend.map((t) => [

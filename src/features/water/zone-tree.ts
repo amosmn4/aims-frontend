@@ -1,4 +1,8 @@
-import type { WaterZoneTreeNode } from "@/features/water/use-water";
+import type {
+  WaterVerdict,
+  WaterZoneComparisonRow,
+  WaterZoneTreeNode,
+} from "@/features/water/use-water";
 
 /** How deep a zone sits, so a list can be indented like the pipework. */
 export type ZoneTreeRow<T> = T & { depth: number; child_count: number };
@@ -84,4 +88,130 @@ export function monthWindow(month: string): { dateFrom: string; dateTo: string }
 export function currentMonth(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** The single top-level zone is the whole estate; meters with no zone are on its main line. */
+export function estateZoneOf<T extends WaterZoneTreeNode>(zones: T[]): T | null {
+  const ids = new Set(zones.map((z) => z.id));
+  const roots = zones.filter((z) => !z.parent_zone_id || !ids.has(z.parent_zone_id));
+  return roots.length === 1 ? roots[0] : null;
+}
+
+/** A zone that holds other zones is named "… only" wherever its own figures stand alone. */
+export function zoneOnlyName(z: WaterZoneComparisonRow): string {
+  return z.has_sub_zones || z.is_estate ? `${z.zone_name} only` : z.zone_name;
+}
+
+/** One line of a zone table: a whole zone, a zone only, or a zone with nothing inside it. */
+export interface ZoneSetLine {
+  key: string;
+  zone_id: string | null;
+  name: string;
+  depth: number;
+  kind: "whole" | "only" | "single";
+  /** Household meters in use in the period. Bulk meters are never counted here. */
+  meters: number;
+  has_bulk_meter: boolean;
+  measured: boolean;
+  from: string | null;
+  to: string | null;
+  /** Through the bulk meter; for a zone only, less the bulk meters inside it. */
+  passed: number;
+  inner_passed: number;
+  households: number;
+  gap: number;
+  gap_pct: number | null;
+  verdict: WaterVerdict;
+}
+
+/**
+ * Every zone in pipe order. A zone with zones inside it gives two lines: the
+ * whole zone, then the zone only (whole less the inner zones), so that each
+ * line's meters, water and households always describe the same set.
+ */
+export function zoneSetLines(rows: WaterZoneComparisonRow[]): ZoneSetLine[] {
+  const byId = new Map(rows.flatMap((r) => (r.zone_id ? [[r.zone_id, r] as const] : [])));
+  const ordered = orderZoneTree(
+    [...byId.values()].map((r) => ({
+      id: r.zone_id as string,
+      name: r.zone_name,
+      parent_zone_id: r.parent_zone_id,
+    })),
+  );
+  const lines: ZoneSetLine[] = [];
+  for (const zone of ordered) {
+    const r = byId.get(zone.id)!;
+    const shared = {
+      zone_id: zone.id,
+      has_bulk_meter: r.has_bulk_meter,
+      measured: r.bulk_measured,
+      from: r.bulk_from,
+      to: r.bulk_to,
+    };
+    const own = {
+      meters: r.own_meters,
+      passed: r.own_passed,
+      inner_passed: r.child_zones_bulk_total,
+      households: r.household_total,
+      gap: r.loss_units,
+      gap_pct: r.loss_pct,
+      verdict: r.verdict,
+    };
+    if (!r.has_sub_zones && !r.is_estate) {
+      lines.push({
+        ...shared,
+        ...own,
+        key: zone.id,
+        name: zone.name,
+        depth: zone.depth,
+        kind: "single",
+      });
+      continue;
+    }
+    lines.push({
+      ...shared,
+      key: `${zone.id}:whole`,
+      name: zone.name,
+      depth: zone.depth,
+      kind: "whole",
+      meters: r.whole_meters,
+      passed: r.bulk_total,
+      inner_passed: 0,
+      households: r.whole_household_total,
+      gap: r.whole_loss_units,
+      gap_pct: r.whole_loss_pct,
+      verdict: r.whole_verdict,
+    });
+    lines.push({
+      ...shared,
+      ...own,
+      key: zone.id,
+      name: `${zone.name} only`,
+      depth: zone.depth + 1,
+      kind: "only",
+    });
+  }
+  // Meters with no zone recorded: counted in the estate's whole, on a line of their own.
+  const loose = rows.find((r) => r.zone_id === null);
+  if (loose) {
+    lines.push({
+      key: "no-zone",
+      zone_id: null,
+      name: loose.zone_name,
+      depth: rows.some((r) => r.is_estate) ? 1 : 0,
+      kind: "single",
+      meters: loose.own_meters,
+      has_bulk_meter: false,
+      measured: false,
+      from: null,
+      to: null,
+      passed: 0,
+      inner_passed: 0,
+      households: loose.household_total,
+      gap: 0,
+      gap_pct: null,
+      verdict: "not_measured",
+    });
+  }
+  return lines;
 }

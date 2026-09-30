@@ -361,7 +361,7 @@ function WaterZonesPage() {
                 })}
                 {!term && mainLine && (
                   <TableRow className="bg-muted/30">
-                    <TableCell className="font-medium">On the main line</TableCell>
+                    <TableCell className="font-medium">{mainLine.zone_name}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">No zone</TableCell>
                     <TableCell className="text-right text-xs tabular-nums">
                       {mainLine.own_meters.toLocaleString()}

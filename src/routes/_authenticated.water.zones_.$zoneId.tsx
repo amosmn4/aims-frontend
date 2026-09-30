@@ -103,14 +103,9 @@ function ZoneDetailPage() {
 
   const usageQ = useWaterUsageRecords({ zoneId, ...monthWindow(month || currentMonth()) });
 
-  // The estate zone also holds the main-line meters, which have no zone of their own.
-  const isEstate = detailQ.data?.is_estate ?? false;
   const zoneMeters = useMemo(
-    () =>
-      (metersQ.data ?? []).filter(
-        (m) => m.zone_id === zoneId || (isEstate && !m.zone_id && m.meter_type === "household"),
-      ),
-    [metersQ.data, zoneId, isEstate],
+    () => (metersQ.data ?? []).filter((m) => m.zone_id === zoneId),
+    [metersQ.data, zoneId],
   );
   const bulkMeters = zoneMeters.filter((m) => m.meter_type === "bulk");
   const householdMeters = zoneMeters.filter((m) => m.meter_type === "household");

@@ -48,7 +48,7 @@ type ChartRow = Record<string, string | number>;
 type ZoneMeasure = "bulk" | "household";
 
 const MEASURE_LABELS: Record<ZoneMeasure, string> = {
-  bulk: "Bulk meters",
+  bulk: "Through its pipes",
   household: "Households",
 };
 
@@ -186,7 +186,7 @@ function ZoneComparisonChart({
       }
       controls={
         <Tabs value={measure} onValueChange={(v) => setMeasure(v as ZoneMeasure)}>
-          <TabsList className="h-8" aria-label="Compare bulk meters or households">
+          <TabsList className="h-8" aria-label="Compare water through the pipes or households">
             {(["bulk", "household"] as const).map((m) => (
               <TabsTrigger key={m} value={m} className="px-3 py-1 text-xs">
                 {MEASURE_LABELS[m]}

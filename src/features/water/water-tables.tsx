@@ -428,7 +428,7 @@ export function HouseholdBillingTable({ month }: { month: string }) {
     if (loose && loose.length > 0) {
       built.push({
         key: "__none__",
-        name: "No zone",
+        name: "No zone recorded",
         depth: 0,
         under: null,
         tint: ZONE_COLORS[built.length % ZONE_COLORS.length],

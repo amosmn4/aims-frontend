@@ -27,6 +27,9 @@ import {
   useWaterZoneComparison,
   useWaterAllZones,
   useCanManageWater,
+  WATER_VERDICT_LABELS,
+  WATER_VERDICT_TONES,
+  type WaterReconciliation,
   type WaterTankBalance,
   type WaterVerdict,
 } from "@/features/water/use-water";
@@ -50,6 +53,7 @@ import {
   PeriodTooltip,
   ZoneDonut,
 } from "@/features/water/water-charts";
+import { zoneOnlyName } from "@/features/water/zone-tree";
 import { formatMonth } from "@/lib/format-date";
 import { PageHeader } from "@/components/app-shell";
 import { LoadError } from "@/components/load-error";
@@ -130,19 +134,20 @@ function WaterDashboardPage() {
   const d = dashboardQ.data;
   const trendData = (trendQ.data ?? []).map((p) => ({
     period: periodLabel(p.period, granularity),
-    Main: p.main_total,
-    "Zone bulk": p.bulk_total,
+    Borehole: p.main_total,
+    "Estate bulk meter": p.bulk_total,
     Households: p.household_total,
   }));
+  // Zones as sets that never overlap: a zone holding others shows as the zone only.
   const zoneCompData = (zoneCompQ.data ?? []).map((z) => ({
-    zone: z.zone_name,
-    "Bulk meter (m³)": z.bulk_total,
+    zone: zoneOnlyName(z),
+    "Through its pipes (m³)": z.bulk_measured ? z.own_passed : 0,
     "Household meters (m³)": z.household_total,
   }));
   const zoneSlices = topSlices(
     zoneCompQ.data ?? [],
     (z) => z.household_total,
-    (z) => z.zone_name,
+    (z) => zoneOnlyName(z),
   );
   const zoneSliceTotal = zoneSlices.reduce((sum, s) => sum + s.value, 0);
 
@@ -224,9 +229,9 @@ function WaterDashboardPage() {
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <KpiCard label="Active households" value={d.active_households.toLocaleString()} />
             <KpiCard
-              label="Active meters"
-              value={d.active_meters.toLocaleString()}
-              sub={`${d.inactive_meters.toLocaleString()} inactive (not in use)`}
+              label="Household meters in use"
+              value={d.meter_status.household.active.toLocaleString()}
+              sub={`${d.meter_status.household.inactive.toLocaleString()} out of use`}
             />
             <KpiCard
               label={
@@ -274,12 +279,7 @@ function WaterDashboardPage() {
               Volumes in <WithTerm term="m3">m³</WithTerm>. Water pumped but not yet sent out is
               still in the tank. Loss is water that left the tank and was not accounted for.
             </p>
-            <FlowLadder
-              tank={d.tank}
-              bulkTotal={d.bulk_reading_total}
-              householdTotal={d.units_sold}
-              nrwTankToNetwork={d.nrw_tank_to_network_pct}
-            />
+            <FlowLadder tank={d.tank} reconciliation={d.reconciliation} />
           </div>
 
           <div className="flex flex-wrap items-end justify-between gap-3 pt-1">
@@ -341,14 +341,14 @@ function WaterDashboardPage() {
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Line
                     type="monotone"
-                    dataKey="Main"
+                    dataKey="Borehole"
                     stroke={WATER_SERIES.main}
                     strokeWidth={2}
                     dot={false}
                   />
                   <Line
                     type="monotone"
-                    dataKey="Zone bulk"
+                    dataKey="Estate bulk meter"
                     stroke={WATER_SERIES.bulk}
                     strokeDasharray={WATER_SERIES_DASH.bulk}
                     strokeWidth={2}
@@ -371,7 +371,8 @@ function WaterDashboardPage() {
             <div className="rounded-lg border bg-card p-4">
               <div className="text-sm font-semibold">Zone comparison — {windowLabel}</div>
               <ChartCaption>
-                What each zone&apos;s bulk meter measured against what its households paid for (m³).
+                What passed into each zone&apos;s own pipes against what its own households paid for
+                (m³). Inner zones are taken out, so no water is counted twice.
               </ChartCaption>
               <ChartState
                 isLoading={zoneCompQ.isLoading}
@@ -398,7 +399,7 @@ function WaterDashboardPage() {
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar
-                      dataKey="Bulk meter (m³)"
+                      dataKey="Through its pipes (m³)"
                       fill={WATER_SERIES.main}
                       radius={[4, 4, 0, 0]}
                       maxBarSize={28}
@@ -486,14 +487,10 @@ function KpiCard({
 
 function FlowLadder({
   tank,
-  bulkTotal,
-  householdTotal,
-  nrwTankToNetwork,
+  reconciliation,
 }: {
   tank: WaterTankBalance;
-  bulkTotal: number;
-  householdTotal: number;
-  nrwTankToNetwork: number | null;
+  reconciliation: WaterReconciliation;
 }) {
   const Node = ({
     label,
@@ -503,7 +500,7 @@ function FlowLadder({
   }: {
     label: ReactNode;
     sub: string;
-    value: number;
+    value: number | null;
     color: string;
   }) => (
     <div
@@ -512,30 +509,12 @@ function FlowLadder({
     >
       <div className="h-2 w-2 rounded-full mb-1.5" style={{ background: color }} />
       <div className="text-sm font-medium">{label}</div>
-      <div className="text-xl font-semibold mt-1 tabular-nums">{fmt(value)} m³</div>
+      <div className="text-xl font-semibold mt-1 tabular-nums">
+        {value === null ? "Not read" : `${fmt(value)} m³`}
+      </div>
       <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>
     </div>
   );
-  const Loss = ({ value }: { value: number | null }) => {
-    const high = value !== null && value > NRW_LIMIT;
-    return (
-      <div className="flex flex-col items-center gap-1 shrink-0 w-24">
-        <div className="w-full h-0.5 bg-border" />
-        <div
-          className={`flex items-center gap-1 text-xs font-medium whitespace-nowrap ${
-            high ? "text-destructive" : "text-muted-foreground"
-          }`}
-        >
-          {high ? (
-            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-          ) : (
-            <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-          )}
-          {value === null ? "Not measured" : `${pct(value)} loss${high ? " (high)" : ""}`}
-        </div>
-      </div>
-    );
-  };
   // Pumped in less sent out is stock in the tank, never a loss.
   const TankStock = () => (
     <div className="flex flex-col items-center gap-1 shrink-0 w-32">
@@ -543,13 +522,41 @@ function FlowLadder({
       <div className="flex items-center gap-1 text-xs font-medium whitespace-nowrap text-muted-foreground">
         <Cylinder className="h-3 w-3" aria-hidden="true" />
         {tank.held === null
-          ? "Tank outlet not read"
+          ? "Tank stock not known"
           : tank.held >= 0
             ? `${fmt(tank.held)} m³ in the tank`
             : `${fmt(-tank.held)} m³ from tank stock`}
       </div>
     </div>
   );
+  // The same verdict the reports give: a gap is weighed before it is called a loss.
+  const { verdict, gap, gap_pct } = reconciliation;
+  const surplus = verdict === "bought_ahead" || verdict === "over_read";
+  const Gap = () => (
+    <div className="flex flex-col items-center gap-1 shrink-0 w-40">
+      <div className="w-full h-0.5 bg-border" />
+      <div
+        className={`flex flex-col items-center text-xs font-medium ${
+          verdict === "within_limit" ? "text-muted-foreground" : WATER_VERDICT_TONES[verdict]
+        }`}
+      >
+        <span className="flex items-center gap-1 whitespace-nowrap">
+          {verdict === "likely_loss" || verdict === "over_read" ? (
+            <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+          ) : (
+            <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+          )}
+          {verdict === "not_measured"
+            ? "Not measured"
+            : surplus
+              ? `${fmt(-gap)} m³ more than passed`
+              : `${fmt(gap)} m³${gap_pct === null ? "" : ` · ${gap_pct.toFixed(1)}%`}`}
+        </span>
+        {verdict !== "not_measured" && <span>{WATER_VERDICT_LABELS[verdict]}</span>}
+      </div>
+    </div>
+  );
+  const outletLabel = `${tank.outlet_name.replace(/^the /, "").charAt(0).toUpperCase()}${tank.outlet_name.replace(/^the /, "").slice(1)}`;
   return (
     <div className="flex items-center justify-between flex-wrap gap-2">
       <Node
@@ -560,23 +567,16 @@ function FlowLadder({
       />
       <TankStock />
       <Node
-        label={<WithTerm term="main">Tank outlet meter</WithTerm>}
-        sub="Sent into the network"
-        value={tank.sent_out}
+        label={outletLabel}
+        sub="Into the estate, just after the tanks"
+        value={tank.outlet_measured ? tank.sent_out : null}
         color="#1E6FA8"
       />
-      <Loss value={nrwTankToNetwork} />
-      <Node
-        label={<WithTerm term="bulk">Zone bulk meters</WithTerm>}
-        sub="Into the zones"
-        value={bulkTotal}
-        color="#B9762A"
-      />
-      <div className="shrink-0 w-10 h-0.5 bg-border" aria-hidden="true" />
+      <Gap />
       <Node
         label={<WithTerm term="household">Household meters</WithTerm>}
-        sub="Paid for by customers"
-        value={householdTotal}
+        sub="Paid for over the same dates"
+        value={reconciliation.household_units}
         color="#2E8B57"
       />
     </div>

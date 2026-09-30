@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowUpRight, Loader2 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -24,6 +24,7 @@ import {
   WATER_METER_TYPE_LABELS,
   WATER_VERDICT_LABELS,
   WATER_VERDICT_TONES,
+  type WaterBulkFigure,
   type WaterHighUsageRow,
   type WaterMeterType,
   type WaterZoneUsageRow,
@@ -49,6 +50,7 @@ import {
   ZoneDonut,
 } from "@/features/water/water-charts";
 import { ComparisonCharts } from "@/features/water/comparison-charts";
+import { zoneOnlyName, zoneSetLines } from "@/features/water/zone-tree";
 import { WaterTables } from "@/features/water/water-tables";
 import { NetworkDiagram } from "@/features/water/network-diagram";
 import { PageHeader } from "@/components/app-shell";
@@ -150,22 +152,24 @@ function WaterReportsPage() {
   const trendQ = useWaterTrend({ granularity, periods: TREND_PERIODS[granularity] });
   const zoneCompQ = useWaterZoneComparison(chartWindow);
   const s = summaryQ.data;
+  const zoneLines = useMemo(() => zoneSetLines(s?.zone_loss ?? []), [s]);
 
   const trendData = (trendQ.data ?? []).map((p) => ({
     period: periodLabel(p.period, granularity),
-    Main: p.main_total,
-    "Zone bulk": p.bulk_total,
+    Borehole: p.main_total,
+    "Estate bulk meter": p.bulk_total,
     Households: p.household_total,
   }));
+  // Zones as sets that never overlap: a zone holding others shows as the zone only.
   const zoneCompData = (zoneCompQ.data ?? []).map((z) => ({
-    zone: z.zone_name,
-    "Bulk meter (m³)": z.bulk_total,
+    zone: zoneOnlyName(z),
+    "Through its pipes (m³)": z.bulk_measured ? z.own_passed : 0,
     "Household meters (m³)": z.household_total,
   }));
   const zoneSlices = topSlices(
     zoneCompQ.data ?? [],
     (z) => z.household_total,
-    (z) => z.zone_name,
+    (z) => zoneOnlyName(z),
   );
   const zoneSliceTotal = zoneSlices.reduce((sum, sl) => sum + sl.value, 0);
 
@@ -232,40 +236,35 @@ function WaterReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell className="text-sm">
-                      <WithTerm term="main">Main meter volume (m³)</WithTerm>
-                    </TableCell>
-                    <TableCell className="text-right text-sm font-mono tabular-nums">
-                      {fmt(s.dashboard.main_reading_total)}
-                    </TableCell>
-                    <TableCell className="text-right text-sm font-mono tabular-nums text-muted-foreground">
-                      {fmt(s.prev_dashboard.main_reading_total)}
-                    </TableCell>
-                    <TableCell className="text-right text-xs text-muted-foreground">
-                      {unitsDelta(
-                        s.dashboard.main_reading_total,
-                        s.prev_dashboard.main_reading_total,
-                      ) ?? "—"}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="text-sm">
-                      <WithTerm term="bulk">Zone bulk meters total (m³)</WithTerm>
-                    </TableCell>
-                    <TableCell className="text-right text-sm font-mono tabular-nums">
-                      {fmt(s.dashboard.bulk_reading_total)}
-                    </TableCell>
-                    <TableCell className="text-right text-sm font-mono tabular-nums text-muted-foreground">
-                      {fmt(s.prev_dashboard.bulk_reading_total)}
-                    </TableCell>
-                    <TableCell className="text-right text-xs text-muted-foreground">
-                      {unitsDelta(
-                        s.dashboard.bulk_reading_total,
-                        s.prev_dashboard.bulk_reading_total,
-                      ) ?? "—"}
-                    </TableCell>
-                  </TableRow>
+                  <SummaryVolumeRow
+                    label={<WithTerm term="main">Water pumped from the borehole (m³)</WithTerm>}
+                    now={{ units: s.dashboard.main_reading_total, measured: true }}
+                    before={{ units: s.prev_dashboard.main_reading_total, measured: true }}
+                  />
+                  {s.dashboard.bulk.estate && (
+                    <SummaryVolumeRow
+                      label={
+                        <WithTerm term="bulk">
+                          Main meter volume: {s.dashboard.bulk.estate.name} bulk meter, whole estate
+                          (m³)
+                        </WithTerm>
+                      }
+                      now={s.dashboard.bulk.estate}
+                      before={s.prev_dashboard.bulk.estate}
+                    />
+                  )}
+                  <SummaryVolumeRow
+                    label={
+                      <WithTerm term="bulk">
+                        Bulk meters total
+                        {s.dashboard.bulk.zones.names.length > 0 &&
+                          `: ${s.dashboard.bulk.zones.names.join(" + ")}`}{" "}
+                        (m³)
+                      </WithTerm>
+                    }
+                    now={s.dashboard.bulk.zones}
+                    before={s.prev_dashboard.bulk.zones}
+                  />
                   <TableRow>
                     <TableCell className="text-sm">
                       <WithTerm term="household">Household meters — water paid for (m³)</WithTerm>
@@ -454,14 +453,14 @@ function WaterReportsPage() {
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Line
                     type="monotone"
-                    dataKey="Main"
+                    dataKey="Borehole"
                     stroke={WATER_SERIES.main}
                     strokeWidth={2}
                     dot={false}
                   />
                   <Line
                     type="monotone"
-                    dataKey="Zone bulk"
+                    dataKey="Estate bulk meter"
                     stroke={WATER_SERIES.bulk}
                     strokeDasharray={WATER_SERIES_DASH.bulk}
                     strokeWidth={2}
@@ -484,7 +483,8 @@ function WaterReportsPage() {
             <div className="rounded-lg border bg-card p-4">
               <div className="text-sm font-semibold">Zone comparison — {windowLabel}</div>
               <ChartCaption>
-                What each zone&apos;s bulk meter measured against what its households paid for (m³).
+                What passed into each zone&apos;s own pipes against what its own households paid for
+                (m³). Inner zones are taken out, so no water is counted twice.
               </ChartCaption>
               <ChartState
                 isLoading={zoneCompQ.isLoading}
@@ -511,7 +511,7 @@ function WaterReportsPage() {
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar
-                      dataKey="Bulk meter (m³)"
+                      dataKey="Through its pipes (m³)"
                       fill={WATER_SERIES.main}
                       radius={[4, 4, 0, 0]}
                       maxBarSize={28}
@@ -554,10 +554,11 @@ function WaterReportsPage() {
           <div className="rounded-lg border bg-card p-4">
             <div className="text-sm font-semibold">Water loss by zone this month</div>
             <p className="text-xs text-muted-foreground mb-2">
-              Loss is the zone&apos;s bulk meter volume minus what its households paid for and what
-              its sub-zones&apos; bulk meters took. Above {NRW_LIMIT}% needs investigating.
+              A zone with zones inside it is shown twice: the whole zone, then the zone only. The
+              zone only is its bulk meter less the bulk meters inside it, set against its own
+              household meters.
             </p>
-            {s.zone_loss.length === 0 ? (
+            {zoneLines.length === 0 ? (
               <div className="text-xs text-muted-foreground py-2">No zones yet.</div>
             ) : (
               <div className="overflow-x-auto">
@@ -565,44 +566,58 @@ function WaterReportsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Zone</TableHead>
-                      <TableHead className="text-right">Bulk meter (m³)</TableHead>
+                      <TableHead className="text-right">Household meters</TableHead>
+                      <TableHead className="text-right">Through the meter (m³)</TableHead>
                       <TableHead className="text-right">Households paid for (m³)</TableHead>
-                      <TableHead className="text-right">Loss (m³)</TableHead>
-                      <TableHead>Loss %</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Gap (m³)</TableHead>
+                      <TableHead className="text-right">Gap %</TableHead>
+                      <TableHead>Verdict</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {s.zone_loss.map((z) => (
-                      <TableRow key={z.zone_id ?? "unzoned"}>
-                        <TableCell className="text-sm">
-                          {z.parent_zone_id ? `↳ ${z.zone_name}` : z.zone_name}
-                        </TableCell>
-                        <TableCell className="text-right text-sm font-mono tabular-nums">
-                          {fmt(z.bulk_total)}
-                        </TableCell>
-                        <TableCell className="text-right text-sm font-mono tabular-nums">
-                          {fmt(z.household_total)}
-                        </TableCell>
-                        <TableCell className="text-right text-sm font-mono tabular-nums">
-                          {z.loss_pct !== null && z.loss_units >= 0 ? fmt(z.loss_units) : "—"}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {pct(z.loss_pct !== null && z.loss_pct < 0 ? null : z.loss_pct)}
-                        </TableCell>
-                        <TableCell>
-                          {!z.has_bulk_meter ? (
-                            <Badge variant="secondary">No bulk meter</Badge>
-                          ) : z.verdict === "not_measured" ? (
-                            <Badge variant="secondary">Bulk meter not read</Badge>
-                          ) : (
-                            <span className={`text-xs ${WATER_VERDICT_TONES[z.verdict]}`}>
-                              {WATER_VERDICT_LABELS[z.verdict]}
-                            </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {zoneLines.map((z) => {
+                      const num = "text-right text-sm font-mono tabular-nums";
+                      const showGap = z.measured && z.gap >= 0;
+                      return (
+                        <TableRow key={z.key} className={z.kind === "whole" ? "bg-muted/40" : ""}>
+                          <TableCell
+                            className={`text-sm ${z.kind === "whole" ? "font-semibold" : ""}`}
+                            style={{ paddingLeft: 12 + z.depth * 18 }}
+                          >
+                            {z.name}
+                            {z.kind === "whole" && (
+                              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                                with the zones inside it
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className={num}>{z.meters.toLocaleString()}</TableCell>
+                          <TableCell className={num}>
+                            {z.measured ? fmt(z.passed) : "—"}
+                            {z.measured && z.kind === "only" && z.inner_passed > 0 && (
+                              <span className="block text-xs font-sans text-muted-foreground">
+                                {fmt(z.passed + z.inner_passed)} − {fmt(z.inner_passed)} inside
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className={num}>{fmt(z.households)}</TableCell>
+                          <TableCell className={num}>{showGap ? fmt(z.gap) : "—"}</TableCell>
+                          <TableCell className={num}>{showGap ? pct(z.gap_pct) : "—"}</TableCell>
+                          <TableCell>
+                            {!z.has_bulk_meter ? (
+                              <Badge variant="secondary">No bulk meter</Badge>
+                            ) : z.verdict === "not_measured" ? (
+                              <Badge variant="secondary">Bulk meter not read</Badge>
+                            ) : (
+                              <span className={`text-xs ${WATER_VERDICT_TONES[z.verdict]}`}>
+                                {WATER_VERDICT_LABELS[z.verdict]}
+                                {z.gap < 0 && `: ${fmt(-z.gap)} m³`}
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -619,6 +634,31 @@ function WaterReportsPage() {
 
       <MeterReadingComparison />
     </div>
+  );
+}
+
+/** A meter volume in the month summary. A dial not read twice shows as not read, never as 0. */
+function SummaryVolumeRow({
+  label,
+  now,
+  before,
+}: {
+  label: ReactNode;
+  now: WaterBulkFigure;
+  before: WaterBulkFigure | null;
+}) {
+  const figure = (f: WaterBulkFigure | null) => (f?.measured ? fmt(f.units) : "Not read");
+  return (
+    <TableRow>
+      <TableCell className="text-sm">{label}</TableCell>
+      <TableCell className="text-right text-sm font-mono tabular-nums">{figure(now)}</TableCell>
+      <TableCell className="text-right text-sm font-mono tabular-nums text-muted-foreground">
+        {figure(before)}
+      </TableCell>
+      <TableCell className="text-right text-xs text-muted-foreground">
+        {(now.measured && before?.measured && unitsDelta(now.units, before.units)) || "—"}
+      </TableCell>
+    </TableRow>
   );
 }
 

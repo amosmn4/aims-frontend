@@ -161,6 +161,8 @@ export interface WaterTankBalance {
   pumped: number;
   sent_out: number;
   outlet_measured: boolean;
+  /** "the tank outlet meter", or the estate's bulk meter when there is no outlet meter. */
+  outlet_name: string;
   held: number | null;
 }
 
@@ -229,6 +231,18 @@ function mapReconciliation(r: BackendReconciliation | undefined): WaterReconcili
   };
 }
 
+/** A bulk figure that is only a number once the dial has two readings. */
+export interface WaterBulkFigure {
+  units: number;
+  measured: boolean;
+}
+
+/** The estate's own bulk meter, and the zone bulk meters directly under it added up. */
+export interface WaterBulkSummary {
+  estate: (WaterBulkFigure & { name: string }) | null;
+  zones: WaterBulkFigure & { names: string[] };
+}
+
 export interface WaterDashboard {
   month: string;
   averages: WaterMeterAverages;
@@ -241,6 +255,7 @@ export interface WaterDashboard {
   revenue: number;
   main_reading_total: number;
   bulk_reading_total: number;
+  bulk: WaterBulkSummary;
   tank: WaterTankBalance;
   // Tank -> distribution, and overall: borehole vs. all households.
   nrw_tank_to_network_pct: number | null;
@@ -1429,7 +1444,14 @@ type BackendDashboard = {
   revenue: number;
   mainReadingTotal: number;
   bulkReadingTotal: number;
-  tank?: { pumped: number; sentOut: number; outletMeasured: boolean; held: number | null };
+  bulk?: WaterBulkSummary;
+  tank?: {
+    pumped: number;
+    sentOut: number;
+    outletMeasured: boolean;
+    outletName?: string;
+    held: number | null;
+  };
   nrwTankToNetworkPct: number | null;
   nrwOverallPct: number | null;
   reconciliation?: BackendReconciliation;
@@ -1457,10 +1479,15 @@ function mapDashboard(raw: BackendDashboard): WaterDashboard {
     revenue: raw.revenue,
     main_reading_total: raw.mainReadingTotal,
     bulk_reading_total: raw.bulkReadingTotal,
+    bulk: raw.bulk ?? {
+      estate: null,
+      zones: { names: [], units: raw.bulkReadingTotal, measured: raw.bulkReadingTotal > 0 },
+    },
     tank: {
       pumped: raw.tank?.pumped ?? raw.mainReadingTotal,
       sent_out: raw.tank?.sentOut ?? 0,
       outlet_measured: raw.tank?.outletMeasured ?? false,
+      outlet_name: raw.tank?.outletName ?? "the tank outlet meter",
       held: raw.tank?.held ?? null,
     },
     nrw_tank_to_network_pct: raw.nrwTankToNetworkPct,
