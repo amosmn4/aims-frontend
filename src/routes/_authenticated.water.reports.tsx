@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowUpRight, Loader2 } from "lucide-react";
 import {
@@ -22,7 +22,9 @@ import {
   useWaterReadingSeries,
   useWaterReadingsWithDelta,
   WATER_METER_TYPE_LABELS,
+  type WaterHighUsageRow,
   type WaterMeterType,
+  type WaterZoneUsageRow,
 } from "@/features/water/use-water";
 import { TermsHint, WithTerm, formatPeriodKey } from "@/features/water/water-ui";
 import {
@@ -80,6 +82,8 @@ export const Route = createFileRoute("/_authenticated/water/reports")({
 
 const ALL = "__all__";
 const NRW_LIMIT = 8;
+// A meter buying this many times the typical household is marked high.
+const HIGH_USE_TIMES = 2;
 
 function currentMonth(): string {
   const now = new Date();
@@ -382,6 +386,10 @@ function WaterReportsPage() {
             )}
           </div>
 
+          <ZoneUsageTable rows={s.zone_usage} />
+
+          <HighUsageTable rows={s.high_usage} typical={s.typical_household_units} />
+
           <div className="flex flex-wrap items-end justify-between gap-3 pt-1">
             <div>
               <div className="text-sm font-semibold">Charts and graphs</div>
@@ -608,6 +616,189 @@ function WaterReportsPage() {
       <WaterTables month={month} />
 
       <MeterReadingComparison />
+    </div>
+  );
+}
+
+function ZoneUsageTable({ rows }: { rows: WaterZoneUsageRow[] }) {
+  const shown = rows.filter((z) => z.active_meters + z.inactive_meters > 0 || z.units > 0);
+  const total = shown
+    .filter((z) => !z.includes_sub_zones)
+    .reduce(
+      (sum, z) => ({
+        meters: sum.meters + z.active_meters,
+        buying: sum.buying + z.buying_meters,
+        units: sum.units + z.units,
+        revenue: sum.revenue + z.revenue,
+      }),
+      { meters: 0, buying: 0, units: 0, revenue: 0 },
+    );
+  const num = "text-right text-sm font-mono tabular-nums";
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="text-sm font-semibold mb-2">Zone usage by meters and spend</div>
+      {shown.length === 0 ? (
+        <div className="text-xs text-muted-foreground py-2">No household meters yet.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Zone</TableHead>
+                <TableHead className="text-right">Meters in use</TableHead>
+                <TableHead className="text-right">Meters that bought</TableHead>
+                <TableHead className="text-right">Water paid for (m³)</TableHead>
+                <TableHead className="text-right">Spend</TableHead>
+                <TableHead className="text-right">m³ per meter</TableHead>
+                <TableHead className="text-right">Spend per meter</TableHead>
+                <TableHead className="text-right">Share of water</TableHead>
+                <TableHead className="text-right">Share of meters</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {shown.map((z) => (
+                <TableRow key={z.key} className={z.includes_sub_zones ? "bg-muted/40" : undefined}>
+                  <TableCell
+                    className={`text-sm ${z.includes_sub_zones ? "font-semibold" : ""}`}
+                    style={{ paddingLeft: 12 + z.depth * 18 }}
+                  >
+                    {z.zone_id ? (
+                      <Link
+                        to="/water/zones/$zoneId"
+                        params={{ zoneId: z.zone_id }}
+                        className="hover:underline"
+                      >
+                        {z.zone_name}
+                      </Link>
+                    ) : (
+                      z.zone_name
+                    )}
+                    {z.includes_sub_zones && (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        with the zones inside it
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className={num}>{z.active_meters.toLocaleString()}</TableCell>
+                  <TableCell className={`${num} text-muted-foreground`}>
+                    {z.buying_meters.toLocaleString()}
+                  </TableCell>
+                  <TableCell className={num}>{fmt(z.units)}</TableCell>
+                  <TableCell className={num}>KES {fmt(z.revenue)}</TableCell>
+                  <TableCell className={`${num} font-semibold`}>
+                    {z.units_per_meter === null ? "—" : z.units_per_meter.toFixed(1)}
+                  </TableCell>
+                  <TableCell className={num}>
+                    {z.revenue_per_meter === null ? "—" : `KES ${fmt(z.revenue_per_meter)}`}
+                  </TableCell>
+                  <TableCell className={num}>{pct(z.units_share_pct)}</TableCell>
+                  <TableCell className={`${num} text-muted-foreground`}>
+                    {pct(z.meter_share_pct)}
+                  </TableCell>
+                </TableRow>
+              ))}
+              <TableRow className="border-t-2 bg-muted/60 hover:bg-muted/60">
+                <TableCell className="text-sm font-semibold">All zones</TableCell>
+                <TableCell className={`${num} font-semibold`}>
+                  {total.meters.toLocaleString()}
+                </TableCell>
+                <TableCell className={num}>{total.buying.toLocaleString()}</TableCell>
+                <TableCell className={`${num} font-semibold`}>{fmt(total.units)}</TableCell>
+                <TableCell className={`${num} font-semibold`}>KES {fmt(total.revenue)}</TableCell>
+                <TableCell className={`${num} font-semibold`}>
+                  {total.meters > 0 ? (total.units / total.meters).toFixed(1) : "—"}
+                </TableCell>
+                <TableCell className={num}>
+                  {total.meters > 0 ? `KES ${fmt(total.revenue / total.meters)}` : "—"}
+                </TableCell>
+                <TableCell />
+                <TableCell />
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HighUsageTable({ rows, typical }: { rows: WaterHighUsageRow[]; typical: number | null }) {
+  const num = "text-right text-sm font-mono tabular-nums";
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+        <div className="text-sm font-semibold">Highest usage this month</div>
+        {typical !== null && (
+          <div className="text-xs text-muted-foreground">Typical household: {fmt(typical)} m³</div>
+        )}
+      </div>
+      {rows.length === 0 ? (
+        <div className="text-xs text-muted-foreground py-2">
+          No household water paid for this month.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Meter</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Plot</TableHead>
+                <TableHead>Zone</TableHead>
+                <TableHead className="text-right">Water paid for (m³)</TableHead>
+                <TableHead className="text-right">Spend</TableHead>
+                <TableHead className="text-right">Purchases</TableHead>
+                <TableHead>Against typical</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((h) => {
+                const high = h.times_typical !== null && h.times_typical >= HIGH_USE_TIMES;
+                return (
+                  <TableRow key={h.meter_id}>
+                    <TableCell className="text-sm">
+                      <Link
+                        to="/water/meters/$meterId"
+                        params={{ meterId: h.meter_id }}
+                        className="font-mono text-xs hover:underline"
+                      >
+                        {h.meter_number}
+                      </Link>
+                      {!h.is_active && (
+                        <Badge variant="secondary" className="ml-2">
+                          Out of use
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm">{h.customer_name ?? "—"}</TableCell>
+                    <TableCell className="font-mono text-xs">{h.plot_no ?? "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {h.zone_name ?? "—"}
+                    </TableCell>
+                    <TableCell className={`${num} font-semibold`}>{fmt(h.units)}</TableCell>
+                    <TableCell className={num}>KES {fmt(h.amount)}</TableCell>
+                    <TableCell className={`${num} text-muted-foreground`}>
+                      {h.purchases.toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      {h.times_typical === null ? (
+                        "—"
+                      ) : (
+                        <Badge
+                          variant="secondary"
+                          className={high ? "bg-warning/15 text-warning" : undefined}
+                        >
+                          {h.times_typical.toFixed(1)} times{high ? " (high)" : ""}
+                        </Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   );
 }

@@ -25,6 +25,12 @@ function change(curr: number, prev: number) {
   return Math.abs(d) < 0.5 ? "No change" : `${d > 0 ? "+" : ""}${d.toFixed(1)}%`;
 }
 
+// Negative means more left the tank than was pumped in: it came from stock.
+const stock = (held: number | null) =>
+  held === null ? "—" : held >= 0 ? units(held) : `${units(-held)} drawn from stock`;
+const perMeter = (n: number | null) => (n === null ? "—" : n.toFixed(1));
+const share = (n: number | null) => (n === null ? "—" : `${n.toFixed(1)}%`);
+
 function pointsChange(curr: number | null, prev: number | null) {
   if (curr === null || prev === null) return "—";
   const d = curr - prev;
@@ -91,11 +97,20 @@ export function buildWaterReportDocument({
           pointsChange(d.nrw_overall_pct, p.nrw_overall_pct),
         ],
         [
-          "Lost between borehole and tank",
-          nrwNote(d.nrw_borehole_to_tank_pct),
-          pct(p.nrw_borehole_to_tank_pct),
-          pointsChange(d.nrw_borehole_to_tank_pct, p.nrw_borehole_to_tank_pct),
+          "Pumped into the tank (m³)",
+          units(d.tank.pumped),
+          units(p.tank.pumped),
+          change(d.tank.pumped, p.tank.pumped),
         ],
+        [
+          "Sent out of the tank (m³)",
+          d.tank.outlet_measured ? units(d.tank.sent_out) : "—",
+          p.tank.outlet_measured ? units(p.tank.sent_out) : "—",
+          d.tank.outlet_measured && p.tank.outlet_measured
+            ? change(d.tank.sent_out, p.tank.sent_out)
+            : "—",
+        ],
+        ["Still in the tank (m³)", stock(d.tank.held), stock(p.tank.held), "—"],
         [
           "Lost between tank and households",
           nrwNote(d.nrw_tank_to_network_pct),
@@ -129,6 +144,63 @@ export function buildWaterReportDocument({
         units(z.household_total),
         units(z.loss_units),
         nrwNote(z.loss_pct),
+      ]),
+    },
+
+    { kind: "heading", text: "Zone usage by meters and spend" },
+    {
+      kind: "paragraph",
+      text: "Water paid for in each zone, set against how many meters the zone has and what they spent.",
+      muted: true,
+    },
+    {
+      kind: "table",
+      columns: [
+        "Zone",
+        "Meters in use",
+        "Water (m³)",
+        "Spend",
+        "m³ per meter",
+        "Spend per meter",
+        "Share of water",
+        "Share of meters",
+      ],
+      numeric: [1, 2, 3, 4, 5, 6, 7],
+      emptyText: "No household water paid for this month.",
+      rows: s.zone_usage.map((z) => [
+        `${"↳ ".repeat(z.depth)}${z.zone_name}${z.includes_sub_zones ? " (with the zones inside it)" : ""}`,
+        z.active_meters.toLocaleString(),
+        units(z.units),
+        kes(z.revenue),
+        perMeter(z.units_per_meter),
+        z.revenue_per_meter === null ? "—" : kes(z.revenue_per_meter),
+        share(z.units_share_pct),
+        share(z.meter_share_pct),
+      ]),
+    },
+
+    { kind: "heading", text: "Highest usage" },
+    {
+      kind: "paragraph",
+      text:
+        s.typical_household_units === null
+          ? "The meters that paid for the most water this month."
+          : `The meters that paid for the most water this month. A typical household paid for ${units(s.typical_household_units)} m³.`,
+      muted: true,
+    },
+    {
+      kind: "table",
+      columns: ["Meter", "Customer", "Plot", "Zone", "Water (m³)", "Spend", "Against typical"],
+      numeric: [4, 5, 6],
+      emptyText: "No household water paid for this month.",
+      rows: s.high_usage.map((h) => [
+        h.meter_number,
+        h.customer_name ?? "—",
+        h.plot_no ?? "—",
+        h.zone_name ?? "—",
+        units(h.units),
+        kes(h.amount),
+        h.times_typical === null ? "—" : `${h.times_typical.toFixed(1)} times`,
       ]),
     },
 

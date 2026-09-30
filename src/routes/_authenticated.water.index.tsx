@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  Cylinder,
   Loader2,
   TrendingDown,
   TrendingUp,
@@ -26,6 +27,7 @@ import {
   useWaterZoneComparison,
   useWaterAllZones,
   useCanManageWater,
+  type WaterTankBalance,
 } from "@/features/water/use-water";
 import { TermInfo, WithTerm } from "@/features/water/water-ui";
 import {
@@ -258,14 +260,13 @@ function WaterDashboardPage() {
           <div className="rounded-lg border bg-card p-4">
             <div className="text-sm font-semibold">Water flow and loss</div>
             <p className="text-xs text-muted-foreground mb-3">
-              Volumes in <WithTerm term="m3">m³</WithTerm>. Loss is water that went in at one stage
-              but didn&apos;t come out at the next.
+              Volumes in <WithTerm term="m3">m³</WithTerm>. Water pumped but not yet sent out is
+              still in the tank. Loss is water that left the tank and was not accounted for.
             </p>
             <FlowLadder
-              mainTotal={d.main_reading_total}
+              tank={d.tank}
               bulkTotal={d.bulk_reading_total}
               householdTotal={d.units_sold}
-              nrwBoreholeToTank={d.nrw_borehole_to_tank_pct}
               nrwTankToNetwork={d.nrw_tank_to_network_pct}
             />
           </div>
@@ -473,16 +474,14 @@ function KpiCard({
 }
 
 function FlowLadder({
-  mainTotal,
+  tank,
   bulkTotal,
   householdTotal,
-  nrwBoreholeToTank,
   nrwTankToNetwork,
 }: {
-  mainTotal: number;
+  tank: WaterTankBalance;
   bulkTotal: number;
   householdTotal: number;
-  nrwBoreholeToTank: number | null;
   nrwTankToNetwork: number | null;
 }) {
   const Node = ({
@@ -526,22 +525,43 @@ function FlowLadder({
       </div>
     );
   };
+  // Pumped in less sent out is stock in the tank, never a loss.
+  const TankStock = () => (
+    <div className="flex flex-col items-center gap-1 shrink-0 w-32">
+      <div className="w-full h-0.5 bg-border" />
+      <div className="flex items-center gap-1 text-xs font-medium whitespace-nowrap text-muted-foreground">
+        <Cylinder className="h-3 w-3" aria-hidden="true" />
+        {tank.held === null
+          ? "Tank outlet not read"
+          : tank.held >= 0
+            ? `${fmt(tank.held)} m³ in the tank`
+            : `${fmt(-tank.held)} m³ from tank stock`}
+      </div>
+    </div>
+  );
   return (
     <div className="flex items-center justify-between flex-wrap gap-2">
       <Node
-        label={<WithTerm term="main">Main meter</WithTerm>}
-        sub="Borehole into the tank"
-        value={mainTotal}
+        label={<WithTerm term="main">Borehole meter</WithTerm>}
+        sub="Pumped into the tank"
+        value={tank.pumped}
         color="#0F7A78"
       />
-      <Loss value={nrwBoreholeToTank} />
+      <TankStock />
+      <Node
+        label={<WithTerm term="main">Tank outlet meter</WithTerm>}
+        sub="Sent into the network"
+        value={tank.sent_out}
+        color="#1E6FA8"
+      />
+      <Loss value={nrwTankToNetwork} />
       <Node
         label={<WithTerm term="bulk">Zone bulk meters</WithTerm>}
-        sub="Tank into the zones (plus unzoned)"
+        sub="Into the zones"
         value={bulkTotal}
         color="#B9762A"
       />
-      <Loss value={nrwTankToNetwork} />
+      <div className="shrink-0 w-10 h-0.5 bg-border" aria-hidden="true" />
       <Node
         label={<WithTerm term="household">Household meters</WithTerm>}
         sub="Paid for by customers"

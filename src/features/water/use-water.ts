@@ -156,6 +156,14 @@ export interface WaterMeterAverages {
   bulk_meters: number;
 }
 
+/** Pumped in less sent out stays in the tank. `held` is null until both dials are read twice. */
+export interface WaterTankBalance {
+  pumped: number;
+  sent_out: number;
+  outlet_measured: boolean;
+  held: number | null;
+}
+
 export interface WaterDashboard {
   month: string;
   averages: WaterMeterAverages;
@@ -168,8 +176,8 @@ export interface WaterDashboard {
   revenue: number;
   main_reading_total: number;
   bulk_reading_total: number;
-  // Stage 1: borehole -> tank. Stage 2: tank -> distribution. Overall: borehole vs. all households.
-  nrw_borehole_to_tank_pct: number | null;
+  tank: WaterTankBalance;
+  // Tank -> distribution, and overall: borehole vs. all households.
   nrw_tank_to_network_pct: number | null;
   nrw_overall_pct: number | null;
 }
@@ -196,12 +204,50 @@ export interface WaterZoneComparisonRow {
   loss_pct: number | null;
 }
 
+/** A zone's household water against its meter count and spend. */
+export interface WaterZoneUsageRow {
+  key: string;
+  zone_id: string | null;
+  zone_name: string;
+  parent_zone_id: string | null;
+  depth: number;
+  /** The zone plus every zone inside it. Repeats the rows under it, so totals skip it. */
+  includes_sub_zones: boolean;
+  active_meters: number;
+  inactive_meters: number;
+  buying_meters: number;
+  units: number;
+  revenue: number;
+  units_per_meter: number | null;
+  revenue_per_meter: number | null;
+  units_share_pct: number | null;
+  meter_share_pct: number | null;
+}
+
+/** One of the month's biggest buyers, against the typical household. */
+export interface WaterHighUsageRow {
+  meter_id: string;
+  meter_number: string;
+  plot_no: string | null;
+  is_active: boolean;
+  customer_id: string | null;
+  customer_name: string | null;
+  zone_name: string | null;
+  units: number;
+  amount: number;
+  purchases: number;
+  times_typical: number | null;
+}
+
 export interface WaterReportSummary {
   month: string;
   dashboard: WaterDashboard;
   prev_dashboard: WaterDashboard;
   zone_loss: WaterZoneComparisonRow[];
   insights: string[];
+  zone_usage: WaterZoneUsageRow[];
+  high_usage: WaterHighUsageRow[];
+  typical_household_units: number | null;
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -1279,7 +1325,7 @@ type BackendDashboard = {
   revenue: number;
   mainReadingTotal: number;
   bulkReadingTotal: number;
-  nrwBoreholeToTankPct: number | null;
+  tank?: { pumped: number; sentOut: number; outletMeasured: boolean; held: number | null };
   nrwTankToNetworkPct: number | null;
   nrwOverallPct: number | null;
 };
@@ -1306,7 +1352,12 @@ function mapDashboard(raw: BackendDashboard): WaterDashboard {
     revenue: raw.revenue,
     main_reading_total: raw.mainReadingTotal,
     bulk_reading_total: raw.bulkReadingTotal,
-    nrw_borehole_to_tank_pct: raw.nrwBoreholeToTankPct,
+    tank: {
+      pumped: raw.tank?.pumped ?? raw.mainReadingTotal,
+      sent_out: raw.tank?.sentOut ?? 0,
+      outlet_measured: raw.tank?.outletMeasured ?? false,
+      held: raw.tank?.held ?? null,
+    },
     nrw_tank_to_network_pct: raw.nrwTankToNetworkPct,
     nrw_overall_pct: raw.nrwOverallPct,
   };
@@ -1399,6 +1450,38 @@ export function useWaterZoneComparison(
   });
 }
 
+type BackendZoneUsageRow = {
+  key: string;
+  zoneId: string | null;
+  zoneName: string;
+  parentZoneId: string | null;
+  depth?: number;
+  includesSubZones?: boolean;
+  activeMeters: number;
+  inactiveMeters: number;
+  buyingMeters: number;
+  units: number;
+  revenue: number;
+  unitsPerMeter: number | null;
+  revenuePerMeter: number | null;
+  unitsSharePct: number | null;
+  meterSharePct: number | null;
+};
+
+type BackendHighUsageRow = {
+  meterId: string;
+  meterNumber: string;
+  plotNo: string | null;
+  isActive: boolean;
+  customerId: string | null;
+  customerName: string | null;
+  zoneName: string | null;
+  units: number;
+  amount: number;
+  purchases: number;
+  timesTypical: number | null;
+};
+
 export function useWaterReportSummary(filters: { month?: string } = {}) {
   return useQuery({
     queryKey: ["water", "report-summary", filters],
@@ -1409,6 +1492,9 @@ export function useWaterReportSummary(filters: { month?: string } = {}) {
         prevDashboard: BackendDashboard;
         zoneLoss: BackendZoneComparisonRow[];
         insights: string[];
+        zoneUsage?: BackendZoneUsageRow[];
+        highUsage?: BackendHighUsageRow[];
+        typicalHouseholdUnits?: number | null;
       }>(`/water/reports/summary${buildQuery(filters)}`);
       return {
         month: raw.month,
@@ -1416,6 +1502,37 @@ export function useWaterReportSummary(filters: { month?: string } = {}) {
         prev_dashboard: mapDashboard(raw.prevDashboard),
         zone_loss: raw.zoneLoss.map(mapZoneComparisonRow),
         insights: raw.insights,
+        zone_usage: (raw.zoneUsage ?? []).map((z) => ({
+          key: z.key,
+          zone_id: z.zoneId,
+          zone_name: z.zoneName,
+          parent_zone_id: z.parentZoneId,
+          depth: z.depth ?? 0,
+          includes_sub_zones: z.includesSubZones ?? false,
+          active_meters: z.activeMeters,
+          inactive_meters: z.inactiveMeters,
+          buying_meters: z.buyingMeters,
+          units: z.units,
+          revenue: z.revenue,
+          units_per_meter: z.unitsPerMeter,
+          revenue_per_meter: z.revenuePerMeter,
+          units_share_pct: z.unitsSharePct,
+          meter_share_pct: z.meterSharePct,
+        })),
+        high_usage: (raw.highUsage ?? []).map((h) => ({
+          meter_id: h.meterId,
+          meter_number: h.meterNumber,
+          plot_no: h.plotNo,
+          is_active: h.isActive,
+          customer_id: h.customerId,
+          customer_name: h.customerName,
+          zone_name: h.zoneName,
+          units: h.units,
+          amount: h.amount,
+          purchases: h.purchases,
+          times_typical: h.timesTypical,
+        })),
+        typical_household_units: raw.typicalHouseholdUnits ?? null,
       } satisfies WaterReportSummary;
     },
   });
