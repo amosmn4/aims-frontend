@@ -1,8 +1,8 @@
+import { TeamReportDialog } from "@/features/projects/workspace/project-reports";
 import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { FolderKanban, Loader2 } from "lucide-react";
-import { useAuth } from "@/lib/auth";
 import { usePermissions } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { LoadError } from "@/components/load-error";
@@ -39,14 +39,13 @@ function lifeOfProject(p: Project) {
 
 function ProjectReports() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
   const { canManageProject } = usePermissions();
-  const departmentId = profile?.departmentId ?? undefined;
-  const projectsQ = useProjects({ departmentId });
-  const reportsQ = useReports({ kind: "project", departmentId });
+  const projectsQ = useProjects();
+  const reportsQ = useReports({ kind: "project" });
   const dueQ = useReportsDue();
   const startReport = useStartReport();
   const [starting, setStarting] = useState("");
+  const [activeReport, setActiveReport] = useState<string | null>(null);
 
   const projects = (projectsQ.data ?? []).filter((p) => p.status !== "cancelled");
   const latest = latestBySubject(reportsQ.data ?? []);
@@ -65,7 +64,8 @@ function ProjectReports() {
         subjectId: project.id,
         ...dates,
       });
-      navigate({ to: "/reports/$reportId", params: { reportId: created.id } });
+      if (project.scope === "company") setActiveReport(created.id);
+      else void navigate({ to: "/reports/$reportId", params: { reportId: created.id } });
     } catch (error) {
       toast.error(startFailure(error));
     } finally {
@@ -77,7 +77,7 @@ function ProjectReports() {
     <div className="space-y-4">
       <ReportHeader
         title="Project reports"
-        description="A progress report goes to your department head. A completion report closes the project and goes to the CEO."
+        description="Company teams send one shared report to the CEO. Department projects keep their progress reports here."
       />
 
       <section className="rounded-lg border bg-card" aria-labelledby="project-reports-heading">
@@ -85,8 +85,8 @@ function ProjectReports() {
           id="project-reports-heading"
           className="flex items-center gap-2 border-b px-4 py-3 text-sm font-semibold"
         >
-          <FolderKanban className="h-4 w-4 text-primary" aria-hidden="true" /> Your department's
-          projects
+          <FolderKanban className="h-4 w-4 text-primary" aria-hidden="true" /> Projects you can
+          access
         </h2>
 
         {projectsQ.isError || reportsQ.isError ? (
@@ -107,7 +107,7 @@ function ProjectReports() {
           <div className="px-4 py-8 text-center">
             <p className="text-sm font-medium">No projects to report on</p>
             <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
-              Once your department has a project, you can report on how it is going here.
+              Create a project or join a team to report on its progress.
             </p>
             <Link
               to="/projects"
@@ -127,11 +127,15 @@ function ProjectReports() {
                 currentPeriodStart={period?.start}
                 startingKey={starting}
                 onStart={start}
+                onOpenTeamReport={setActiveReport}
               />
             ))}
           </ul>
         )}
       </section>
+      {activeReport && (
+        <TeamReportDialog reportId={activeReport} onClose={() => setActiveReport(null)} />
+      )}
     </div>
   );
 }
@@ -143,6 +147,7 @@ function ProjectRow({
   currentPeriodStart,
   startingKey,
   onStart,
+  onOpenTeamReport,
 }: {
   project: Project;
   report: ReportRow | null;
@@ -150,6 +155,7 @@ function ProjectRow({
   currentPeriodStart?: string;
   startingKey: string;
   onStart: (project: Project, template: ReportTemplate) => Promise<void>;
+  onOpenTeamReport: (id: string) => void;
 }) {
   const done = project.status === "completed";
   const thisPeriodDone =
@@ -169,21 +175,35 @@ function ProjectRow({
           {project.name}
         </Link>
         <p className="text-xs text-muted-foreground">
-          {project.client_name ?? "No client"} · {PROJECT_STATUS_LABELS[project.status]} ·{" "}
-          {PROJECT_HEALTH_LABELS[project.health]}
+          {project.scope === "company"
+            ? "Company team"
+            : (project.client_name ?? "Department project")}{" "}
+          · {PROJECT_STATUS_LABELS[project.status]} · {PROJECT_HEALTH_LABELS[project.health]}
         </p>
         <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {report ? (
             <>
-              <Link
-                to="/reports/$reportId"
-                params={{ reportId: report.id }}
-                className="font-medium text-primary hover:underline"
-              >
-                {formatReportPeriod(report.periodStart, report.periodEnd)} report
-              </Link>
+              {project.scope === "company" ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenTeamReport(report.id)}
+                  className="font-medium text-primary hover:underline"
+                >
+                  {formatReportPeriod(report.periodStart, report.periodEnd)} report
+                </button>
+              ) : (
+                <Link
+                  to="/reports/$reportId"
+                  params={{ reportId: report.id }}
+                  className="font-medium text-primary hover:underline"
+                >
+                  {formatReportPeriod(report.periodStart, report.periodEnd)} report
+                </Link>
+              )}
               <ReportStatusPill status={report.status} />
-              <span>by {personName(report.creator)}</span>
+              <span>
+                {project.scope === "company" ? "Team report" : `by ${personName(report.creator)}`}
+              </span>
             </>
           ) : (
             <span>No report on this project yet</span>

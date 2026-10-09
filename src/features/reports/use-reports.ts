@@ -85,6 +85,7 @@ export interface ReportRow {
   periodEnd: string;
   status: ReportStatus;
   reviewerKind: ReviewerKind;
+  isTeamReport?: boolean;
   lastReviewNote: string | null;
   submissionCount: number;
   submittedAt: string | null;
@@ -124,11 +125,6 @@ export interface ReportDue {
 export interface ReportAiStatus {
   configured: boolean;
   providers: { openai: boolean; gemini: boolean };
-}
-
-export interface ReportPreview {
-  figures: ReportFigure[];
-  lists: Record<string, ReportListItem[]>;
 }
 
 /* ---------------- Asking the AI for help ---------------- */
@@ -174,6 +170,7 @@ export interface StartReportInput {
 }
 
 export interface UpdateReportInput {
+  expectedUpdatedAt?: string;
   title?: string;
   periodType?: ReportPeriodType;
   periodStart?: string;
@@ -233,25 +230,6 @@ export function useReportAiStatus(enabled = true) {
   });
 }
 
-/** What AIMS would fill in, without creating anything. */
-export function useReportPreview(
-  params: {
-    kind: ReportKind;
-    subjectId?: string;
-    periodStart: string;
-    periodEnd: string;
-    template?: ReportTemplate;
-  },
-  enabled = true,
-) {
-  const query = search({ ...params });
-  return useQuery({
-    queryKey: [...KEY, "preview", query],
-    enabled,
-    queryFn: () => apiJson<ReportPreview>(`/reports/preview?${query}`),
-  });
-}
-
 /* ---------------- Mutations ---------------- */
 
 function useInvalidateReports() {
@@ -260,6 +238,7 @@ function useInvalidateReports() {
     qc.invalidateQueries({ queryKey: KEY });
     qc.invalidateQueries({ queryKey: ["department-reports"] });
     qc.invalidateQueries({ queryKey: ["reports-inbox"] });
+    qc.invalidateQueries({ queryKey: ["executive-overview"] });
     qc.invalidateQueries({ queryKey: ["notifications"] });
     qc.invalidateQueries({ queryKey: ["my-work"] });
   };

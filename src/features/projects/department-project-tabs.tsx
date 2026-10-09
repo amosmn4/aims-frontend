@@ -4,6 +4,7 @@ import { Loader2, Search } from "lucide-react";
 import { useDepartments } from "@/features/clients/use-clients-contracts";
 import {
   useProjects,
+  projectProgress,
   PROJECT_STATUS_LABELS,
   type Project,
   type ProjectStatus,
@@ -35,12 +36,6 @@ export type DepartmentProjectFilters = {
   q?: string;
   show?: "tasks";
 };
-
-function projectProgress(p: Project) {
-  const total = (p.deliverable_count ?? 0) + (p.task_count ?? 0) + (p.milestone_count ?? 0);
-  const done = (p.deliverables_done ?? 0) + (p.tasks_done ?? 0) + (p.milestones_done ?? 0);
-  return total === 0 ? null : Math.round((done / total) * 100);
-}
 
 /** Every project, one tab per department, as a simple list. */
 export function DepartmentProjectTabs({

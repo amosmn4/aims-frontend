@@ -44,6 +44,7 @@ export function StaffSelect({
   className,
   ariaLabel,
   disabled,
+  allowedIds,
 }: {
   id?: string;
   value: string;
@@ -54,6 +55,7 @@ export function StaffSelect({
   className?: string;
   ariaLabel?: string;
   disabled?: boolean;
+  allowedIds?: readonly string[];
 }) {
   const { options, meId } = useStaffOptions();
   return (
@@ -67,11 +69,13 @@ export function StaffSelect({
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={NOBODY}>{emptyLabel}</SelectItem>
-        {options.map((p) => (
-          <SelectItem key={p.id} value={p.id}>
-            {p.id === meId ? `Me (${p.name})` : p.name}
-          </SelectItem>
-        ))}
+        {options
+          .filter((p) => !allowedIds || allowedIds.includes(p.id))
+          .map((p) => (
+            <SelectItem key={p.id} value={p.id}>
+              {p.id === meId ? `Me (${p.name})` : p.name}
+            </SelectItem>
+          ))}
       </SelectContent>
     </Select>
   );

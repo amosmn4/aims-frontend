@@ -104,7 +104,7 @@ export function MyWorkPanel({
   const nudge: ReportNudge = {
     period: dueQ.data?.period,
     own: dueQ.data?.own ?? null,
-    sentBack: (sentBackQ.data ?? []).filter((r) => r.createdBy === profile?.id),
+    sentBack: (sentBackQ.data ?? []).filter((r) => r.isTeamReport || r.createdBy === profile?.id),
     projectReports: projectReportsQ.data ?? [],
     teamWaiting: hasRole("department_head") && !isAdminOrCeo ? (dueQ.data?.waitingOnMe ?? 0) : 0,
   };

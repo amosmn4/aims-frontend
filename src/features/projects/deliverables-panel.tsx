@@ -29,8 +29,6 @@ import {
   type DeliverableStatus,
 } from "@/features/projects/use-projects";
 
-const today = () => new Date().toISOString().slice(0, 10);
-
 /** What the project owes the client: log each one and move it to Delivered. */
 export function DeliverablesPanel({
   projectId,

@@ -23,6 +23,7 @@ import { useProjects, useTasks } from "@/features/projects/use-projects";
 import { useFinanceReports } from "@/features/finance/use-finance-reports";
 import { useTenders } from "@/features/tender/use-tender";
 import { useClientRequests } from "@/features/client-requests/use-client-requests";
+import { useReports } from "@/features/reports/use-reports";
 import { useDepartmentReports } from "@/features/reports/use-department-reports";
 import { useAuth } from "@/lib/auth";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
@@ -86,6 +87,7 @@ export function DocumentUploadDialog({
   trigger,
   department,
   defaultAttachTo,
+  sharedTeam = false,
 }: {
   resourceType?: DocumentResourceType;
   resourceId?: string;
@@ -94,6 +96,7 @@ export function DocumentUploadDialog({
   department?: DepartmentLite;
   /** Opens with this "Attach to" choice instead of the default. */
   defaultAttachTo?: DocumentResourceType;
+  sharedTeam?: boolean;
 }) {
   const uid = useId();
   const { profile, isAdminOrCeo, hasRole } = useAuth();
@@ -120,6 +123,18 @@ export function DocumentUploadDialog({
   const [errors, setErrors] = useState<Errors>({});
   const [submitError, setSubmitError] = useState<string>();
 
+  const projectsQ = useProjects({
+    enabled: open && !sharedTeam && ["project", "task"].includes(attachTo),
+  });
+  const tasksQ = useTasks({ enabled: open && !sharedTeam && attachTo === "task" });
+  const reportsQ = useReports({}, open && !sharedTeam && attachTo === "department_report");
+  const projectId =
+    attachTo === "project" ? resourceId : tasksQ.data?.find((t) => t.id === resourceId)?.project_id;
+  const inheritedTeam =
+    sharedTeam ||
+    projectsQ.data?.find((p) => p.id === projectId)?.scope === "company" ||
+    (attachTo === "department_report" &&
+      !!reportsQ.data?.find((r) => r.id === resourceId)?.isTeamReport);
   const isLibrary = attachTo === "department";
   const libraryName = isLibrary
     ? (departmentsQ.data?.find((d) => d.id === resourceId)?.name ??
@@ -182,12 +197,12 @@ export function DocumentUploadDialog({
     const next: Errors = {};
     if (showPicker && !resourceId) next.target = `Choose which ${NOUNS[attachTo]?.[0] ?? "one"}`;
     if (files.length === 0) next.file = "Choose at least one file to upload";
-    next.access = validateAccess(mode, departmentIds, userIds);
+    next.access = inheritedTeam ? undefined : validateAccess(mode, departmentIds, userIds);
     setErrors(next);
     setSubmitError(undefined);
     if (files.length === 0 || next.target || next.access) return;
 
-    const grants = draftAccessGrants(mode, departmentIds, userIds, profile.id);
+    const grants = inheritedTeam ? [] : draftAccessGrants(mode, departmentIds, userIds, profile.id);
     const tags = labels
       .split(",")
       .map((t) => t.trim())
@@ -390,41 +405,52 @@ export function DocumentUploadDialog({
             </FormField>
           </div>
 
-          <FormField
-            id={`${uid}-labels`}
-            label="Labels"
-            hint="Optional words people can filter by later, separated by commas"
-          >
-            <Input
+          <details className="space-y-3">
+            <summary className="cursor-pointer text-sm text-muted-foreground">
+              Labels (optional)
+            </summary>
+            <FormField
               id={`${uid}-labels`}
-              value={labels}
-              onChange={(e) => setLabels(e.target.value)}
-              placeholder="e.g. 2026, signed"
-            />
-          </FormField>
+              label="Labels"
+              hint="Optional words people can filter by later, separated by commas"
+            >
+              <Input
+                id={`${uid}-labels`}
+                value={labels}
+                onChange={(e) => setLabels(e.target.value)}
+                placeholder="e.g. 2026, signed"
+              />
+            </FormField>
+          </details>
 
-          <fieldset>
-            <legend className="mb-2 text-sm font-medium">Who can see this file</legend>
-            <AccessModePicker
-              mode={mode}
-              onModeChange={(m) => {
-                setAccessMode(m);
-                setErrors((prev) => ({ ...prev, access: undefined }));
-              }}
-              departmentIds={departmentIds}
-              onToggleDepartment={(id) => {
-                setDepartmentIds((list) => toggle(list, id));
-                setErrors((prev) => ({ ...prev, access: undefined }));
-              }}
-              userIds={userIds}
-              onToggleUser={(id) => {
-                setUserIds((list) => toggle(list, id));
-                setErrors((prev) => ({ ...prev, access: undefined }));
-              }}
-              context={context}
-              error={errors.access}
-            />
-          </fieldset>
+          {inheritedTeam ? (
+            <p className="text-xs text-muted-foreground">
+              Shared with the whole project team and the CEO.
+            </p>
+          ) : (
+            <fieldset>
+              <legend className="mb-2 text-sm font-medium">Who can see this file</legend>
+              <AccessModePicker
+                mode={mode}
+                onModeChange={(m) => {
+                  setAccessMode(m);
+                  setErrors((prev) => ({ ...prev, access: undefined }));
+                }}
+                departmentIds={departmentIds}
+                onToggleDepartment={(id) => {
+                  setDepartmentIds((list) => toggle(list, id));
+                  setErrors((prev) => ({ ...prev, access: undefined }));
+                }}
+                userIds={userIds}
+                onToggleUser={(id) => {
+                  setUserIds((list) => toggle(list, id));
+                  setErrors((prev) => ({ ...prev, access: undefined }));
+                }}
+                context={context}
+                error={errors.access}
+              />
+            </fieldset>
+          )}
 
           {submitError && (
             <p

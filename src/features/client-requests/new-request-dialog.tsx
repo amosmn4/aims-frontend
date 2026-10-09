@@ -72,6 +72,7 @@ export function NewRequestDialog({
   const initial = blank(defaultSource);
   const [form, setForm] = useState<FormState>(initial);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  const [showMore, setShowMore] = useState(false);
 
   const serviceLinesQ = useServiceLines();
   const departmentsQ = useDepartments();
@@ -89,6 +90,7 @@ export function NewRequestDialog({
     setOpen(false);
     setForm(blank(defaultSource));
     setErrors({});
+    setShowMore(false);
   };
 
   const departments = (departmentsQ.data ?? []).filter((d) => d.code !== "operations");
@@ -102,10 +104,12 @@ export function NewRequestDialog({
     if (form.estimatedValue && Number(form.estimatedValue) < 0)
       next.estimatedValue = "Value can't be negative.";
     setErrors(next);
+    if (next.contactEmail || next.estimatedValue) setShowMore(true);
     return Object.keys(next).length === 0;
   };
 
   const submit = () => {
+    if (save.isPending) return;
     if (!validate()) return;
     save.mutate(
       {
@@ -141,7 +145,14 @@ export function NewRequestDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : guardClose(close))}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (save.isPending) return;
+        if (next) setOpen(true);
+        else guardClose(close);
+      }}
+    >
       <DialogTrigger asChild>
         {trigger ?? (
           <Button size="sm">
@@ -151,6 +162,7 @@ export function NewRequestDialog({
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <form
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
             submit();
@@ -267,100 +279,122 @@ export function NewRequestDialog({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <FormField id="new-request-contact" label="Contact name">
-                <Input
-                  id="new-request-contact"
-                  value={form.contactName}
-                  onChange={(e) => set("contactName", e.target.value)}
-                  autoComplete="off"
-                />
-              </FormField>
-              <FormField id="new-request-email" label="Contact email" error={errors.contactEmail}>
-                <Input
-                  id="new-request-email"
-                  type="email"
-                  value={form.contactEmail}
-                  onChange={(e) => set("contactEmail", e.target.value)}
-                  aria-invalid={!!errors.contactEmail}
-                  autoComplete="off"
-                />
-              </FormField>
-              <FormField id="new-request-phone" label="Contact phone">
-                <Input
-                  id="new-request-phone"
-                  type="tel"
-                  value={form.contactPhone}
-                  onChange={(e) => set("contactPhone", e.target.value)}
-                  autoComplete="off"
-                />
-              </FormField>
-            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-auto whitespace-normal px-0 text-left"
+              aria-expanded={showMore}
+              onClick={() => setShowMore((current) => !current)}
+            >
+              More details (contact, source, service and value)
+            </Button>
+            {showMore && (
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <FormField id="new-request-contact" label="Contact name">
+                    <Input
+                      id="new-request-contact"
+                      value={form.contactName}
+                      onChange={(e) => set("contactName", e.target.value)}
+                      autoComplete="off"
+                    />
+                  </FormField>
+                  <FormField
+                    id="new-request-email"
+                    label="Contact email"
+                    error={errors.contactEmail}
+                  >
+                    <Input
+                      id="new-request-email"
+                      type="email"
+                      value={form.contactEmail}
+                      onChange={(e) => set("contactEmail", e.target.value)}
+                      aria-invalid={!!errors.contactEmail}
+                      autoComplete="off"
+                    />
+                  </FormField>
+                  <FormField id="new-request-phone" label="Contact phone">
+                    <Input
+                      id="new-request-phone"
+                      type="tel"
+                      value={form.contactPhone}
+                      onChange={(e) => set("contactPhone", e.target.value)}
+                      autoComplete="off"
+                    />
+                  </FormField>
+                </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <FormField id="new-request-source" label="Source">
-                <Select
-                  value={form.source}
-                  onValueChange={(v) => set("source", v as ClientRequestSource)}
-                >
-                  <SelectTrigger id="new-request-source">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(SOURCE_LABELS).map(([v, label]) => (
-                      <SelectItem key={v} value={v}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <FormField id="new-request-service-line" label="Service line">
-                <Select
-                  value={form.serviceLineId || NONE}
-                  onValueChange={(v) => set("serviceLineId", v === NONE ? "" : v)}
-                >
-                  <SelectTrigger id="new-request-service-line">
-                    <SelectValue placeholder="Not sure yet" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>Not sure yet</SelectItem>
-                    {(serviceLinesQ.data ?? []).map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <FormField
-                id="new-request-value"
-                label="Estimated value"
-                error={errors.estimatedValue}
-              >
-                <Input
-                  id="new-request-value"
-                  type="number"
-                  min={0}
-                  value={form.estimatedValue}
-                  onChange={(e) => set("estimatedValue", e.target.value)}
-                  aria-invalid={!!errors.estimatedValue}
-                />
-              </FormField>
-            </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <FormField id="new-request-source" label="Source">
+                    <Select
+                      value={form.source}
+                      onValueChange={(v) => set("source", v as ClientRequestSource)}
+                    >
+                      <SelectTrigger id="new-request-source">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(SOURCE_LABELS).map(([v, label]) => (
+                          <SelectItem key={v} value={v}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <FormField id="new-request-service-line" label="Service line">
+                    <Select
+                      value={form.serviceLineId || NONE}
+                      onValueChange={(v) => set("serviceLineId", v === NONE ? "" : v)}
+                    >
+                      <SelectTrigger id="new-request-service-line">
+                        <SelectValue placeholder="Not sure yet" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE}>Not sure yet</SelectItem>
+                        {(serviceLinesQ.data ?? []).map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <FormField
+                    id="new-request-value"
+                    label="Estimated value"
+                    error={errors.estimatedValue}
+                  >
+                    <Input
+                      id="new-request-value"
+                      type="number"
+                      min={0}
+                      value={form.estimatedValue}
+                      onChange={(e) => set("estimatedValue", e.target.value)}
+                      aria-invalid={!!errors.estimatedValue}
+                    />
+                  </FormField>
+                </div>
 
-            <FormField id="new-request-description" label="Details">
-              <Textarea
-                id="new-request-description"
-                value={form.description}
-                onChange={(e) => set("description", e.target.value)}
-                rows={3}
-                placeholder="Anything the department should know before they call the client"
-              />
-            </FormField>
+                <FormField id="new-request-description" label="Details">
+                  <Textarea
+                    id="new-request-description"
+                    value={form.description}
+                    onChange={(e) => set("description", e.target.value)}
+                    rows={3}
+                    placeholder="Anything the department should know before they call the client"
+                  />
+                </FormField>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => guardClose(close)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => guardClose(close)}
+              disabled={save.isPending}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={save.isPending}>

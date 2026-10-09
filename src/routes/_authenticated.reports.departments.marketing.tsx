@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { Loader2 } from "lucide-react";
-import { RequireRole } from "@/components/require-role";
+import { RequireDepartmentAccess } from "@/components/require-role";
 import { LoadError } from "@/components/load-error";
 import { useLeads, LEAD_STAGE_LABELS, type LeadStage } from "@/features/marketing/use-leads";
 import { useWebsiteAnalytics } from "@/features/marketing/use-website-analytics";
@@ -36,14 +36,14 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 // Exported so the Marketing department hub can embed this same report as a "Reports" tab.
 export function MarketingReport() {
   return (
-    <RequireRole
-      roles={["marketing"]}
-      message="The Marketing report is for the Marketing team and the CEO."
+    <RequireDepartmentAccess
+      code="marketing"
+      message="Ask the CEO for Marketing access to open these reports."
     >
       <div className="space-y-4">
         <ReportHeader
-          title="Marketing report"
-          description="Leads by stage, website visits and how far blog posts reach."
+          title="Marketing reports to the CEO"
+          description="Prepare the monthly report from your work updates and figures. Add what changed, any blockers and what happens next."
           actions={
             <Link to="/marketing" className="text-xs text-primary hover:underline">
               Open Marketing
@@ -51,11 +51,18 @@ export function MarketingReport() {
           }
         />
         <DepartmentReportsPanel departmentCode="marketing" />
-        <LeadsSummary />
-        <WebsiteSummary />
-        <BlogSummary />
+        <details className="rounded-xl border bg-card p-4">
+          <summary className="cursor-pointer text-sm font-semibold">
+            Marketing figures and analysis
+          </summary>
+          <div className="mt-4 space-y-4">
+            <LeadsSummary />
+            <WebsiteSummary />
+            <BlogSummary />
+          </div>
+        </details>
       </div>
-    </RequireRole>
+    </RequireDepartmentAccess>
   );
 }
 

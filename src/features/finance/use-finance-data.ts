@@ -262,20 +262,6 @@ export function paymentsByInvoice(payments: PaymentRow[]) {
   return m;
 }
 
-// Lets any of the departments onboarding a won request/tender/lead create the Client record
-// inline instead of forcing a context-switch to the Clients module first — backend role gate
-// relaxed to match (clients.controller.ts).
-export function useCreateClient() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: NewClientInput) =>
-      mapClient(
-        await apiJson<BackendClient>("/clients", { method: "POST", body: JSON.stringify(input) }),
-      ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["finance", "clients"] }),
-  });
-}
-
 export type InvoiceInput = {
   invoiceNumber: string;
   clientId?: string;

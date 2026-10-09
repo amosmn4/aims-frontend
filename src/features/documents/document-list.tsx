@@ -75,13 +75,15 @@ export function DocumentList({
               key={doc.id}
               doc={doc}
               uploaderName={doc.created_by ? profileMap.get(doc.created_by) : undefined}
-              visibleTo={visibleToText(doc, departmentMap)}
+              visibleTo={
+                doc.team_shared ? "Project team and CEO" : visibleToText(doc, departmentMap)
+              }
               canManage={canManage(doc)}
               showLocation={showResourceType}
               onOpen={setPreviewDoc}
               onDelete={onDelete}
               onShowVersions={onShowVersions}
-              onShowAccess={onShowAccess}
+              onShowAccess={doc.team_shared ? undefined : onShowAccess}
               deleteCopy={deleteCopy}
             />
           ))}

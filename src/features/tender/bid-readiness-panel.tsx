@@ -1,10 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
-import { useTenders, type TenderRow } from "@/features/tender/use-tender";
+import { useTenderWorkQueue, type TenderRow } from "@/features/tender/use-tender";
 import { LoadError } from "@/components/load-error";
 import { cn } from "@/lib/utils";
-
-const IN_FLIGHT = new Set(["identified", "applying", "submitted"]);
 
 type Gap = { text: string; serious: boolean };
 
@@ -27,14 +25,11 @@ function gapsFor(t: TenderRow): Gap[] {
 
 /** Bids that cannot go in yet: no owner, no documents, no closing date. */
 export function BidReadinessPanel() {
-  const tendersQ = useTenders({});
-  const inFlight = (tendersQ.data ?? []).filter((t) => IN_FLIGHT.has(t.stage));
-  const rows = inFlight
-    .map((tender) => ({ tender, gaps: gapsFor(tender) }))
-    .filter((r) => r.gaps.length > 0)
-    .sort((a, b) => b.gaps.length - a.gaps.length);
-  const noOwner = inFlight.filter((t) => !t.account_manager_id).length;
-  const noDocs = inFlight.filter((t) => !t.requirements_total).length;
+  const tendersQ = useTenderWorkQueue();
+  const rows = (tendersQ.data?.notReady ?? []).map((tender) => ({ tender, gaps: gapsFor(tender) }));
+  const total = tendersQ.data?.totals.notReadyTotal ?? 0;
+  const noOwner = tendersQ.data?.totals.noOwner ?? 0;
+  const noDocs = tendersQ.data?.totals.noDocs ?? 0;
 
   return (
     <section className="rounded-xl border bg-card" aria-labelledby="readiness-heading">
@@ -55,13 +50,9 @@ export function BidReadinessPanel() {
         <div className="flex justify-center py-10">
           <Loader2 className="h-5 w-5 animate-spin text-primary" />
         </div>
-      ) : inFlight.length === 0 ? (
-        <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-          No bids are being worked on right now.
-        </p>
       ) : rows.length === 0 ? (
         <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-          Every bid in flight has an owner, a closing date and its documents listed.
+          Every bid being prepared has an owner, a closing date and its documents listed.
         </p>
       ) : (
         <div className="p-4">
@@ -96,12 +87,12 @@ export function BidReadinessPanel() {
               </li>
             ))}
           </ul>
-          {rows.length > 6 && (
+          {total > 6 && (
             <Link
               to="/tender/bid-pipeline"
               className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
             >
-              +{rows.length - 6} more needing details
+              +{total - 6} more needing details
             </Link>
           )}
         </div>

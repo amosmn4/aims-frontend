@@ -26,13 +26,16 @@ export function WorkspaceSwitcher({ className }: { className?: string }) {
     <DropdownMenu>
       <DropdownMenuTrigger
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-md border border-white/20 bg-white/10 px-2.5 py-1.5 text-xs font-medium text-sidebar-foreground hover:bg-white/20",
+          "inline-flex items-center gap-1 rounded-md border border-white/20 bg-white/10 px-2 py-1.5 text-xs font-medium text-sidebar-foreground hover:bg-white/20 sm:gap-1.5 sm:px-2.5",
           className,
         )}
         aria-label={`Working in ${WORKSPACE_LABELS[workspace]}. Switch department`}
       >
-        <Layers className="h-3.5 w-3.5" aria-hidden="true" />
-        <span className="max-w-32 truncate">{WORKSPACE_LABELS[workspace]}</span>
+        <Layers className="hidden h-3.5 w-3.5 sm:block" aria-hidden="true" />
+        <span className="max-w-12 truncate sm:hidden">
+          {workspace === "hr" ? "HR" : workspace === "it" ? "IT" : WORKSPACE_LABELS[workspace]}
+        </span>
+        <span className="hidden max-w-32 truncate sm:inline">{WORKSPACE_LABELS[workspace]}</span>
         <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">

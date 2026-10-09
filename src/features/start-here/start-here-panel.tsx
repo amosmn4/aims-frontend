@@ -34,7 +34,7 @@ const STEPS: Record<StartHereCode, Step[]> = {
       ),
     },
     { label: "Check who owes money", link: (c) => <Link to="/finance/debtors">{c}</Link> },
-    { label: MONTHLY_REPORT, link: (c) => <Link to="/finance/reports">{c}</Link> },
+    { label: MONTHLY_REPORT, link: (c) => <Link to="/reports/departments/finance">{c}</Link> },
   ],
   it: [
     { label: "See open tickets", link: (c) => <Link to="/it/tickets">{c}</Link> },
@@ -47,8 +47,11 @@ const STEPS: Record<StartHereCode, Step[]> = {
     { label: MONTHLY_REPORT, link: (c) => <Link to="/marketing/reports">{c}</Link> },
   ],
   tender: [
-    { label: "Add a tender", link: (c) => <Link to="/tender">{c}</Link> },
-    { label: "Check deadlines", link: (c) => <Link to="/tender/calendar">{c}</Link> },
+    {
+      label: "Register a bid and prepare its checklist",
+      link: (c) => <Link to="/tender">{c}</Link>,
+    },
+    { label: "Check closing bids and record progress", link: (c) => <Link to="/tender">{c}</Link> },
     { label: MONTHLY_REPORT, link: (c) => <Link to="/tender/reports">{c}</Link> },
   ],
   operations: [
@@ -69,9 +72,11 @@ const isCode = (code: string): code is StartHereCode => code in STEPS;
 export function StartHerePanel({
   departmentCode,
   className,
+  persistent = false,
 }: {
   departmentCode: string;
   className?: string;
+  persistent?: boolean;
 }) {
   const { user, profile } = useAuth();
   const userId = user?.id;
@@ -88,7 +93,7 @@ export function StartHerePanel({
   }, [userId]);
 
   if (!userId || hidden !== false || !isCode(departmentCode)) return null;
-  if (createdAt) {
+  if (createdAt && !persistent) {
     const joined = new Date(createdAt).getTime();
     if (!Number.isNaN(joined) && Date.now() - joined > FIRST_DAYS * 864e5) return null;
   }
@@ -102,6 +107,28 @@ export function StartHerePanel({
     }
   };
 
+  if (departmentCode !== "water")
+    return (
+      <details className={cn("rounded-lg border bg-card px-4 py-3", className)}>
+        <summary className="cursor-pointer text-sm font-medium">Getting started</summary>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {STEPS[departmentCode].map((step) => (
+            <Button key={step.label} asChild variant="outline" size="sm">
+              {step.link(step.label)}
+            </Button>
+          ))}
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/guide" search={{ role: departmentCode }}>
+              View guide
+            </Link>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={hide}>
+            Dismiss
+          </Button>
+        </div>
+      </details>
+    );
+
   return (
     <section
       aria-labelledby="start-here-heading"
@@ -112,7 +139,11 @@ export function StartHerePanel({
           <h2 id="start-here-heading" className="text-base font-semibold">
             Start here
           </h2>
-          <p className="text-sm text-muted-foreground">Three things to do in your first week.</p>
+          <p className="text-sm text-muted-foreground">
+            {persistent
+              ? "Start with your tasks, projects and reports."
+              : "Three things to do in your first week."}
+          </p>
         </div>
         <Button variant="ghost" size="sm" onClick={hide} className="shrink-0">
           <X className="mr-1 h-4 w-4" aria-hidden="true" /> Hide this

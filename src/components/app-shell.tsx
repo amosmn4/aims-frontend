@@ -50,6 +50,7 @@ import {
 export interface NavChild {
   to: string;
   label: string;
+  roles?: AppRole[];
   /** Shown only to people who can read this department. */
   department?: DepartmentCode;
   exact?: boolean;
@@ -117,6 +118,7 @@ const NAV: NavItem[] = [
     icon: FolderKanban,
     children: [
       { to: "/projects", label: "All projects", exact: true },
+      { to: "/projects/company", label: "Company projects", exact: true },
       { to: "/projects/mine", label: "My tasks" },
       { to: "/projects/department", label: "Department tasks" },
     ],
@@ -173,7 +175,7 @@ const CEO_NAV: NavItem[] = [
   },
   {
     to: "/projects",
-    label: "Projects & Work",
+    label: "Projects",
     icon: FolderKanban,
     match: ["/projects", "/water", "/it/inventory"],
     children: [
@@ -194,7 +196,7 @@ const CEO_NAV: NavItem[] = [
   },
   {
     to: "/reports",
-    label: "Reports & Analytics",
+    label: "Reports",
     icon: BarChart3,
     match: ["/reports", "/department-reports", "/finance/reports", "/water/reports"],
     children: [
@@ -391,9 +393,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isLarge = useMediaQuery("(min-width: 1024px)");
   const location = useLocation();
   const home = homeRouteFor(roles, workspace);
+  const minimalUi =
+    !location.pathname.startsWith("/water") && !location.pathname.startsWith("/marketing/blog");
 
   const visibleChildren = (item: NavItem) =>
-    (item.children ?? []).filter((c) => !c.department || canReadDepartment(c.department));
+    (item.children ?? []).filter(
+      (child) =>
+        (!child.department || canReadDepartment(child.department)) &&
+        (!child.roles || isAdminOrCeo || hasRole(child.roles)),
+    );
 
   // The workspace someone picked wins; otherwise their only department.
   const departmentScope =
@@ -422,9 +430,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const activeItem = activeNavItem(visibleNav, location.pathname);
   const isActive = (item: NavItem) => item === activeItem;
-  const isChildActive = (child: NavChild) =>
-    location.pathname === child.to ||
-    (!child.exact && location.pathname.startsWith(child.to + "/"));
+  const activeChild = visibleNav
+    .flatMap(visibleChildren)
+    .filter(
+      (child) =>
+        location.pathname === child.to ||
+        (!child.exact && location.pathname.startsWith(child.to + "/")),
+    )
+    .sort((a, b) => b.to.length - a.to.length)[0];
+  const isChildActive = (child: NavChild) => child.to === activeChild?.to;
   const isExpanded = (item: NavItem) => expanded[item.to] ?? isActive(item);
 
   // Seven items fit a 1280px laptop; longer menus need 1536px.
@@ -440,7 +454,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         inputRef={searchInputRef}
         className={tightHeader ? "xl:w-36 2xl:w-56" : undefined}
       />
-      <LiveClock className={tightHeader ? "hidden min-[1700px]:flex" : undefined} />
+      {!minimalUi && <LiveClock className={tightHeader ? "hidden min-[1700px]:flex" : undefined} />}
       <NotificationBell />
       <HelpButton />
       {isSystemAdmin && !viewAs && <ViewAsButton />}
@@ -456,7 +470,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   /* ---------------- SIDEBAR MODE ---------------- */
   if (mode === "sidebar") {
     return (
-      <div className="min-h-screen flex bg-secondary/40">
+      <div className={cn("min-h-screen flex bg-secondary/40", minimalUi && "aims-workspace")}>
         <aside className="hidden lg:flex flex-col w-60 bg-sidebar text-sidebar-foreground border-r border-sidebar-border sticky top-0 h-screen">
           <ShellLogo to={home} className="h-14 px-4 border-b border-sidebar-border" />
           <nav aria-label="Main menu" className="flex-1 overflow-y-auto p-2 space-y-0.5">
@@ -490,6 +504,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <button
                     type="button"
                     aria-expanded={open}
+                    aria-current={active ? "true" : undefined}
                     aria-controls={groupId}
                     onClick={() => setExpanded((s) => ({ ...s, [item.to]: !open }))}
                     className={rowClass}
@@ -541,7 +556,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <Menu className="h-5 w-5" />
               </button>
-              <ShellLogo to={home} className="lg:hidden" />
+              <ShellLogo to={home} className="lg:hidden" textClassName="hidden sm:block" />
               <div className="ml-auto">{UserBlock}</div>
             </div>
           </header>
@@ -555,7 +570,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               hiddenFrom="lg:hidden"
             />
           )}
-          <main className="flex-1 p-4 md:p-6 w-full">{children}</main>
+          <main
+            className={
+              minimalUi
+                ? "workspace-content flex-1 p-4 md:p-8 w-full mx-auto max-w-[1500px]"
+                : "flex-1 p-4 md:p-6 w-full"
+            }
+          >
+            {children}
+          </main>
         </div>
       </div>
     );
@@ -563,7 +586,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   /* ---------------- TOP NAV MODE ---------------- */
   return (
-    <div className="min-h-screen flex flex-col bg-secondary/40">
+    <div
+      className={cn("min-h-screen flex flex-col bg-secondary/40", minimalUi && "aims-workspace")}
+    >
       <header className="sticky top-0 z-30 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
         <ViewAsBanner />
         <div className="flex items-center gap-2 h-14 px-4 md:px-6">
@@ -639,7 +664,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         />
       )}
 
-      <main className="flex-1 p-4 md:p-6 max-w-[1600px] 2xl:max-w-[1800px] 3xl:max-w-[2400px] w-full mx-auto">
+      <main
+        className={
+          minimalUi
+            ? "workspace-content flex-1 p-4 md:p-8 max-w-[1500px] w-full mx-auto"
+            : "flex-1 p-4 md:p-6 max-w-[1600px] 2xl:max-w-[1800px] 3xl:max-w-[2400px] w-full mx-auto"
+        }
+      >
         {children}
       </main>
     </div>
@@ -765,42 +796,14 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+    <div className="page-header mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
-        <h1 className="text-lg font-semibold text-foreground">{title}</h1>
-        {description && <p className="text-xs text-muted-foreground max-w-3xl">{description}</p>}
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">{title}</h1>
+        {description && (
+          <p className="mt-1 text-sm text-muted-foreground max-w-2xl">{description}</p>
+        )}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
-    </div>
-  );
-}
-
-export function ModulePlaceholder({
-  title,
-  description,
-  bullets,
-}: {
-  title: string;
-  description: string;
-  bullets: string[];
-}) {
-  return (
-    <div>
-      <PageHeader title={title} description={description} />
-      <div className="rounded-lg border bg-card p-6">
-        <h2 className="text-sm font-semibold text-foreground mb-3">Planned capabilities</h2>
-        <ul className="space-y-2 text-sm text-muted-foreground">
-          {bullets.map((b) => (
-            <li key={b} className="flex gap-2">
-              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-accent shrink-0" />
-              <span>{b}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-6 rounded-md bg-secondary p-4 text-sm text-muted-foreground">
-          This module is scaffolded and will be built out in a later development phase.
-        </div>
-      </div>
     </div>
   );
 }

@@ -26,7 +26,7 @@ export function QuickLinks({
   return (
     <section aria-labelledby="quick-links-heading" className={className}>
       <SectionHeading id="quick-links-heading">{title}</SectionHeading>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+      <div className="quick-links-grid grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         {links.map((link) => (
           <QuickLinkTile key={`${link.to}-${link.label}`} {...link} />
         ))}
@@ -40,14 +40,15 @@ function QuickLinkTile({ to, search, label, description, icon: Icon }: QuickLink
     <Link
       to={to}
       search={search}
+      title={description}
       className={cn(
-        "group flex items-start gap-3 rounded-lg border bg-card p-3 transition-colors",
+        "quick-link group flex items-start gap-3 rounded-lg border bg-card p-3 transition-colors",
         "hover:border-primary/50 hover:bg-accent/40",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
     >
       <span
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary text-primary"
+        className="quick-link-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-secondary text-primary"
         aria-hidden="true"
       >
         <Icon className="h-4 w-4" />
@@ -60,7 +61,7 @@ function QuickLinkTile({ to, search, label, description, icon: Icon }: QuickLink
             aria-hidden="true"
           />
         </span>
-        <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+        <span className="quick-link-description mt-0.5 block text-xs leading-snug text-muted-foreground">
           {description}
         </span>
       </span>

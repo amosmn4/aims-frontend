@@ -17,7 +17,9 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { LoadError } from "@/components/load-error";
 import { cn } from "@/lib/utils";
-import { downloadBoardPack } from "./board-pack-pdf";
+import { Input } from "@/components/ui/input";
+import { usePagination } from "@/hooks/use-pagination";
+import { PaginationBar } from "@/components/pagination-bar";
 import { actionNeeded, reportPath } from "./report-rows";
 import {
   DELTA_TONE,
@@ -32,8 +34,8 @@ import {
 import {
   useReportAiStatus,
   useReportAssist,
-  useReports,
-  type ReportRow,
+  type ReportFigure,
+  type ReportSection,
   type ReportStatus,
 } from "./use-reports";
 import {
@@ -57,7 +59,8 @@ interface InboxItem {
   updatedAt: string;
   author: { id: string; fullName: string | null; email: string } | null;
   lastMessage: { body: string; authorName: string | null } | null;
-  figures: unknown;
+  figures: ReportFigure[];
+  sections?: ReportSection[];
   summary: string | null;
   /** What the report is about, and who is expected to decide on it. */
   reportKind?: "department" | "project" | "individual";
@@ -102,7 +105,7 @@ function firstSentence(text: string | null, max = 200) {
 }
 
 /** The figure that moved most, so a row says why it is worth opening. */
-function headlineMove(row: ReportRow | undefined) {
+function headlineMove(row: { figures: ReportFigure[] } | undefined) {
   let best: {
     label: string;
     text: string;
@@ -130,21 +133,43 @@ function useReportsInbox() {
 /** The CEO's reports inbox, board pack and scheduled report emails. */
 export function ReportsInbox() {
   const inboxQ = useReportsInbox();
-  const rowsQ = useReports();
   const aiQ = useReportAiStatus();
   const assist = useReportAssist();
   const departmentsQ = useDepartments();
   const settingsQ = useCompanySettings();
   const [view, setView] = useState<View>("waiting");
   const [brief, setBrief] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [department, setDepartment] = useState("all");
+  const [period, setPeriod] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const { page, pageSize, setPage, setPageSize } = usePagination(25);
 
   const items = useMemo(() => inboxQ.data ?? [], [inboxQ.data]);
-  const rows = items.filter(VIEWS.find((v) => v.id === view)!.match);
-  const byId = useMemo(() => new Map((rowsQ.data ?? []).map((r) => [r.id, r])), [rowsQ.data]);
+  const rows = items.filter(
+    (item) =>
+      VIEWS.find((candidate) => candidate.id === view)!.match(item) &&
+      (department === "all" || item.department?.code === department) &&
+      (!period || monthKey(item.periodEnd) === period) &&
+      (!search.trim() ||
+        `${item.title} ${item.subjectName ?? ""} ${item.author?.fullName ?? ""} ${item.summary ?? ""}`
+          .toLowerCase()
+          .includes(search.trim().toLowerCase())),
+  );
+  const filtered = department !== "all" || !!period || !!search.trim();
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)));
+  const visibleRows = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const months = useMemo(() => {
     const keys = new Set(
-      items.filter((r) => r.status === "approved").map((r) => monthKey(r.periodEnd)),
+      items
+        .filter(
+          (r) =>
+            r.status === "approved" &&
+            monthKey(r.periodStart) === monthKey(r.periodEnd) &&
+            (r.kind === "finance_report" || r.reportKind === "department"),
+        )
+        .map((r) => monthKey(r.periodEnd)),
     );
     const prev = new Date();
     prev.setDate(1);
@@ -158,7 +183,11 @@ export function ReportsInbox() {
     ["operations", "finance", "hr", "it", "marketing", "tender"].includes(d.code),
   );
   const approvedInMonth = items.filter(
-    (r) => r.status === "approved" && monthKey(r.periodEnd) === selectedMonth,
+    (r) =>
+      r.status === "approved" &&
+      monthKey(r.periodEnd) === selectedMonth &&
+      monthKey(r.periodStart) === selectedMonth &&
+      (r.kind === "finance_report" || r.reportKind === "department"),
   );
 
   // The briefing reads across approved reports; any one of them can carry the request.
@@ -221,7 +250,10 @@ export function ReportsInbox() {
                 type="button"
                 role="tab"
                 aria-selected={view === v.id}
-                onClick={() => setView(v.id)}
+                onClick={() => {
+                  setView(v.id);
+                  setPage(1);
+                }}
                 className={cn(
                   "-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium",
                   view === v.id
@@ -237,6 +269,74 @@ export function ReportsInbox() {
             );
           })}
         </div>
+        <div className="flex flex-wrap items-end gap-3 border-b p-4">
+          <div className="min-w-40 flex-1">
+            <label htmlFor="inbox-search" className="text-xs text-muted-foreground">
+              Search reports
+            </label>
+            <Input
+              id="inbox-search"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Title, writer or summary"
+            />
+          </div>
+          <div>
+            <label htmlFor="inbox-department" className="block text-xs text-muted-foreground">
+              Department
+            </label>
+            <select
+              id="inbox-department"
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+              value={department}
+              onChange={(event) => {
+                setDepartment(event.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="all">All departments</option>
+              {(departmentsQ.data ?? [])
+                .filter((d) => d.code !== "water")
+                .map((d) => (
+                  <option key={d.id} value={d.code}>
+                    {d.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="inbox-period" className="block text-xs text-muted-foreground">
+              Report month
+            </label>
+            <Input
+              id="inbox-period"
+              type="month"
+              className="w-44"
+              value={period}
+              onChange={(event) => {
+                setPeriod(event.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+          {filtered && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearch("");
+                setDepartment("all");
+                setPeriod("");
+                setPage(1);
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
         {inboxQ.isError ? (
           <LoadError
             what="the reports sent to you"
@@ -250,22 +350,33 @@ export function ReportsInbox() {
           </div>
         ) : rows.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-            {items.length === 0
-              ? "Nobody has sent you a report yet."
-              : view === "waiting"
-                ? "Nothing is waiting on you — you're up to date."
-                : view === "with_departments"
-                  ? "Nothing is back with a department for changes."
-                  : view === "approved"
-                    ? "No reports approved yet."
-                    : "No reports yet."}
+            {filtered
+              ? "No reports match these filters."
+              : items.length === 0
+                ? "Nobody has sent you a report yet."
+                : view === "waiting"
+                  ? "Nothing is waiting on you — you're up to date."
+                  : view === "with_departments"
+                    ? "Nothing is back with a department for changes."
+                    : view === "approved"
+                      ? "No reports approved yet."
+                      : "No reports yet."}
           </p>
         ) : (
           <ul className="divide-y">
-            {rows.map((item) => (
-              <InboxRow key={`${item.kind}-${item.id}`} item={item} row={byId.get(item.id)} />
+            {visibleRows.map((item) => (
+              <InboxRow key={`${item.kind}-${item.id}`} item={item} />
             ))}
           </ul>
+        )}
+        {rows.length > 0 && (
+          <PaginationBar
+            page={currentPage}
+            pageSize={pageSize}
+            total={rows.length}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         )}
       </section>
 
@@ -318,15 +429,25 @@ export function ReportsInbox() {
           <Button
             className="mt-3"
             size="sm"
-            disabled={!selectedMonth || approvedInMonth.length === 0}
-            onClick={() => {
-              downloadBoardPack({
-                monthLabel: labelForKey(selectedMonth),
-                companyName: settingsQ.data?.companyName ?? "AIMS",
-                departments: coreDepartments,
-                reports: approvedInMonth,
-              });
-              toast.success("Board pack downloaded");
+            disabled={downloading || !selectedMonth || approvedInMonth.length === 0}
+            onClick={async () => {
+              setDownloading(true);
+              try {
+                const { downloadBoardPack } = await import("./board-pack-pdf");
+                downloadBoardPack({
+                  monthLabel: labelForKey(selectedMonth),
+                  companyName: settingsQ.data?.companyName ?? "AIMS",
+                  departments: coreDepartments,
+                  reports: approvedInMonth,
+                });
+                toast.success("Board pack downloaded");
+              } catch (error) {
+                toast.error(
+                  error instanceof Error ? error.message : "Could not download the board pack",
+                );
+              } finally {
+                setDownloading(false);
+              }
             }}
           >
             <Download className="mr-1 h-4 w-4" /> Download board pack (PDF)
@@ -355,7 +476,7 @@ export function ReportsInbox() {
   );
 }
 
-function InboxRow({ item, row }: { item: InboxItem; row: ReportRow | undefined }) {
+function InboxRow({ item }: { item: InboxItem }) {
   // A person's report names them; a project report names its project in the title.
   const subject =
     item.subjectName ??
@@ -363,9 +484,9 @@ function InboxRow({ item, row }: { item: InboxItem; row: ReportRow | undefined }
     (item.reportKind === "project" ? "Project report" : "Report");
   // Anything a head owns is here to read, not to decide on.
   const theirs = item.decidedBy === "department_head";
-  const decision = row ? actionNeeded(row) : null;
+  const decision = actionNeeded(item);
   const fallback = decision ? null : firstSentence(item.summary);
-  const moved = headlineMove(row);
+  const moved = headlineMove(item);
   const status = item.status === "submitted" && item.resubmitted ? "Sent again" : null;
 
   return (
@@ -410,7 +531,9 @@ function InboxRow({ item, row }: { item: InboxItem; row: ReportRow | undefined }
           {status ?? REPORT_STATUS_LABEL[item.status]}
         </span>
         <Button asChild size="sm" variant={item.status === "submitted" ? "default" : "outline"}>
-          <Link to={openReport(item)}>{item.status === "submitted" ? "Read it" : "Open"}</Link>
+          <Link to={openReport(item)}>
+            {item.status === "submitted" && item.decidedBy === "ceo" ? "Review" : "Open"}
+          </Link>
         </Button>
       </div>
     </li>

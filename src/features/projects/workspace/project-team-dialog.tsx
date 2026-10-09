@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/lib/auth";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Loader2, UserPlus } from "lucide-react";
 import {
   useCreateTeamMember,
   useDeleteTeamMember,
   useTeamMembers,
-  useUpdateTeamMember,
   type ProjectTeamMember,
 } from "@/features/project-workspace/use-project-workspace";
-import { MEMBER_ACCESS_LABELS, type Project } from "@/features/projects/use-projects";
+import { type Project } from "@/features/projects/use-projects";
 import { useStaffOptions } from "@/features/projects/staff-picker";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { LoadError } from "@/components/load-error";
@@ -24,9 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Initials } from "./initials";
 
-type Access = "member" | "viewer";
-
-/** Who is on a project. Company projects also say what each person may do. */
+/** The project team, with equal rights on company projects. */
 export function ProjectTeamDialog({
   project,
   open,
@@ -39,14 +38,14 @@ export function ProjectTeamDialog({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
+  const { profile } = useAuth();
+  const navigate = useNavigate();
   const isCompany = project.scope === "company";
   const teamQ = useTeamMembers(open ? project.id : undefined);
   const add = useCreateTeamMember(project.id);
-  const update = useUpdateTeamMember(project.id);
   const remove = useDeleteTeamMember(project.id);
   const { options } = useStaffOptions();
   const [personId, setPersonId] = useState("");
-  const [access, setAccess] = useState<Access>("member");
 
   const members = teamQ.data ?? [];
   const onTeam = new Set(members.map((m) => m.user_id).filter(Boolean));
@@ -54,7 +53,7 @@ export function ProjectTeamDialog({
   const refreshProject = () => qc.invalidateQueries({ queryKey: ["projects"] });
 
   const who = isCompany
-    ? "Only these people and the CEO can see this project. Members add work; viewers follow along and can reply."
+    ? "Everyone here can manage the project, its team and the shared report to the CEO."
     : project.visibility === "restricted"
       ? "Only these people, whoever set the project up and the CEO can see it."
       : `Everyone in ${project.department_name} can see this project. Add people from other departments so they can see it too.`;
@@ -66,31 +65,19 @@ export function ProjectTeamDialog({
       {
         userId: person.id,
         name: person.name,
-        role: isCompany && access === "viewer" ? "Viewer" : "Member",
-        ...(isCompany && { access }),
+        role: "Member",
+        ...(isCompany && { access: "member" }),
       },
       {
         onSuccess: () => {
           toast.success(`${person.name} was added to ${project.name}.`);
           setPersonId("");
-          setAccess("member");
+          refreshProject();
         },
         onError: (err) => toast.error(err instanceof Error ? err.message : "Couldn't add them"),
       },
     );
   };
-
-  const changeAccess = (m: ProjectTeamMember, next: Access) =>
-    update.mutate(
-      { id: m.id, access: next, role: next === "viewer" ? "Viewer" : "Member" },
-      {
-        onSuccess: () => {
-          refreshProject();
-          toast.success(`${m.name} is now a ${MEMBER_ACCESS_LABELS[next].toLowerCase()}.`);
-        },
-        onError: (err) => toast.error(err instanceof Error ? err.message : "Couldn't change that"),
-      },
-    );
 
   const removePerson = async (m: ProjectTeamMember) => {
     const ok = await confirmDialog({
@@ -106,6 +93,10 @@ export function ProjectTeamDialog({
       onSuccess: () => {
         refreshProject();
         toast.success(`${m.name} was removed.`);
+        if (isCompany && m.user_id === profile?.id) {
+          onClose();
+          void navigate({ to: "/projects/company" });
+        }
       },
       onError: (err) => toast.error(err instanceof Error ? err.message : "Couldn't remove them"),
     });
@@ -132,29 +123,11 @@ export function ProjectTeamDialog({
         ) : (
           <ul className="divide-y rounded-md border">
             {members.map((m) => {
-              const isLead = isCompany && (m.access === "lead" || m.user_id === project.lead_id);
               return (
                 <li key={m.id} className="flex flex-wrap items-center gap-3 px-3 py-2">
                   <Initials name={m.name} />
                   <span className="min-w-0 flex-1 truncate text-sm">{m.name}</span>
-                  {isCompany && canManage && !isLead && (
-                    <select
-                      value={m.access === "viewer" ? "viewer" : "member"}
-                      onChange={(e) => changeAccess(m, e.target.value as Access)}
-                      aria-label={`What ${m.name} can do`}
-                      className="h-8 rounded-md border bg-background px-2 text-xs"
-                      disabled={update.isPending}
-                    >
-                      <option value="member">Member</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
-                  )}
-                  {isCompany && (!canManage || isLead) && (
-                    <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                      {isLead ? "Lead" : MEMBER_ACCESS_LABELS[m.access]}
-                    </span>
-                  )}
-                  {canManage && !isLead && (
+                  {canManage && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -171,13 +144,7 @@ export function ProjectTeamDialog({
         )}
 
         {canManage ? (
-          <div
-            className={
-              isCompany
-                ? "grid grid-cols-1 gap-2 sm:grid-cols-[1fr_7.5rem_auto]"
-                : "grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]"
-            }
-          >
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
             <select
               value={personId}
               onChange={(e) => setPersonId(e.target.value)}
@@ -191,17 +158,6 @@ export function ProjectTeamDialog({
                 </option>
               ))}
             </select>
-            {isCompany && (
-              <select
-                value={access}
-                onChange={(e) => setAccess(e.target.value as Access)}
-                aria-label="What they can do"
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-              >
-                <option value="member">Member</option>
-                <option value="viewer">Viewer</option>
-              </select>
-            )}
             <Button onClick={addPerson} disabled={!personId || add.isPending}>
               {add.isPending ? (
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />
@@ -214,7 +170,7 @@ export function ProjectTeamDialog({
         ) : (
           <p className="rounded-md bg-secondary px-3 py-2 text-xs text-muted-foreground">
             {isCompany
-              ? `Only ${project.lead_name ?? "the project's lead"} can change who is on the team.`
+              ? "Project members can manage the team."
               : `Only ${project.department_name} staff who can edit this project can change its team.`}
           </p>
         )}

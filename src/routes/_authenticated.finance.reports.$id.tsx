@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import {
   ArrowLeft,
   Loader2,
-  MessageSquare,
   Send,
   Trash2,
   CheckCircle2,

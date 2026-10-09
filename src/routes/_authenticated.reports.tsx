@@ -23,11 +23,22 @@ function ReportsLayout() {
   return (
     <div>
       <PageHeader
-        title={isCeo ? "Reports & Analytics" : "Reports"}
+        title={isCeo ? "Reports and decisions" : "Reports"}
         description={
           isCeo
-            ? "Reports from every department and project, ready for your review."
+            ? "Review reports waiting for you, request changes, and find previous reports by department and period."
             : "Department and project reports."
+        }
+        actions={
+          isAdminOrCeo ? (
+            <Link
+              to="/dashboard"
+              search={{ view: "overview" }}
+              className="text-sm text-primary hover:underline"
+            >
+              CEO overview
+            </Link>
+          ) : undefined
         }
       />
       <nav aria-label="Reports pages" className="border-b mb-4 flex gap-1 overflow-x-auto">
@@ -47,7 +58,7 @@ function ReportsLayout() {
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              {t.label}
+              {isAdminOrCeo && t.exact ? "Reports inbox" : t.label}
             </Link>
           );
         })}

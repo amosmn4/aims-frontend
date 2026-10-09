@@ -18,6 +18,7 @@ import { RecruitmentStagePanel } from "@/features/hr/recruitment-stage-panel";
 import { DueThisWeekPanel } from "@/features/hr/due-this-week-panel";
 import { useRecruitmentEngagements } from "@/features/hr/use-recruitment";
 import { NewProjectDialog } from "@/features/projects/new-project-dialog";
+import { ProjectUpdateDialog } from "@/features/projects/project-update-dialog";
 import { NewClientDialog } from "@/features/clients/client-picker";
 import { isTaskOverdue, useProjects, useTasks } from "@/features/projects/use-projects";
 import { formatCurrency } from "@/features/finance/finance";
@@ -133,25 +134,25 @@ function HrDashboard() {
           canManage && department ? (
             <>
               <Button variant="outline" asChild>
-                <Link to="/hr/projects">
-                  <FolderKanban className="mr-1.5 h-4 w-4" /> Manage projects
-                </Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link to="/hr/recruitment">
-                  <UserCheck className="mr-1.5 h-4 w-4" /> Manage recruitment
-                </Link>
+                <Link to="/hr/reports">Reports to the CEO</Link>
               </Button>
               <Button variant="outline" onClick={() => setClientOpen(true)}>
                 <Building2 className="mr-1.5 h-4 w-4" /> New client
               </Button>
-              <NewProjectDialog fixedDepartmentId={department.id} />
+              <NewProjectDialog
+                fixedDepartmentId={department.id}
+                trigger={<Button variant="outline">New project</Button>}
+              />
+              <ProjectUpdateDialog projects={projects} />
             </>
           ) : undefined
         }
       />
 
       {!canManage && department && <ViewOnlyBanner area="HR" action="add clients or projects" />}
+
+      <MyWorkPanel departmentCode="hr" />
+      <StartHerePanel departmentCode="hr" persistent />
 
       {isLoading ? (
         <div className="flex justify-center py-16">
@@ -387,9 +388,6 @@ function HrDashboard() {
           </section>
         </>
       )}
-
-      <StartHerePanel departmentCode="hr" />
-      <MyWorkPanel departmentCode="hr" />
 
       {department && (
         <NewClientDialog

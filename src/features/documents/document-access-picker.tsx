@@ -364,7 +364,12 @@ export function DocumentAccessDialog({
           <DialogDescription className="truncate">{doc?.title}</DialogDescription>
         </DialogHeader>
 
-        {accessQ.isLoading ? (
+        {doc?.team_shared ? (
+          <p className="text-sm text-muted-foreground">
+            This file is shared with the project team and the CEO. Manage access from the project
+            team.
+          </p>
+        ) : accessQ.isLoading ? (
           <div className="py-6 flex justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           </div>
@@ -400,10 +405,12 @@ export function DocumentAccessDialog({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={setAccess.isPending || !accessQ.data}>
-            {setAccess.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Save who can see it
-          </Button>
+          {!doc?.team_shared && (
+            <Button onClick={save} disabled={setAccess.isPending || !accessQ.data}>
+              {setAccess.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save who can see it
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

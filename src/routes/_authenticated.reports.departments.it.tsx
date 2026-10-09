@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { Loader2 } from "lucide-react";
-import { RequireRole } from "@/components/require-role";
+import { RequireDepartmentAccess } from "@/components/require-role";
 import { LoadError } from "@/components/load-error";
 import {
   useProjects,
@@ -29,11 +29,11 @@ const PROJECT_ACTIVE = new Set(["planning", "active"]);
 // Exported so the IT department hub can embed this same report as a "Reports" tab.
 export function ItReport() {
   return (
-    <RequireRole roles={["it"]} message="The IT report is for the IT team and the CEO.">
+    <RequireDepartmentAccess code="it" message="Ask the CEO for IT access to open these reports.">
       <div className="space-y-4">
         <ReportHeader
-          title="IT report"
-          description="IT projects and tasks, system development work in progress, and the systems and sites IT looks after."
+          title="IT reports to the CEO"
+          description="Prepare the monthly report from your work updates and figures. Add what changed, any blockers and what happens next."
           actions={
             <Link to="/it" className="text-xs text-primary hover:underline">
               Open IT
@@ -41,10 +41,17 @@ export function ItReport() {
           }
         />
         <DepartmentReportsPanel departmentCode="it" />
-        <ProjectsSummary />
-        <SystemsSummary />
+        <details className="rounded-xl border bg-card p-4">
+          <summary className="cursor-pointer text-sm font-semibold">
+            IT figures and analysis
+          </summary>
+          <div className="mt-4 space-y-4">
+            <ProjectsSummary />
+            <SystemsSummary />
+          </div>
+        </details>
       </div>
-    </RequireRole>
+    </RequireDepartmentAccess>
   );
 }
 

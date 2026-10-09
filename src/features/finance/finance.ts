@@ -11,10 +11,6 @@ export function formatCurrency(amount: number | null | undefined, currency = "KE
   }
 }
 
-export function formatNumber(n: number | null | undefined) {
-  return Number(n ?? 0).toLocaleString();
-}
-
 export function daysBetween(a: Date, b: Date) {
   return Math.floor((a.getTime() - b.getTime()) / (1000 * 60 * 60 * 24));
 }

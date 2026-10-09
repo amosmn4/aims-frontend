@@ -161,14 +161,6 @@ export function useLeads(filters: LeadFilters = {}) {
   });
 }
 
-export function useLead(id: string | undefined) {
-  return useQuery({
-    queryKey: ["leads", id],
-    enabled: !!id,
-    queryFn: async () => mapLead(await apiJson<BackendLead>(`/leads/${id}`)),
-  });
-}
-
 export function useLeadActivities(leadId: string | undefined) {
   return useQuery({
     queryKey: ["leads", leadId, "activities"],
@@ -218,16 +210,6 @@ export function useUpdateLeadStage() {
           body: JSON.stringify({ stage: input.stage }),
         }),
       );
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["leads"] }),
-  });
-}
-
-export function useDeleteLead() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      await apiJson(`/leads/${id}`, { method: "DELETE" });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leads"] }),
   });

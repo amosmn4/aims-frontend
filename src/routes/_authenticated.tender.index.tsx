@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { FileArchive, KanbanSquare, Loader2, Plus, Search } from "lucide-react";
+import { Loader2, Plus, Search } from "lucide-react";
 import { RequireDepartmentAccess } from "@/components/require-role";
 import { PageHeader } from "@/components/app-shell";
 import { QuickLinks } from "@/components/quick-links";
@@ -19,6 +19,7 @@ import { ClientPicker } from "@/features/clients/client-picker";
 import { EditTenderDialog } from "@/features/tender/edit-tender-dialog";
 import {
   useTenders,
+  useTenderWorkQueue,
   useTenderPipelineSummary,
   useTenderTimeMetrics,
   useSaveTender,
@@ -32,7 +33,6 @@ import {
 import { useDepartments } from "@/features/clients/use-clients-contracts";
 import { useTenderDepartmentOptions } from "@/features/tender/forward-tender-dialog";
 import { ClosingSoonPanel } from "@/features/tender/closing-soon-panel";
-import { daysToDeadline, tendersStillToSubmit } from "@/features/tender/bid-deadlines";
 import { BidReadinessPanel } from "@/features/tender/bid-readiness-panel";
 import { useServiceLines } from "@/features/finance/use-finance-data";
 import { formatCurrency } from "@/features/finance/finance";
@@ -70,7 +70,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-import { OwnWorkPanels } from "@/features/my-work/own-work-panels";
+import { MyWorkPanel } from "@/features/my-work/my-work-panel";
+import { StartHerePanel } from "@/features/start-here/start-here-panel";
+import { useAuth } from "@/lib/auth";
 export const Route = createFileRoute("/_authenticated/tender/")({
   head: () => ({ meta: [{ title: "Tenders — AIMS" }] }),
   component: () => (
@@ -102,8 +104,131 @@ const FUNNEL_COLORS: Record<string, string> = {
   cancelled: "#6B5490",
 };
 
-// The Tender department dashboard.
 export function TenderWorkspace() {
+  const perms = usePermissions();
+  const { isAdminOrCeo, canWriteDepartment, profile } = useAuth();
+  const [figuresOpen, setFiguresOpen] = useState(false);
+  const queueQ = useTenderWorkQueue();
+  const ownWork = !isAdminOrCeo && (canWriteDepartment("tender") || !!profile);
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Tender work"
+        description="Prepare bids, meet submission deadlines and hand awarded work to the delivering team."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            {perms.canManageTenders && <NewTenderDialog />}
+            <Button variant="outline" asChild>
+              <Link to="/tender/bid-pipeline">Open bid board</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/reports/departments/tender">Reports to the CEO</Link>
+            </Button>
+          </div>
+        }
+      />
+      {!perms.canManageTenders && <ViewOnlyBanner area="Tenders" />}
+      <section className="rounded-lg border bg-card p-4" aria-labelledby="tender-workflow-heading">
+        <h2 id="tender-workflow-heading" className="font-semibold">
+          From bid to delivery
+        </h2>
+        <ol className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <li>
+            <span className="font-medium">1. Register the bid</span>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Name the opportunity, delivering department and closing date. You become its owner.
+            </p>
+          </li>
+          <li>
+            <span className="font-medium">2. Prepare the checklist</span>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Open the bid, add required documents and log what you handled in Activity.
+            </p>
+          </li>
+          <li>
+            <span className="font-medium">3. Record submission</span>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Mark the bid Submitted when it has been sent. Record the award or loss when decided.
+            </p>
+          </li>
+          <li>
+            <span className="font-medium">4. Hand over awarded work</span>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Forward an awarded bid to create its delivery project. Include bid progress in your
+              monthly report.
+            </p>
+          </li>
+        </ol>
+      </section>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ClosingSoonPanel />
+        <BidReadinessPanel />
+      </div>
+      <section className="rounded-lg border bg-card p-4" aria-labelledby="handoff-heading">
+        <h2 id="handoff-heading" className="font-semibold">
+          Awarded bids awaiting handover
+        </h2>
+        {queueQ.isError ? (
+          <LoadError what="awarded bids" error={queueQ.error} onRetry={() => queueQ.refetch()} />
+        ) : queueQ.isLoading ? (
+          <p role="status" className="mt-2 text-sm text-muted-foreground">
+            Loading awarded bids...
+          </p>
+        ) : queueQ.data?.handoff.length ? (
+          <ul className="mt-2 divide-y">
+            {queueQ.data.handoff.map((t) => (
+              <li key={t.id}>
+                <Link
+                  to="/tender/$tenderId"
+                  params={{ tenderId: t.id }}
+                  className="flex items-center justify-between gap-3 py-3 text-sm hover:text-primary"
+                >
+                  <span>
+                    {t.title}
+                    <span className="block text-xs text-muted-foreground">{t.department_name}</span>
+                  </span>
+                  <span className="shrink-0 text-primary">Open handover</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">
+            No awarded bids are waiting for a delivery project.
+          </p>
+        )}
+        {(queueQ.data?.totals.handoffTotal ?? 0) > 6 && (
+          <Link
+            to="/tender/bid-pipeline"
+            className="mt-2 block text-sm text-primary hover:underline"
+          >
+            Open all awarded bids on the board
+          </Link>
+        )}
+      </section>
+      {ownWork && <MyWorkPanel departmentCode="tender" />}
+      <QuickLinks links={DEPARTMENT_QUICK_LINKS.tender} />
+      <details
+        className="rounded-lg border bg-card"
+        open={figuresOpen}
+        onToggle={(event) => setFiguresOpen(event.currentTarget.open)}
+      >
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+          Tender register and figures
+        </summary>
+        {figuresOpen && (
+          <div className="border-t p-4">
+            <TenderFigures />
+          </div>
+        )}
+      </details>
+      {ownWork && <StartHerePanel departmentCode="tender" persistent />}
+    </div>
+  );
+}
+
+// The Tender department dashboard.
+function TenderFigures() {
   const navigate = useNavigate();
   const perms = usePermissions();
   const deleteTender = useDeleteTender();
@@ -179,14 +304,9 @@ export function TenderWorkspace() {
   const lostValue = summary.find((s) => s.stage === "lost")?.total_value ?? 0;
   const winRate = wonCount + lostCount > 0 ? wonCount / (wonCount + lostCount) : null;
 
-  // Deadline pressure comes from the full list, the same one the panels below read.
-  const allTendersQ = useTenders({});
-  const queue = tendersStillToSubmit(allTendersQ.data ?? []);
-  const closingThisWeek = queue.filter((t) => {
-    const days = daysToDeadline(t.submission_deadline!);
-    return days >= 0 && days <= 7;
-  }).length;
-  const pastDeadline = queue.filter((t) => daysToDeadline(t.submission_deadline!) < 0).length;
+  const queueQ = useTenderWorkQueue();
+  const closingThisWeek = queueQ.data?.totals.closingThisWeek ?? 0;
+  const pastDeadline = queueQ.data?.totals.pastDeadline ?? 0;
 
   // Pass-through funnel: cumulative_count is "how many tenders ever reached at least this
   // stage" (never shrinks as tenders advance, only when one's deleted) — not the live `count`
@@ -215,27 +335,6 @@ export function TenderWorkspace() {
   return (
     <div className="space-y-5">
       {editing && <EditTenderDialog tender={editing} onClose={() => setEditing(null)} />}
-      <PageHeader
-        title="Tenders"
-        description="Every tender being bid for: what's open, deadlines and how often we win."
-        actions={
-          <>
-            <Button variant="outline" asChild>
-              <Link to="/tender/bid-pipeline">
-                <KanbanSquare className="mr-1 h-4 w-4" /> Manage tenders
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link to="/tender/documents">
-                <FileArchive className="mr-1 h-4 w-4" /> Manage bid documents
-              </Link>
-            </Button>
-            {perms.canManageTenders && <NewTenderDialog />}
-          </>
-        }
-      />
-      {!perms.canManageTenders && <ViewOnlyBanner area="Tenders" />}
-
       {summaryQ.isError ? (
         <LoadError what="tender totals" error={summaryQ.error} onRetry={() => summaryQ.refetch()} />
       ) : (
@@ -276,13 +375,6 @@ export function TenderWorkspace() {
           </div>
         </section>
       )}
-
-      <QuickLinks links={DEPARTMENT_QUICK_LINKS.tender} />
-
-      <div className="grid gap-3 lg:grid-cols-2">
-        <ClosingSoonPanel />
-        <BidReadinessPanel />
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-1 rounded-lg border bg-card p-4 min-w-0 overflow-hidden">
@@ -562,8 +654,6 @@ export function TenderWorkspace() {
           </div>
         )}
       </div>
-
-      <OwnWorkPanels departmentCode="tender" role="tender" />
     </div>
   );
 }
@@ -592,6 +682,8 @@ const blankTender = {
 type TenderForm = typeof blankTender;
 
 function NewTenderDialog() {
+  const navigate = useNavigate();
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<TenderForm>(blankTender);
   const [errors, setErrors] = useState<Partial<Record<keyof TenderForm, string>>>({});
@@ -604,23 +696,35 @@ function NewTenderDialog() {
   const { guardClose } = useUnsavedChanges(open && dirty);
 
   const set = <K extends keyof TenderForm>(key: K, value: TenderForm[K]) => {
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f) => ({
+      ...f,
+      [key]: value,
+      ...(key === "departmentId" ? { serviceLineId: "" } : {}),
+    }));
     setErrors((e) => ({ ...e, [key]: undefined }));
   };
   const close = () => {
     setOpen(false);
     setForm(blankTender);
     setErrors({});
+    setDetailsOpen(false);
   };
 
   const submit = () => {
+    if (save.isPending) return;
     const next: typeof errors = {};
     if (!form.title.trim()) next.title = "Enter the tender title.";
     if (!form.departmentId) next.departmentId = "Choose the department most likely to deliver it.";
-    if (form.estimatedValue && Number(form.estimatedValue) < 0)
+    if (
+      form.estimatedValue &&
+      (!Number.isFinite(Number(form.estimatedValue)) || Number(form.estimatedValue) < 0)
+    )
       next.estimatedValue = "Value can't be negative.";
     setErrors(next);
-    if (Object.keys(next).length > 0) return;
+    if (Object.keys(next).length > 0) {
+      if (next.estimatedValue) setDetailsOpen(true);
+      return;
+    }
     save.mutate(
       {
         title: form.title.trim(),
@@ -635,9 +739,10 @@ function NewTenderDialog() {
         description: form.description.trim() || undefined,
       },
       {
-        onSuccess: () => {
-          toast.success("Tender added");
+        onSuccess: (id) => {
+          toast.success("Tender added. Prepare its checklist next.");
           close();
+          navigate({ to: "/tender/$tenderId", params: { tenderId: id } });
         },
         onError: (err) =>
           toast.error(err instanceof Error ? err.message : "The tender wasn't saved"),
@@ -646,7 +751,15 @@ function NewTenderDialog() {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : guardClose(close))}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!save.isPending) {
+          if (o) setOpen(true);
+          else guardClose(close);
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="h-4 w-4 mr-1" /> New tender
@@ -654,13 +767,14 @@ function NewTenderDialog() {
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <form
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
             submit();
           }}
         >
           <DialogHeader>
-            <DialogTitle>New tender</DialogTitle>
+            <DialogTitle>Register a tender</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-3">
             <RequiredNote />
@@ -673,22 +787,11 @@ function NewTenderDialog() {
                   aria-invalid={!!errors.title}
                 />
               </FormField>
-              <FormField
-                id="tender-new-ref"
-                label="Reference number"
-                hint="As on the tender notice"
-              >
-                <Input
-                  id="tender-new-ref"
-                  value={form.referenceNumber}
-                  onChange={(e) => set("referenceNumber", e.target.value)}
-                />
-              </FormField>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <FormField
                 id="tender-new-department"
-                label="Department"
+                label="Delivering department"
                 required
                 error={errors.departmentId}
               >
@@ -739,64 +842,102 @@ function NewTenderDialog() {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <FormField id="tender-new-service-line" label="Service line">
-                <Select
-                  value={form.serviceLineId || "__none__"}
-                  onValueChange={(v) => set("serviceLineId", v === "__none__" ? "" : v)}
-                >
-                  <SelectTrigger id="tender-new-service-line">
-                    <SelectValue placeholder="None" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">None</SelectItem>
-                    {(serviceLinesQ.data ?? []).map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <FormField
-                id="tender-new-value"
-                label="Estimated value"
-                error={errors.estimatedValue}
-              >
-                <Input
-                  id="tender-new-value"
-                  type="number"
-                  min={0}
-                  value={form.estimatedValue}
-                  onChange={(e) => set("estimatedValue", e.target.value)}
-                  aria-invalid={!!errors.estimatedValue}
-                />
-              </FormField>
-              <FormField id="tender-new-deadline" label="Submission deadline">
-                <Input
-                  id="tender-new-deadline"
-                  type="date"
-                  value={form.submissionDeadline}
-                  onChange={(e) => set("submissionDeadline", e.target.value)}
-                />
-              </FormField>
-            </div>
-            <FormField id="tender-new-description" label="Description">
-              <Textarea
-                id="tender-new-description"
-                value={form.description}
-                onChange={(e) => set("description", e.target.value)}
-                rows={3}
+            <FormField id="tender-new-deadline" label="Submission deadline">
+              <Input
+                id="tender-new-deadline"
+                type="date"
+                value={form.submissionDeadline}
+                onChange={(e) => set("submissionDeadline", e.target.value)}
               />
             </FormField>
+            <p className="text-xs text-muted-foreground">
+              You become the bid owner. Change the owner in Edit tender when someone else takes
+              over.
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-auto whitespace-normal px-0 text-left"
+              aria-expanded={detailsOpen}
+              aria-controls="tender-extra-details"
+              onClick={() => setDetailsOpen(!detailsOpen)}
+            >
+              {detailsOpen
+                ? "Hide additional details"
+                : "More bid details: reference, service and value"}
+            </Button>
+            {detailsOpen && (
+              <div id="tender-extra-details" className="space-y-3 rounded-md border p-3">
+                <FormField
+                  id="tender-new-ref"
+                  label="Reference number"
+                  hint="As on the tender notice"
+                >
+                  <Input
+                    id="tender-new-ref"
+                    value={form.referenceNumber}
+                    onChange={(e) => set("referenceNumber", e.target.value)}
+                  />
+                </FormField>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <FormField id="tender-new-service-line" label="Service line">
+                    <Select
+                      value={form.serviceLineId || "__none__"}
+                      onValueChange={(v) => set("serviceLineId", v === "__none__" ? "" : v)}
+                    >
+                      <SelectTrigger id="tender-new-service-line">
+                        <SelectValue placeholder="None" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {(serviceLinesQ.data ?? [])
+                          .filter((line) => line.department_id === form.departmentId)
+                          .map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <FormField
+                    id="tender-new-value"
+                    label="Estimated value"
+                    error={errors.estimatedValue}
+                  >
+                    <Input
+                      id="tender-new-value"
+                      type="number"
+                      min={0}
+                      value={form.estimatedValue}
+                      onChange={(e) => set("estimatedValue", e.target.value)}
+                      aria-invalid={!!errors.estimatedValue}
+                    />
+                  </FormField>
+                </div>
+                <FormField id="tender-new-description" label="Description">
+                  <Textarea
+                    id="tender-new-description"
+                    value={form.description}
+                    onChange={(e) => set("description", e.target.value)}
+                    rows={3}
+                  />
+                </FormField>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => guardClose(close)}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={save.isPending}
+              onClick={() => guardClose(close)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={save.isPending}>
               {save.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Add tender
+              Add and prepare checklist
             </Button>
           </DialogFooter>
         </form>

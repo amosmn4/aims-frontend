@@ -16,7 +16,6 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { RequireDepartmentAccess } from "@/components/require-role";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { LoadError } from "@/components/load-error";
 import { ActionHint } from "@/components/help-link";
@@ -130,14 +129,7 @@ const TENDER_TABS = [
 export const Route = createFileRoute("/_authenticated/tender/$tenderId")({
   validateSearch: z.object({ tab: z.enum(TENDER_TABS).optional().catch(undefined) }),
   head: () => ({ meta: [{ title: "Tender — AIMS" }] }),
-  component: () => (
-    <RequireDepartmentAccess
-      code="tender"
-      message="The Tender workspace is for the Tender team, people granted Tender access and the CEO."
-    >
-      <TenderDetail />
-    </RequireDepartmentAccess>
-  ),
+  component: TenderDetail,
 });
 
 function buildTenderRelated(tender: ReturnType<typeof useTender>["data"]): RelatedRecordItem[] {
@@ -172,6 +164,7 @@ function TenderDetail() {
   const perms = usePermissions();
   const tenderQ = useTender(tenderId);
   const updateStage = useUpdateTenderStage();
+  const requirementsQ = useTenderRequirements(tenderId);
   const deleteTender = useDeleteTender();
   const [editing, setEditing] = useState(false);
   const [forwarding, setForwarding] = useState(false);
@@ -203,9 +196,34 @@ function TenderDetail() {
     );
   }
 
-  const canManage = perms.canManageTenders;
+  const canManage = tender.can_edit ?? perms.canManageTenders;
 
   const changeStage = async (stage: TenderStage) => {
+    if (updateStage.isPending) return;
+    if (stage === "submitted" && tender.stage !== "submitted") {
+      const outstanding = (requirementsQ.data ?? []).filter(
+        (requirement) => requirement.status === "pending" || requirement.status === "in_progress",
+      ).length;
+      const gaps = [
+        !requirementsQ.isSuccess
+          ? "the checklist could not be verified"
+          : !requirementsQ.data?.length
+            ? "no bid checklist has been prepared"
+            : null,
+        outstanding ? `${outstanding} checklist items remain outstanding` : null,
+        !tender.account_manager_id ? "no bid owner is set" : null,
+        !tender.submission_deadline ? "no submission deadline is set" : null,
+      ].filter(Boolean);
+      if (
+        gaps.length &&
+        !(await confirmDialog({
+          title: "Record this bid as submitted?",
+          description: `${gaps.join("; ")}. Confirm only if the bid has already been sent.`,
+          confirmLabel: "Record submission",
+        }))
+      )
+        return;
+    }
     if (stage === tender.stage && stage !== "won") return;
     if (stage === "lost" || stage === "withdrawn" || stage === "cancelled") {
       const reason = await askLossReason("tender", TENDER_STAGE_LABELS[stage]);
@@ -320,7 +338,7 @@ function TenderDetail() {
             {canManage ? (
               <div className="space-y-1">
                 <Label htmlFor="tender-stage" className="text-xs text-muted-foreground">
-                  Move to…
+                  Bid stage: move to…
                 </Label>
                 <Select
                   value={tender.stage}
@@ -432,14 +450,53 @@ function TenderDetail() {
         engagementTo={`/engagements/tender/${tender.id}`}
       />
 
-      <Tabs defaultValue={tab ?? "resources"}>
+      <section className="rounded-lg border bg-card p-4" aria-labelledby="bid-next-step">
+        <h2 id="bid-next-step" className="text-sm font-semibold">
+          Next step for this bid
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {tender.stage === "identified"
+            ? "Review the notice and build the checklist, then start preparing the bid."
+            : tender.stage === "applying"
+              ? "Resolve the checklist, attach your bid documents and record submission after sending."
+              : tender.stage === "submitted"
+                ? "The bid has been submitted. Log follow-ups in Activity and record the award decision when received."
+                : tender.stage === "won"
+                  ? "Hand the awarded work to the delivering department using the handover above."
+                  : "This bid is closed. Keep its outcome and activity as the record of what happened."}
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Bid owner: {tender.account_manager_name ?? "Not assigned. Set an owner in Edit tender."}
+        </p>
+        {canManage && (tender.stage === "identified" || tender.stage === "applying") && (
+          <Button
+            className="mt-3"
+            size="sm"
+            disabled={updateStage.isPending}
+            onClick={() => changeStage(tender.stage === "identified" ? "applying" : "submitted")}
+          >
+            {tender.stage === "identified" ? "Start preparing bid" : "Record submission"}
+          </Button>
+        )}
+      </section>
+      <Tabs
+        value={tab ?? "requirements"}
+        onValueChange={(value) =>
+          navigate({
+            to: "/tender/$tenderId",
+            params: { tenderId },
+            search: { tab: value as (typeof TENDER_TABS)[number] },
+            replace: true,
+          })
+        }
+      >
         <TabsList className="h-auto flex-wrap justify-start">
-          <TabsTrigger value="resources">Resources</TabsTrigger>
-          <TabsTrigger value="financials">Financials</TabsTrigger>
-          <TabsTrigger value="requirements">Requirements</TabsTrigger>
+          <TabsTrigger value="requirements">Bid checklist</TabsTrigger>
+          <TabsTrigger value="documents">Bid documents</TabsTrigger>
+          <TabsTrigger value="activity">Activity and updates</TabsTrigger>
+          <TabsTrigger value="resources">Team and resources</TabsTrigger>
+          <TabsTrigger value="financials">Bid costs and pricing</TabsTrigger>
           <TabsTrigger value="time">Time tracking</TabsTrigger>
-          <TabsTrigger value="documents">Documents</TabsTrigger>
-          <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
         <TabsContent value="resources">
           <ResourcesTab tenderId={tender.id} canManage={canManage} />

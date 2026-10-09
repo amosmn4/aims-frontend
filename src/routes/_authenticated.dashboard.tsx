@@ -3,6 +3,7 @@ import { useMemo, useState, useCallback } from "react";
 import { z } from "zod";
 
 import { useAuth } from "@/lib/auth";
+import { ExecutiveOverview } from "@/features/reports/executive-overview";
 import { RequireRole } from "@/components/require-role";
 import { FunnelChart, type FunnelStage } from "@/components/funnel-chart";
 import {
@@ -33,7 +34,6 @@ import { useContracts, useDepartments, useOffices } from "@/features/clients/use
 import { useTenderPipelineSummary, TENDER_STAGE_LABELS } from "@/features/tender/use-tender";
 import { useHrmsLicenses } from "@/features/it/use-hrms-licenses";
 import { useReportsInbox } from "@/features/reports/use-department-reports";
-import { useMyWork } from "@/features/my-work/use-my-work";
 import { useCompanySettings } from "@/features/settings/use-company-settings";
 import { LoadError } from "@/components/load-error";
 import { formatDate } from "@/lib/format-date";
@@ -96,7 +96,7 @@ const dashSearchSchema = z.object({
     .catch(6),
   sl: z.string().catch("all"),
   dept: z.string().catch("all"),
-  view: z.union([z.literal("revenue"), z.literal("projects")]).catch("revenue"),
+  view: z.enum(["overview", "revenue", "projects"]).catch("overview"),
 });
 
 type DashSearch = z.output<typeof dashSearchSchema>;
@@ -255,6 +255,11 @@ const RANGE_OPTIONS = [
 type View = DashSearch["view"];
 
 function Dashboard() {
+  const { view } = Route.useSearch();
+  return view === "overview" ? <ExecutiveOverview /> : <DashboardAnalytics />;
+}
+
+function DashboardAnalytics() {
   const { profile, roles, isAdminOrCeo } = useAuth();
 
   // ---- filters (URL-persisted) ----
@@ -291,7 +296,6 @@ function Dashboard() {
   const requestLostBreakdownQ = useLostBreakdown({ departmentId: departmentFilter });
   const hrmsLicensesQ = useHrmsLicenses();
   const reportsInboxQ = useReportsInbox(isAdminOrCeo);
-  const myWorkQ = useMyWork();
   const companyQ = useCompanySettings();
   const [alertsOpen, setAlertsOpen] = useState(false);
 
@@ -309,7 +313,9 @@ function Dashboard() {
 
   const loading = invoicesQ.isLoading || paymentsQ.isLoading;
   const moneyFailed = invoicesQ.isError || paymentsQ.isError;
-  const reviewsWaiting = myWorkQ.data?.reviews?.waiting ?? 0;
+  const reviewsWaiting = (reportsInboxQ.data ?? []).filter(
+    (r) => r.status === "submitted" && r.decidedBy === "ceo",
+  ).length;
 
   // Live HRMS usage across licences that are still in force.
   const hrms = useMemo(() => {
@@ -648,7 +654,7 @@ function Dashboard() {
       detail: `${kpis.grossMargin.toFixed(1)}% for the selected period`,
       to: "/reports/departments/finance",
     });
-  const reportsWaiting = (reportsInboxQ.data ?? []).filter((r) => r.status === "submitted").length;
+  const reportsWaiting = reviewsWaiting;
   if (reportsWaiting > 0)
     alerts.push({
       key: "reports",
@@ -670,8 +676,14 @@ function Dashboard() {
   const reportDueDate = new Date(now.getFullYear(), now.getMonth(), reportDueDay);
   const reportsSent = new Set(
     (reportsInboxQ.data ?? [])
-      .filter((r) => r.periodStart.slice(0, 7) === lastMonthKey)
-      .map((r) => r.department.code),
+      .filter(
+        (r) =>
+          r.kind === "department_report" &&
+          r.reportKind === "department" &&
+          r.periodStart.slice(0, 7) === lastMonthKey &&
+          r.periodEnd.slice(0, 7) === lastMonthKey,
+      )
+      .map((r) => r.department?.code),
   );
 
   const deptStatus = (departmentsQ.data ?? [])
@@ -852,6 +864,13 @@ function Dashboard() {
           ))}
         </select>
         <div className="ml-auto inline-flex rounded-md border overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setView("overview")}
+            className="px-3 py-1 text-xs bg-background text-foreground hover:bg-secondary"
+          >
+            CEO overview
+          </button>
           <button
             type="button"
             aria-pressed={view === "revenue"}

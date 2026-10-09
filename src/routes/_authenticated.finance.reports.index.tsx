@@ -86,8 +86,8 @@ function FinanceReportsIndex() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Finance reports"
-        description="Reports Finance sends to the CEO. The figures are captured for you; add your commentary, then submit for review."
+        title="Financial snapshots"
+        description="Detailed financial reports built from invoices and payments. Add your commentary and submit the snapshot for review."
         actions={
           canAuthor ? (
             <Button onClick={() => setOpenNew(true)}>
@@ -96,6 +96,12 @@ function FinanceReportsIndex() {
           ) : undefined
         }
       />
+      <Link
+        to="/reports/departments/finance"
+        className="text-sm font-medium text-primary hover:underline"
+      >
+        Open the monthly Finance work report
+      </Link>
       {!canAuthor && <ViewOnlyBanner area="finance reports" action="write reports" />}
 
       <div className="flex flex-wrap items-end gap-3">

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { ApiError, apiJson } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -103,12 +105,16 @@ const errorText = (e: unknown, fallback: string) => (e instanceof Error ? e.mess
 export function ReportEditor({
   report,
   onLeave,
+  onDirtyChange,
 }: {
   report: ReportDetail;
   /** Where the back link goes. The unsaved-changes guard runs first. */
   onLeave?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const { user } = useAuth();
+  const { user, viewAs } = useAuth();
+  const qc = useQueryClient();
+  const [conflict, setConflict] = useState(false);
   const update = useUpdateReport();
   const remove = useDeleteReport();
   const review = useReviewReport();
@@ -132,11 +138,17 @@ export function ReportEditor({
   // Takes the server's copy back only when the person has nothing unsaved.
   useEffect(() => {
     if (stamp.current === report.updatedAt) return;
+    if (dirtyRef.current) {
+      setConflict(true);
+      return;
+    }
     stamp.current = report.updatedAt;
-    if (dirtyRef.current) return;
+    setConflict(false);
     setFigures(report.figures);
     setSections(report.sections);
   }, [report]);
+
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
 
   const markDirty = () => {
     dirtyRef.current = true;
@@ -147,7 +159,7 @@ export function ReportEditor({
     setDirty(false);
   };
 
-  const readOnly = !report.canEdit;
+  const readOnly = !report.canEdit || viewAs;
   const aiEnabled = !!aiQ.data?.configured && !readOnly;
   const mine = report.createdBy === user?.id;
   const goesTo = reviewerLabel(report.reviewerKind, report.department?.name);
@@ -167,9 +179,43 @@ export function ReportEditor({
   };
 
   const save = async (extra: UpdateReportInput = {}) => {
-    const saved = await update.mutateAsync({ id: report.id, figures, sections, ...extra });
-    markClean();
-    return saved;
+    try {
+      const saved = await update.mutateAsync({
+        id: report.id,
+        expectedUpdatedAt: stamp.current,
+        figures,
+        sections,
+        ...extra,
+      });
+      stamp.current = saved.updatedAt;
+      setConflict(false);
+      markClean();
+      return saved;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) setConflict(true);
+      throw error;
+    }
+  };
+
+  const loadLatest = async () => {
+    const ok = await confirmDialog({
+      title: "Load the latest team report?",
+      description:
+        "Copy any writing you want to keep first. Loading the latest report replaces your unsaved changes.",
+      confirmLabel: "Load latest",
+    });
+    if (!ok) return;
+    try {
+      const latest = await apiJson<ReportDetail>(`/reports/${report.id}`);
+      stamp.current = latest.updatedAt;
+      setFigures(latest.figures);
+      setSections(latest.sections);
+      markClean();
+      setConflict(false);
+      qc.setQueryData(["reports", report.id], latest);
+    } catch (error) {
+      toast.error(errorText(error, "Could not load the latest report"));
+    }
   };
 
   const saveDraft = async () => {
@@ -261,7 +307,9 @@ export function ReportEditor({
       if (dirtyRef.current) await save();
       await refresh.mutateAsync(report.id);
       markClean();
-      toast.success("Figures pulled in again. Anything you changed was kept.");
+      toast.success(
+        "Figures and work updates refreshed. Your writing and edited figures were kept.",
+      );
     } catch (e) {
       toast.error(errorText(e, "Couldn't get the figures again"));
     }
@@ -347,6 +395,34 @@ export function ReportEditor({
       ? personName(report.subjectUser, "You")
       : (report.department?.name ?? report.subjectName);
 
+  const reportActions = !readOnly && (
+    <div className="flex flex-wrap justify-end gap-2">
+      {report.status !== "shared" && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={saveDraft}
+          disabled={update.isPending || refresh.isPending || remove.isPending || !!busyJob}
+        >
+          {update.isPending ? (
+            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="mr-1 h-4 w-4" />
+          )}
+          Save and finish later
+        </Button>
+      )}
+      <Button
+        size="sm"
+        onClick={send}
+        disabled={update.isPending || refresh.isPending || remove.isPending || !!busyJob}
+      >
+        <Send className="mr-1 h-4 w-4" />
+        {sendLabel(report.status, report.reviewerKind, report.department?.name)}
+      </Button>
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-5xl space-y-4">
       {onLeave && (
@@ -366,7 +442,8 @@ export function ReportEditor({
             <StatusPill status={report.status} />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {subjectLine} · {period} · written by {personName(report.creator)}
+            {subjectLine} · {period} ·{" "}
+            {report.isTeamReport ? "Team report" : `written by ${personName(report.creator)}`}
             {report.submissionCount > 1 ? ` · sent ${report.submissionCount} times` : ""}
           </p>
         </div>
@@ -383,22 +460,75 @@ export function ReportEditor({
               ) : (
                 <RotateCw className="mr-1 h-4 w-4" />
               )}
-              Get the figures again
+              Refresh from work
             </Button>
-            {report.status === "draft" && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-destructive"
-                onClick={deleteDraft}
-                disabled={remove.isPending}
-              >
-                <Trash2 className="mr-1 h-4 w-4" /> Delete this draft
-              </Button>
-            )}
+            {reportActions}
           </div>
         )}
       </header>
+
+      {conflict && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/5 p-3"
+        >
+          <p className="text-sm">
+            A teammate changed this report. Your unsaved writing is still here.
+          </p>
+          <Button size="sm" variant="outline" onClick={loadLatest}>
+            Load latest report
+          </Button>
+        </div>
+      )}
+
+      {report.canReview && !viewAs && (
+        <section
+          className="rounded-lg border-2 border-primary/40 bg-primary/5 p-4"
+          aria-label="Your decision"
+        >
+          <h2 className="text-sm font-semibold">Your decision</h2>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Approve it, or send it back with a note saying what to change.{" "}
+            {report.isTeamReport ? "The whole team" : personName(report.creator)} is told either
+            way.
+          </p>
+          <label htmlFor="report-review-note" className="sr-only">
+            Say something back
+          </label>
+          <Textarea
+            id="report-review-note"
+            rows={3}
+            placeholder="Say something back…"
+            value={reviewNote}
+            onChange={(e) => {
+              setReviewNote(e.target.value);
+              if (reviewError) setReviewError("");
+            }}
+            aria-invalid={!!reviewError}
+          />
+          {reviewError && (
+            <p role="alert" className="mt-1 text-xs text-destructive">
+              {reviewError}
+            </p>
+          )}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => decide("approve")} disabled={review.isPending}>
+              <CheckCircle2 className="mr-1 h-4 w-4" /> Approve
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => decide("request_changes")}
+              disabled={review.isPending}
+            >
+              <AlertTriangle className="mr-1 h-4 w-4" /> Send back for changes
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Sending back needs a reason — it is the only thing they will see.
+          </p>
+        </section>
+      )}
 
       {report.status === "changes_requested" && report.lastReviewNote && (
         <div className="rounded-lg border-2 border-warning/60 bg-warning/10 p-4">
@@ -440,7 +570,7 @@ export function ReportEditor({
         </Banner>
       )}
 
-      {report.status === "draft" && !mine && (
+      {report.status === "draft" && !mine && !report.isTeamReport && (
         <Banner
           tone="locked"
           icon={<Lock className="h-4 w-4" aria-hidden="true" />}
@@ -461,22 +591,27 @@ export function ReportEditor({
       <div className="grid gap-4 min-[720px]:grid-cols-[minmax(0,1fr)_17rem]">
         <div className="space-y-3">
           {figuresSection && (
-            <SectionCard title={figuresSection.title}>
-              {figuresSection.hint && !readOnly && (
-                <p className="mb-2 text-xs text-muted-foreground">{figuresSection.hint}</p>
-              )}
-              <ReportFigures
-                figures={figures}
-                readOnly={readOnly}
-                previousLabel={previousLabel}
-                onChange={changeFigures}
-                aiEnabled={aiEnabled}
-                onExplain={explainFigure}
-                explainingKey={busyJob}
-                onRefresh={refreshFigures}
-                refreshing={refresh.isPending}
-              />
-            </SectionCard>
+            <details open={readOnly} className="space-y-2">
+              <summary className="cursor-pointer rounded-lg border bg-card px-4 py-3 text-sm font-medium">
+                {readOnly ? figuresSection.title : "Review figures from AIMS"}
+              </summary>
+              <SectionCard title={figuresSection.title}>
+                {figuresSection.hint && !readOnly && (
+                  <p className="mb-2 text-xs text-muted-foreground">{figuresSection.hint}</p>
+                )}
+                <ReportFigures
+                  figures={figures}
+                  readOnly={readOnly}
+                  previousLabel={previousLabel}
+                  onChange={changeFigures}
+                  aiEnabled={aiEnabled}
+                  onExplain={explainFigure}
+                  explainingKey={busyJob}
+                  onRefresh={refreshFigures}
+                  refreshing={refresh.isPending}
+                />
+              </SectionCard>
+            </details>
           )}
 
           {bodySections.map((section) => (
@@ -516,7 +651,10 @@ export function ReportEditor({
                     )}
                     <span className={done ? "text-muted-foreground" : ""}>
                       {s.title}
-                      {!done && s.required && <span className="text-warning"> — still needed</span>}
+                      {!done && s.required && <span className="text-warning"> (required)</span>}
+                      {!done && !s.required && (
+                        <span className="text-muted-foreground"> (optional)</span>
+                      )}
                     </span>
                   </li>
                 );
@@ -579,75 +717,20 @@ export function ReportEditor({
       </div>
 
       {!readOnly && (
-        <div className="flex flex-wrap justify-end gap-2">
-          {report.status !== "shared" && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {report.status === "draft" && (
             <Button
               size="sm"
-              variant="outline"
-              onClick={saveDraft}
-              disabled={update.isPending || refresh.isPending}
+              variant="ghost"
+              className="text-destructive"
+              onClick={deleteDraft}
+              disabled={remove.isPending}
             >
-              {update.isPending ? (
-                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="mr-1 h-4 w-4" />
-              )}
-              Save and finish later
+              <Trash2 className="mr-1 h-4 w-4" /> Delete this draft
             </Button>
           )}
-          <Button size="sm" onClick={send} disabled={update.isPending}>
-            <Send className="mr-1 h-4 w-4" />
-            {sendLabel(report.status, report.reviewerKind, report.department?.name)}
-          </Button>
+          {reportActions}
         </div>
-      )}
-
-      {report.canReview && (
-        <section
-          className="rounded-lg border-2 border-primary/40 bg-primary/5 p-4"
-          aria-label="Your decision"
-        >
-          <h2 className="text-sm font-semibold">Your decision</h2>
-          <p className="mb-2 text-xs text-muted-foreground">
-            Approve it, or send it back with a note saying what to change.{" "}
-            {personName(report.creator)} is told either way.
-          </p>
-          <label htmlFor="report-review-note" className="sr-only">
-            Say something back
-          </label>
-          <Textarea
-            id="report-review-note"
-            rows={3}
-            placeholder="Say something back…"
-            value={reviewNote}
-            onChange={(e) => {
-              setReviewNote(e.target.value);
-              if (reviewError) setReviewError("");
-            }}
-            aria-invalid={!!reviewError}
-          />
-          {reviewError && (
-            <p role="alert" className="mt-1 text-xs text-destructive">
-              {reviewError}
-            </p>
-          )}
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => decide("approve")} disabled={review.isPending}>
-              <CheckCircle2 className="mr-1 h-4 w-4" /> Approve
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => decide("request_changes")}
-              disabled={review.isPending}
-            >
-              <AlertTriangle className="mr-1 h-4 w-4" /> Send back for changes
-            </Button>
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Sending back needs a reason — it is the only thing they will see.
-          </p>
-        </section>
       )}
 
       <ReportConversation
@@ -659,7 +742,7 @@ export function ReportEditor({
           createdAt: m.createdAt,
           authorName: personName(m.author, "AIMS"),
         }))}
-        canPost={report.status !== "draft"}
+        canPost={!viewAs && report.status !== "draft"}
         sending={sendMessage.isPending}
         placeholder={report.canReview ? "Message the writer…" : `Message ${lowerFirst(goesTo)}…`}
         onSend={(body, parentId) =>
@@ -674,7 +757,8 @@ export function ReportEditor({
         <AttachmentsPanel
           resourceType="department_report"
           resourceId={report.id}
-          canManage={report.canEdit}
+          sharedTeam={report.isTeamReport}
+          canManage={!readOnly}
         />
       </div>
     </div>

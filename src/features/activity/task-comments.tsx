@@ -22,7 +22,7 @@ const wasEdited = (createdAt: string, updatedAt: string) =>
 
 /** A task's Comments thread: comment, reply, and edit or delete your own. */
 export function TaskComments({ taskId }: { taskId: string }) {
-  const { user, isAdminOrCeo } = useAuth();
+  const { user, isAdminOrCeo, viewAs } = useAuth();
   const commentsQ = useTaskComments(taskId);
   const create = useCreateComment(taskId);
   const remove = useDeleteComment(taskId);
@@ -58,7 +58,7 @@ export function TaskComments({ taskId }: { taskId: string }) {
   };
 
   const items: ThreadItem[] = (commentsQ.data ?? []).map((c) => {
-    const own = isAdminOrCeo || (!!user && c.author_id === user.id);
+    const own = !viewAs && (isAdminOrCeo || (!!user && c.author_id === user.id));
     const editing = editingId === c.id;
     const edited = wasEdited(c.created_at, c.updated_at);
     return {
@@ -123,7 +123,7 @@ export function TaskComments({ taskId }: { taskId: string }) {
       title="Comments"
       headingLevel="h3"
       items={items}
-      canPost
+      canPost={!viewAs}
       placeholder="Write a comment…"
       sendLabel="Add comment"
       sending={create.isPending}

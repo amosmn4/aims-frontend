@@ -1,7 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
-import { TENDER_STAGE_LABELS, TENDER_STAGE_STYLES, useTenders } from "@/features/tender/use-tender";
-import { daysToDeadline, tendersStillToSubmit } from "@/features/tender/bid-deadlines";
+import {
+  TENDER_STAGE_LABELS,
+  TENDER_STAGE_STYLES,
+  useTenderWorkQueue,
+} from "@/features/tender/use-tender";
+import { daysToDeadline } from "@/features/tender/bid-deadlines";
 import { formatCurrency } from "@/features/finance/finance";
 import { LoadError } from "@/components/load-error";
 import { Button } from "@/components/ui/button";
@@ -17,14 +21,11 @@ const deadlineText = (days: number) =>
 
 /** What has to be finished and sent, ordered by how soon it closes. */
 export function ClosingSoonPanel() {
-  const tendersQ = useTenders({});
-  const tenders = tendersQ.data ?? [];
-  const queue = tendersStillToSubmit(tenders);
-  const closingThisWeek = queue.filter((t) => {
-    const days = daysToDeadline(t.submission_deadline!);
-    return days >= 0 && days <= 7;
-  });
-  const missed = queue.filter((t) => daysToDeadline(t.submission_deadline!) < 0);
+  const tendersQ = useTenderWorkQueue();
+  const queue = tendersQ.data?.closing ?? [];
+  const closingThisWeek = tendersQ.data?.totals.closingThisWeek ?? 0;
+  const missed = tendersQ.data?.totals.pastDeadline ?? 0;
+  const total = tendersQ.data?.totals.closingTotal ?? 0;
 
   return (
     <section className="rounded-xl border bg-card" aria-labelledby="closing-heading">
@@ -61,11 +62,11 @@ export function ClosingSoonPanel() {
       ) : (
         <div className="p-4">
           <p className="mb-2 text-xs text-muted-foreground">
-            {closingThisWeek.length} close{closingThisWeek.length === 1 ? "s" : ""} within a week
-            {missed.length > 0 && (
+            {closingThisWeek} close{closingThisWeek === 1 ? "s" : ""} within a week
+            {missed > 0 && (
               <span className="font-semibold text-destructive">
                 {" "}
-                · {missed.length} already past the deadline
+                · {missed} already past the deadline
               </span>
             )}
           </p>
@@ -122,12 +123,12 @@ export function ClosingSoonPanel() {
               );
             })}
           </ul>
-          {queue.length > 6 && (
+          {total > 6 && (
             <Link
               to="/tender/bid-pipeline"
               className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
             >
-              +{queue.length - 6} more waiting to go in
+              +{total - 6} more waiting to go in
             </Link>
           )}
         </div>

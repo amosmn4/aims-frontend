@@ -58,8 +58,8 @@ export function OperationsReport() {
     >
       <div className="space-y-4">
         <ReportHeader
-          title="Operations report"
-          description="Client requests from first contact to won or lost: how many convert, where they get stuck, and the latest ones."
+          title="Operations reports to the CEO"
+          description="Prepare the monthly report from your work updates and figures. Add what changed, any blockers and what happens next."
           actions={
             <Link to="/operations" className="text-xs text-primary hover:underline">
               Open Operations
@@ -67,9 +67,16 @@ export function OperationsReport() {
           }
         />
         <DepartmentReportsPanel departmentCode="operations" />
-        <RequestsSummary />
-        <TimeInStage />
-        <RecentRequests />
+        <details className="rounded-xl border bg-card p-4">
+          <summary className="cursor-pointer text-sm font-semibold">
+            Client request figures and analysis
+          </summary>
+          <div className="mt-4 space-y-4">
+            <RequestsSummary />
+            <TimeInStage />
+            <RecentRequests />
+          </div>
+        </details>
       </div>
     </RequireDepartmentAccess>
   );

@@ -19,7 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-type Access = "member" | "viewer";
+type Access = "member";
 
 /** One screen to set up a company project: what it is, when, and who is on it. */
 export function NewCompanyProjectDialog({ size = "default" }: { size?: "sm" | "default" }) {
@@ -80,7 +80,7 @@ export function NewCompanyProjectDialog({ size = "default" }: { size?: "sm" | "d
         description: purpose.trim() || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
-        members: Object.entries(team).map(([userId, access]) => ({ userId, access })),
+        members: Object.keys(team).map((userId) => ({ userId })),
       },
       {
         onSuccess: (project) => {
@@ -102,7 +102,7 @@ export function NewCompanyProjectDialog({ size = "default" }: { size?: "sm" | "d
     <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : guardClose(reset))}>
       <DialogTrigger asChild>
         <Button size={size}>
-          <Plus className="mr-1 h-4 w-4" /> New company project
+          <Plus className="mr-1 h-4 w-4" /> New project
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
@@ -117,8 +117,7 @@ export function NewCompanyProjectDialog({ size = "default" }: { size?: "sm" | "d
           <DialogHeader>
             <DialogTitle>New company project</DialogTitle>
             <DialogDescription>
-              A project that belongs to no department. You lead it, and only the people you add can
-              see it.
+              Work together across departments. Everyone on the team has equal access.
             </DialogDescription>
             <RequiredNote />
           </DialogHeader>
@@ -142,25 +141,30 @@ export function NewCompanyProjectDialog({ size = "default" }: { size?: "sm" | "d
               onChange={(e) => setPurpose(e.target.value)}
             />
           </FormField>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <FormField id="cp-start" label="Starts">
-              <Input
-                id="cp-start"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </FormField>
-            <FormField id="cp-end" label="Ends" error={errors.endDate}>
-              <Input
-                id="cp-end"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                aria-invalid={!!errors.endDate}
-              />
-            </FormField>
-          </div>
+          <details className="space-y-3">
+            <summary className="cursor-pointer text-sm text-muted-foreground">
+              Schedule (optional)
+            </summary>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <FormField id="cp-start" label="Starts">
+                <Input
+                  id="cp-start"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+              </FormField>
+              <FormField id="cp-end" label="Ends" error={errors.endDate}>
+                <Input
+                  id="cp-end"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  aria-invalid={!!errors.endDate}
+                />
+              </FormField>
+            </div>
+          </details>
 
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">
@@ -168,7 +172,7 @@ export function NewCompanyProjectDialog({ size = "default" }: { size?: "sm" | "d
               {picked > 0 && <span className="ml-1 text-muted-foreground">· {picked} added</span>}
             </legend>
             <p className="text-xs text-muted-foreground">
-              Members add tasks, deliverables and reports. Viewers follow along and can reply.
+              You are included. Add colleagues from any department.
             </p>
             <div className="relative">
               <Search
@@ -204,19 +208,6 @@ export function NewCompanyProjectDialog({ size = "default" }: { size?: "sm" | "d
                           {p.email}
                         </span>
                       </label>
-                      {access && (
-                        <select
-                          value={access}
-                          onChange={(e) =>
-                            setTeam((t) => ({ ...t, [p.id]: e.target.value as Access }))
-                          }
-                          aria-label={`What ${p.name} can do`}
-                          className="h-8 rounded-md border bg-background px-2 text-xs"
-                        >
-                          <option value="member">Member</option>
-                          <option value="viewer">Viewer</option>
-                        </select>
-                      )}
                     </li>
                   );
                 })
@@ -230,7 +221,7 @@ export function NewCompanyProjectDialog({ size = "default" }: { size?: "sm" | "d
             </Button>
             <Button type="submit" disabled={create.isPending}>
               {create.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Set up project
+              Create project
             </Button>
           </DialogFooter>
         </form>

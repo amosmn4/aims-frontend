@@ -60,7 +60,8 @@ function HrReportContent() {
       return {
         name,
         open: list.filter(isOpenProject).length,
-        finished: list.filter((p) => !isOpenProject(p)).length,
+        finished: list.filter((p) => p.status === "completed").length,
+        cancelled: list.filter((p) => p.status === "cancelled").length,
         recurring: list.filter((p) => p.engagement_type === "ongoing").length,
         oneOff: list.filter((p) => p.engagement_type === "one_off").length,
         clients: new Set(list.map((p) => p.client_id).filter(Boolean)).size,
@@ -106,7 +107,8 @@ function HrReportContent() {
     const sheetRows = [...rows.byLine, rows.total].map((r) => ({
       "Service line": r.name,
       Open: r.open,
-      Finished: r.finished,
+      Completed: r.finished,
+      Cancelled: r.cancelled,
       Recurring: r.recurring,
       "One-off": r.oneOff,
       Clients: r.clients,
@@ -194,7 +196,8 @@ function HrReportContent() {
                 <tr className="border-b">
                   <th className="px-4 py-2.5 font-medium">Service line</th>
                   <th className="px-3 py-2.5 text-right font-medium">Open</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Finished</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Completed</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Cancelled</th>
                   <th className="px-3 py-2.5 text-right font-medium">Recurring</th>
                   <th className="px-3 py-2.5 text-right font-medium">One-off</th>
                   <th className="px-3 py-2.5 text-right font-medium">Clients</th>
@@ -211,6 +214,7 @@ function HrReportContent() {
                     <td className="px-4 py-2.5">{r.name}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{r.open}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{r.finished}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{r.cancelled}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{r.recurring}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{r.oneOff}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{r.clients}</td>

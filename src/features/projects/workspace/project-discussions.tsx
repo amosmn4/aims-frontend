@@ -26,14 +26,16 @@ export function ProjectDiscussions({
   canPost,
   canReply,
   askWho,
+  sharedTeam = false,
 }: {
   projectId: string;
   canPost: boolean;
   canReply: boolean;
   /** Who to ask for access, for people who can only reply. */
   askWho: string;
+  sharedTeam?: boolean;
 }) {
-  const { user, isAdminOrCeo } = useAuth();
+  const { user, isAdminOrCeo, viewAs } = useAuth();
   const activitiesQ = useProjectActivities(projectId);
   const log = useLogProjectActivity(projectId);
   const decide = useSetDecision(projectId);
@@ -114,7 +116,9 @@ export function ProjectDiscussions({
         ) : !a.parent_id && a.is_decision && a.decided_at ? (
           `Decided ${formatDate(a.decided_at)}`
         ) : undefined,
-      canDelete: isAdminOrCeo || (!!user && a.created_by_id === user.id),
+      canDelete:
+        !viewAs &&
+        ((sharedTeam && canPost) || isAdminOrCeo || (!!user && a.created_by_id === user.id)),
     };
   });
 
@@ -142,7 +146,7 @@ export function ProjectDiscussions({
   const composer = canPost ? (
     <div className="space-y-2">
       <label htmlFor={`disc-${projectId}`} className="text-sm font-medium">
-        Start a discussion
+        Add a work update or start a discussion
       </label>
       <Textarea
         id={`disc-${projectId}`}
@@ -165,7 +169,7 @@ export function ProjectDiscussions({
         </label>
         <Button size="sm" onClick={post} disabled={log.isPending || decide.isPending}>
           {(log.isPending || decide.isPending) && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
-          Post to team
+          Save update
         </Button>
       </div>
     </div>
@@ -182,7 +186,7 @@ export function ProjectDiscussions({
       <div className="flex gap-1" role="group" aria-label="Show">
         {(
           [
-            ["all", "All discussions"],
+            ["all", "All updates"],
             ["decisions", `Decisions (${decisionIds.size})`],
           ] as const
         ).map(([value, label]) => (
@@ -204,9 +208,13 @@ export function ProjectDiscussions({
       </div>
       <Thread
         items={items}
-        title="Discussions"
+        title="Updates & discussion"
         headingLevel="h3"
-        emptyText={filter === "decisions" ? "No decisions recorded yet." : "No discussions yet."}
+        emptyText={
+          filter === "decisions"
+            ? "No decisions recorded yet."
+            : "No updates yet. Record the work you handled and what happens next."
+        }
         canPost={canPost || canReply}
         composer={composer}
         newestFirst

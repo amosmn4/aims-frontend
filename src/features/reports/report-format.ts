@@ -153,14 +153,6 @@ export function formatReportPeriod(start: string, end: string): string {
   return `${day(s)} – ${day(e)}`;
 }
 
-/** The month after this period, for "your next report is for October". */
-export function nextMonthLabel(end: string | null | undefined): string {
-  if (!end) return "";
-  const d = new Date(end);
-  if (Number.isNaN(d.getTime())) return "";
-  return monthLabel(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString());
-}
-
 /** Who is expected to read and decide on this report. */
 export function reviewerLabel(kind: ReviewerKind, departmentName?: string | null): string {
   if (kind === "ceo") return "The CEO";

@@ -15,7 +15,7 @@ export function SectionHeading({
 }) {
   return (
     <div className={cn("mb-2 flex items-center justify-between gap-2", className)}>
-      <h2 id={id} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <h2 id={id} className="text-sm font-semibold text-foreground">
         {children}
       </h2>
       {action}

@@ -46,13 +46,6 @@ export const SOURCE_LABELS: Record<ClientRequestSource, string> = {
   other: "Other",
 };
 
-export const ACTIVITY_TYPE_LABELS: Record<ClientRequestActivityType, string> = {
-  note: "Note",
-  call: "Call",
-  email: "Email",
-  meeting: "Meeting",
-};
-
 export interface ClientRequestRow {
   id: string;
   reference_number: string | null;
@@ -529,17 +522,6 @@ export function useLogActivity(requestId: string) {
           parentId: input.parent_id,
         }),
       });
-    },
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["client-requests", requestId, "activities"] }),
-  });
-}
-
-export function useDeleteActivity(requestId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (activityId: string) => {
-      await apiJson(`/client-requests/activities/${activityId}`, { method: "DELETE" });
     },
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["client-requests", requestId, "activities"] }),

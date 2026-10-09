@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { Loader2 } from "lucide-react";
-import { RequireRole } from "@/components/require-role";
+import { RequireDepartmentAccess } from "@/components/require-role";
 import { LoadError } from "@/components/load-error";
 import {
   useTenders,
@@ -49,12 +50,16 @@ function Spinner() {
 
 // Exported so the Tender department hub can embed this report as a tab.
 export function TenderReport() {
+  const [showFigures, setShowFigures] = useState(false);
   return (
-    <RequireRole roles={["tender"]} message="The Tender report is for the Tender team and the CEO.">
+    <RequireDepartmentAccess
+      code="tender"
+      message="The Tender report is for the Tender team and the CEO."
+    >
       <div className="space-y-4">
         <ReportHeader
-          title="Tender report"
-          description="Tenders at each stage, the value still open, win rate and the latest tenders."
+          title="Reports to the CEO"
+          description="Prepare your monthly report from bid progress, submissions, awards and work updates."
           actions={
             <Link to="/tender" className="text-xs text-primary hover:underline">
               Open Tenders
@@ -62,10 +67,22 @@ export function TenderReport() {
           }
         />
         <DepartmentReportsPanel departmentCode="tender" />
-        <TendersSummary />
-        <RecentTenders />
+        <details
+          className="rounded-lg border bg-card"
+          onToggle={(event) => setShowFigures(event.currentTarget.open)}
+        >
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+            Bid figures and recent tenders
+          </summary>
+          {showFigures && (
+            <div className="space-y-4 border-t p-4">
+              <TendersSummary />
+              <RecentTenders />
+            </div>
+          )}
+        </details>
       </div>
-    </RequireRole>
+    </RequireDepartmentAccess>
   );
 }
 
@@ -122,8 +139,10 @@ function TendersSummary() {
 }
 
 function RecentTenders() {
-  const tendersQ = useTenders();
-  const rows = (tendersQ.data ?? []).slice(0, 5);
+  const tendersQ = useTenders({}, { page: 1, pageSize: 5 });
+  const rows = Array.isArray(tendersQ.data)
+    ? tendersQ.data.slice(0, 5)
+    : (tendersQ.data?.data ?? []);
 
   return (
     <section className="rounded-lg border bg-card p-3" aria-labelledby="tender-recent-heading">

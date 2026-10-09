@@ -37,6 +37,7 @@ export const TENDER_STAGE_STYLES: Record<TenderStage, string> = {
 
 export interface TenderRow {
   id: string;
+  can_edit?: boolean;
   reference_number: string | null;
   title: string;
   description: string | null;
@@ -128,6 +129,7 @@ export interface TenderCostSummary {
 
 type BackendTender = {
   id: string;
+  canEdit?: boolean;
   referenceNumber: string | null;
   title: string;
   description: string | null;
@@ -167,6 +169,7 @@ function isRequirementResolved(status: TenderRequirementStatus): boolean {
 function mapTender(t: BackendTender): TenderRow {
   return {
     id: t.id,
+    can_edit: t.canEdit,
     reference_number: t.referenceNumber,
     title: t.title,
     description: t.description,
@@ -312,6 +315,34 @@ export function useTender(id: string | undefined) {
     // A missing or forbidden record won't appear on retry.
     retry: (count, err) =>
       ![403, 404].includes((err as { status?: number }).status ?? 0) && count < 3,
+  });
+}
+
+export function useTenderWorkQueue() {
+  return useQuery({
+    queryKey: ["tenders", "work-queue"],
+    queryFn: async () => {
+      const raw = await apiJson<{
+        closing: BackendTender[];
+        notReady: BackendTender[];
+        handoff: BackendTender[];
+        totals: {
+          closingTotal: number;
+          notReadyTotal: number;
+          handoffTotal: number;
+          closingThisWeek: number;
+          pastDeadline: number;
+          noOwner: number;
+          noDocs: number;
+        };
+      }>("/tenders/work-queue");
+      return {
+        ...raw,
+        closing: raw.closing.map(mapTender),
+        notReady: raw.notReady.map(mapTender),
+        handoff: raw.handoff.map(mapTender),
+      };
+    },
   });
 }
 
@@ -465,7 +496,10 @@ export function useSaveTender() {
       });
       return created.id;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenders"] });
+      qc.invalidateQueries({ queryKey: ["executive-overview"] });
+    },
   });
 }
 
@@ -491,7 +525,10 @@ export function useUpdateTenderStage() {
         }),
       );
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenders"] });
+      qc.invalidateQueries({ queryKey: ["executive-overview"] });
+    },
   });
 }
 
@@ -501,7 +538,10 @@ export function useDeleteTender() {
     mutationFn: async (id: string) => {
       await apiJson(`/tenders/${id}`, { method: "DELETE" });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenders"] });
+      qc.invalidateQueries({ queryKey: ["executive-overview"] });
+    },
   });
 }
 
@@ -960,7 +1000,10 @@ export function useSaveTenderRequirement(tenderId: string) {
         });
       }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders", tenderId, "requirements"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "requirements"] });
+      qc.invalidateQueries({ queryKey: ["tenders", "work-queue"] });
+    },
   });
 }
 
@@ -970,7 +1013,10 @@ export function useDeleteTenderRequirement(tenderId: string) {
     mutationFn: async (reqId: string) => {
       await apiJson(`/tenders/requirements/${reqId}`, { method: "DELETE" });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders", tenderId, "requirements"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "requirements"] });
+      qc.invalidateQueries({ queryKey: ["tenders", "work-queue"] });
+    },
   });
 }
 
@@ -982,7 +1028,10 @@ export function useApplyRequirementTemplate(tenderId: string) {
         method: "POST",
       });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tenders", tenderId, "requirements"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tenders", tenderId, "requirements"] });
+      qc.invalidateQueries({ queryKey: ["tenders", "work-queue"] });
+    },
   });
 }
 
@@ -1000,6 +1049,7 @@ export function useApplyLibraryDocument(tenderId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tenders", tenderId, "requirements"] });
       qc.invalidateQueries({ queryKey: ["documents", "list"] });
+      qc.invalidateQueries({ queryKey: ["tenders", "work-queue"] });
     },
   });
 }
@@ -1055,37 +1105,5 @@ export function useRequirementTemplates() {
     queryKey: ["requirement-templates"],
     queryFn: async () =>
       (await apiJson<BackendTemplate[]>("/tender-requirement-templates")).map(mapTemplate),
-  });
-}
-
-export function useRequirementTemplate(id: string | undefined) {
-  return useQuery({
-    queryKey: ["requirement-templates", id],
-    enabled: !!id,
-    queryFn: async () => {
-      const t = await apiJson<BackendTemplate>(`/tender-requirement-templates/${id}`);
-      return {
-        ...mapTemplate(t),
-        items: (t.items ?? []).map(
-          (i) =>
-            ({
-              id: i.id,
-              template_id: i.templateId,
-              title: i.title,
-              category: i.category,
-            }) satisfies RequirementTemplateItemRow,
-        ),
-      };
-    },
-  });
-}
-
-export function useDeleteRequirementTemplate() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      await apiJson(`/tender-requirement-templates/${id}`, { method: "DELETE" });
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["requirement-templates"] }),
   });
 }

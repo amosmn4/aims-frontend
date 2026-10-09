@@ -8,7 +8,7 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react";
-import { useAuth, type AppRole } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 
 export interface ReportLink {
   key: string;
@@ -71,17 +71,10 @@ const WATER_REPORT: ReportLink = {
   icon: Droplets,
 };
 
-// These reports are for the department's own team and the CEO; HR and Operations follow View access.
-const ROLE_ONLY_REPORTS = ["finance", "it", "marketing", "tender"];
-
 /** Department reports this person can open. */
 export function useReportLinks() {
-  const { isAdminOrCeo, hasRole, canReadDepartment } = useAuth();
-  const departments = DEPARTMENT_REPORTS.filter((r) =>
-    ROLE_ONLY_REPORTS.includes(r.key)
-      ? isAdminOrCeo || hasRole(r.key as AppRole)
-      : canReadDepartment(r.key),
-  );
+  const { hasRole, canReadDepartment } = useAuth();
+  const departments = DEPARTMENT_REPORTS.filter((report) => canReadDepartment(report.key));
   const withWater = hasRole("water") ? [...departments, WATER_REPORT] : departments;
   return { departments, all: withWater };
 }

@@ -1161,3 +1161,88 @@
   padding-right: 0.1em;
   font-weight: 600;
 }
+
+.aims-workspace {
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-accent: var(--muted);
+  --sidebar-accent-foreground: var(--foreground);
+  background-color: var(--muted);
+}
+
+.aims-workspace nav a:hover,
+.aims-workspace nav button:hover {
+  background-color: var(--muted);
+  color: var(--foreground);
+}
+
+.aims-workspace nav [aria-current="page"],
+.aims-workspace nav [aria-current="true"] {
+  background-color: color-mix(in oklab, var(--primary) 9%, var(--card));
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.aims-workspace .quick-links-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.aims-workspace .quick-link {
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.aims-workspace .quick-link-icon,
+.aims-workspace .stat-tile-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  background: transparent;
+}
+
+.aims-workspace .quick-link-description {
+  display: none;
+}
+
+.aims-workspace .stat-tile {
+  padding: 1rem;
+  box-shadow: none;
+}
+
+.aims-workspace .pipeline-scope .ws-tabbar {
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border);
+  background-color: transparent;
+}
+
+.aims-workspace .pipeline-scope .ws-tabbtn {
+  border-radius: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background-color: transparent;
+}
+
+.aims-workspace .pipeline-scope .ws-tabbtn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aims-workspace *,
+  .aims-workspace *::before,
+  .aims-workspace *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.aims-workspace header button:focus-visible,
+.aims-workspace nav button:focus-visible,
+.aims-workspace nav a:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

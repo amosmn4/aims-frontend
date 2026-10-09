@@ -5,9 +5,6 @@ import type { ReportFigure } from "./use-reports";
 /** One page shows every kind of report. */
 export const reportPath = (id: string): string => `/reports/${id}`;
 
-/** Your own report for the current period. */
-export const MY_REPORT_PATH: string = "/reports/mine";
-
 /** "August" — the month a report covers. */
 export const monthOf = (iso: string) =>
   new Date(iso).toLocaleDateString("en-GB", { timeZone: "UTC", month: "long" });

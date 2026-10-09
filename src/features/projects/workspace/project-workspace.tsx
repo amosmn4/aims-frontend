@@ -14,7 +14,6 @@ import {
   useTasks,
   useUpdateProject,
   useUpdateTask,
-  MEMBER_ACCESS_LABELS,
   PROJECT_STATUS_LABELS,
   type Project,
   type ProjectStatus,
@@ -44,6 +43,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogTrigger,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -53,6 +54,7 @@ import { formatDate } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 import { ProjectTeamDialog } from "./project-team-dialog";
 import { ProjectDiscussions } from "./project-discussions";
+import { ProjectUpdateDialog } from "@/features/projects/project-update-dialog";
 import { ProjectReports } from "./project-reports";
 import { Initials } from "./initials";
 
@@ -70,15 +72,12 @@ const TAB_LABELS: Record<ProjectTab, string> = {
   overview: "Overview",
   tasks: "Tasks",
   deliverables: "Deliverables",
-  discussions: "Discussions",
+  discussions: "Updates & discussion",
   reports: "Reports",
   documents: "Files",
 };
 
-/**
- * One layout for every project, company or department: the team in the header and six tabs
- * built around documenting the work and reporting on it.
- */
+/** Shared project workspace for recording work and reporting progress. */
 export function ProjectWorkspace({
   project,
   view,
@@ -96,7 +95,7 @@ export function ProjectWorkspace({
   /** Department projects: share, edit and delete, which live with the route. */
   departmentActions?: ReactNode;
 }) {
-  const { profile, isAdminOrCeo } = useAuth();
+  const { profile, isAdminOrCeo, viewAs } = useAuth();
   const { options, nameOf } = useStaffOptions();
   const tasksQ = useTasks({ projectId: project.id });
   const deliverablesQ = useDeliverables(project.id);
@@ -110,14 +109,11 @@ export function ProjectWorkspace({
 
   const isCompany = project.scope === "company";
   const role = isCompany ? companyRole(project, profile?.id, isAdminOrCeo) : null;
-  const canAdd = isCompany
-    ? role === "admin" || role === "lead" || role === "member"
-    : canEditDepartmentProject;
-  const canManageTeam = isCompany ? role === "admin" || role === "lead" : canEditDepartmentProject;
-  const canReply = isCompany ? role !== null : canAdd;
-  const canWriteReports = isCompany ? role === "lead" || role === "member" : canAdd;
-  const leadName = project.lead_name ?? nameOf(project.lead_id) ?? "the project's lead";
-  const askWho = isCompany ? leadName : `${project.department_name} staff`;
+  const canAdd = isCompany ? !viewAs && role !== null : canEditDepartmentProject;
+  const canManageTeam = canAdd;
+  const canReply = canAdd;
+  const canWriteReports = canAdd;
+  const askWho = isCompany ? "the project team" : `${project.department_name} staff`;
 
   const tasks = tasksQ.data ?? [];
   const deliverables = deliverablesQ.data ?? [];
@@ -128,12 +124,8 @@ export function ProjectWorkspace({
   const lateTasks = tasks.filter((t) => isTaskOverdue(t));
   const lateDeliverables = deliverables.filter((d) => isDeliverableLate(d));
   const late = lateTasks.length + lateDeliverables.length;
-  const teamIds = [
-    ...new Set([project.lead_id, ...project.members.map((m) => m.user_id)].filter(Boolean)),
-  ] as string[];
-  const assignable = isCompany
-    ? teamIds.filter((id) => project.members.find((m) => m.user_id === id)?.access !== "viewer")
-    : options.map((o) => o.id);
+  const teamIds = [...new Set(project.members.map((m) => m.user_id).filter(Boolean))] as string[];
+  const assignable = isCompany ? teamIds : options.map((o) => o.id);
   const profileMap = new Map(options.map((p) => [p.id, p.name]));
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
 
@@ -147,7 +139,7 @@ export function ProjectWorkspace({
   const lockNote = !canAdd && (
     <p className="rounded-md bg-secondary px-3 py-2 text-xs text-muted-foreground">
       {isCompany
-        ? `You can view this project. Ask ${leadName} to make you a member to add work.`
+        ? "Ask the project team to add you to participate."
         : `You can view this project. Only ${project.department_name} staff, or people it is shared with for editing, can add work.`}
     </p>
   );
@@ -163,6 +155,9 @@ export function ProjectWorkspace({
       <div className="flex flex-wrap items-center justify-between gap-2">
         {back}
         <div className="flex shrink-0 flex-wrap gap-1">
+          {canAdd && (
+            <ProjectUpdateDialog project={project} onSaved={() => onViewChange("discussions")} />
+          )}
           {isCompany && canManageTeam && (
             <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
               <Pencil className="mr-1 h-3.5 w-3.5" /> Edit project
@@ -199,14 +194,8 @@ export function ProjectWorkspace({
               {formatDate(project.end_date, "no end date")}
             </span>
           )}
-          {isCompany && <span>Lead: {leadName}</span>}
           <span className="tabular-nums">{pct}% done</span>
           {late > 0 && <span className="font-semibold text-destructive">{late} late</span>}
-          {role && role !== "admin" && (
-            <span className="rounded-full border px-2 py-0.5">
-              You: {MEMBER_ACCESS_LABELS[role]}
-            </span>
-          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {teamIds.length > 0 && (
@@ -280,7 +269,7 @@ export function ProjectWorkspace({
               })),
             ]}
             decisions={posts.filter((p) => p.is_decision)}
-            latestReport={reports.find((r) => r.status !== "draft") ?? null}
+            latestReport={reports[0] ?? null}
             onOpen={onViewChange}
           />
           <MilestonesPanel projectId={project.id} milestones={milestones} canManage={canAdd} />
@@ -341,6 +330,7 @@ export function ProjectWorkspace({
           <ProjectDiscussions
             projectId={project.id}
             canPost={canAdd}
+            sharedTeam={isCompany}
             canReply={canReply}
             askWho={askWho}
           />
@@ -354,6 +344,7 @@ export function ProjectWorkspace({
           {lockNote}
           <div className="ws-panel !mt-0">
             <AttachmentsPanel
+              sharedTeam={isCompany}
               resourceType="project"
               resourceId={project.id}
               canManage={canAdd}
@@ -469,12 +460,12 @@ function ProjectOverview({
           <div className="flex items-center justify-between gap-2">
             <h3>Decisions</h3>
             <Button size="sm" variant="ghost" onClick={() => onOpen("discussions")}>
-              All discussions
+              All updates
             </Button>
           </div>
           {decisions.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">
-              No decisions recorded yet. Mark one in Discussions.
+              No decisions recorded yet. Mark one in Updates & discussion.
             </p>
           ) : (
             <ul className="mt-2 divide-y rounded-md border">
@@ -535,85 +526,109 @@ function QuickAddTask({
   meId?: string;
 }) {
   const createTask = useCreateTask();
+  const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [assigneeId, setAssigneeId] = useState(meId && people.includes(meId) ? meId : "");
   const [dueDate, setDueDate] = useState("");
   const [error, setError] = useState<string>();
 
+  const initialAssignee = meId && people.includes(meId) ? meId : "";
+  const { guardClose } = useUnsavedChanges(
+    open && (!!title.trim() || !!dueDate || assigneeId !== initialAssignee),
+  );
+  const close = () => {
+    setOpen(false);
+    setTitle("");
+    setDueDate("");
+    setAssigneeId(initialAssignee);
+    setError(undefined);
+  };
+
   return (
-    <form
-      noValidate
-      className="ws-panel !mt-0 space-y-1"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!title.trim()) {
-          setError("Say what needs doing first.");
-          return;
-        }
-        setError(undefined);
-        createTask.mutate(
-          {
-            projectId,
-            title: title.trim(),
-            priority: "medium",
-            assigneeId: assigneeId || undefined,
-            dueDate: dueDate || undefined,
-          },
-          {
-            onSuccess: () => {
-              const who = assigneeId && assigneeId !== meId ? nameOf(assigneeId) : null;
-              toast.success(who ? `Task added and assigned to ${who}` : "Task added");
-              setTitle("");
-              setDueDate("");
-            },
-            onError: (err) =>
-              toast.error(err instanceof Error ? err.message : "Couldn't add the task"),
-          },
-        );
-      }}
-    >
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(12rem,1fr)_12rem_10rem_auto]">
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Add a task… e.g. Send the draft contract"
-          aria-label="New task"
-          aria-invalid={!!error}
-        />
-        <select
-          value={assigneeId}
-          onChange={(e) => setAssigneeId(e.target.value)}
-          aria-label="Assign to"
-          className="h-9 rounded-md border bg-background px-2 text-sm"
+    <Dialog open={open} onOpenChange={(value) => (value ? setOpen(true) : guardClose(close))}>
+      <DialogTrigger asChild>
+        <Button size="sm">Add task</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add task</DialogTitle>
+          <DialogDescription>Choose what needs doing and who will handle it.</DialogDescription>
+        </DialogHeader>
+        <form
+          noValidate
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!title.trim()) {
+              setError("Say what needs doing first.");
+              return;
+            }
+            setError(undefined);
+            createTask.mutate(
+              {
+                projectId,
+                title: title.trim(),
+                priority: "medium",
+                assigneeId: assigneeId || undefined,
+                dueDate: dueDate || undefined,
+              },
+              {
+                onSuccess: () => {
+                  const who = assigneeId && assigneeId !== meId ? nameOf(assigneeId) : null;
+                  toast.success(who ? `Task added and assigned to ${who}` : "Task added");
+                  close();
+                },
+                onError: (err) =>
+                  toast.error(err instanceof Error ? err.message : "Couldn't add the task"),
+              },
+            );
+          }}
         >
-          <option value="">Not assigned</option>
-          {people.map((id) => (
-            <option key={id} value={id}>
-              {nameOf(id) ?? "Someone"}
-            </option>
-          ))}
-        </select>
-        <Input
-          type="date"
-          value={dueDate}
-          onChange={(e) => setDueDate(e.target.value)}
-          aria-label="Due date"
-        />
-        <Button type="submit" disabled={createTask.isPending}>
-          {createTask.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4" />
+          <div className="grid grid-cols-1 gap-3">
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+              placeholder="Add a task… e.g. Send the draft contract"
+              aria-label="New task"
+              aria-invalid={!!error}
+            />
+            <select
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              aria-label="Assign to"
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+            >
+              <option value="">Not assigned</option>
+              {people.map((id) => (
+                <option key={id} value={id}>
+                  {nameOf(id) ?? "Someone"}
+                </option>
+              ))}
+            </select>
+            <Input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              aria-label="Due date"
+            />
+            <Button type="submit" disabled={createTask.isPending}>
+              {createTask.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              <span className="ml-1">Add task</span>
+            </Button>
+          </div>
+          {error && (
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
           )}
-          <span className="ml-1">Add task</span>
-        </Button>
-      </div>
-      {error && (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
-        </p>
-      )}
-    </form>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

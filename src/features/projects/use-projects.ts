@@ -4,7 +4,7 @@ import { apiJson } from "@/lib/api-client";
 export type ProjectStatus = "planning" | "active" | "on_hold" | "completed" | "cancelled";
 export type ProjectHealth = "green" | "amber" | "red";
 export type ProjectVisibility = "department" | "restricted";
-/** "company": owned by a lead and team, not a department. */
+/** Company projects belong to a team across departments. */
 export type ProjectScope = "department" | "company";
 export type ProjectMemberAccess = "lead" | "member" | "viewer";
 
@@ -29,10 +29,6 @@ export type SdlcStage =
   "requirements" | "design" | "development" | "testing" | "deployment" | "maintenance";
 
 export const SYSTEM_DEVELOPMENT_METHODOLOGY = "system_development";
-
-/** Plain name for a project's methodology value. */
-export const methodologyLabel = (m: string | null) =>
-  m === SYSTEM_DEVELOPMENT_METHODOLOGY ? "System development" : m;
 
 /** IT projects track hours, phases and schedule/cost health; other departments don't. */
 export const tracksDeliveryMetrics = (departmentCode: string | null | undefined) =>
@@ -223,6 +219,24 @@ export function loggedProgress(
     tasks.filter((t) => t.status === "completed").length +
     milestones.filter((m) => m.is_complete).length;
   return total === 0 ? 0 : Math.round((done / total) * 100);
+}
+
+export function projectProgress(
+  project: Pick<
+    Project,
+    | "task_count"
+    | "tasks_done"
+    | "deliverable_count"
+    | "deliverables_done"
+    | "milestone_count"
+    | "milestones_done"
+  >,
+) {
+  const total =
+    (project.task_count ?? 0) + (project.deliverable_count ?? 0) + (project.milestone_count ?? 0);
+  const done =
+    (project.tasks_done ?? 0) + (project.deliverables_done ?? 0) + (project.milestones_done ?? 0);
+  return total === 0 ? null : Math.round((done / total) * 100);
 }
 
 export type TaskComment = {
@@ -561,7 +575,7 @@ export function useCreateProject() {
   });
 }
 
-/** Sets up a company project: the creator leads it, the listed people join it. */
+/** Creates a company project with equal rights for its team. */
 export function useCreateCompanyProject() {
   const qc = useQueryClient();
   return useMutation({
@@ -570,7 +584,7 @@ export function useCreateCompanyProject() {
       description?: string;
       startDate?: string;
       endDate?: string;
-      members: { userId: string; access: "member" | "viewer" }[];
+      members: { userId: string; access?: "member" }[];
     }) =>
       apiJson<{ id: string; name: string }>("/projects", {
         method: "POST",
@@ -588,8 +602,7 @@ export function companyRole(
 ): "admin" | ProjectMemberAccess | null {
   if (isAdminOrCeo) return "admin";
   if (!userId) return null;
-  if (project.lead_id === userId) return "lead";
-  return project.members.find((m) => m.user_id === userId)?.access ?? null;
+  return project.members.some((m) => m.user_id === userId) ? "member" : null;
 }
 
 export function useUpdateProject() {
@@ -882,12 +895,6 @@ export function useTimelineExtensions(
       }));
     },
   });
-}
-
-/** Share of tasks completed — a plain progress measure that needs no hour estimates. */
-export function taskCompletion(tasks: Pick<Task, "status">[]): number {
-  if (tasks.length === 0) return 0;
-  return Math.round((tasks.filter((t) => t.status === "completed").length / tasks.length) * 100);
 }
 
 export function isTaskOverdue(

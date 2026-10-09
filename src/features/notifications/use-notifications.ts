@@ -147,33 +147,6 @@ export function useDismissNotification() {
   });
 }
 
-export function useCreateReminder() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: {
-      type: "meeting" | "reminder";
-      title: string;
-      body?: string;
-      user_id?: string;
-      resource_type?: string;
-      resource_id?: string;
-    }) => {
-      await apiJson("/notifications", {
-        method: "POST",
-        body: JSON.stringify({
-          type: input.type,
-          title: input.title,
-          body: input.body,
-          userId: input.user_id,
-          resourceType: input.resource_type,
-          resourceId: input.resource_id,
-        }),
-      });
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
-  });
-}
-
 // Resource-type -> route, so a notification click navigates straight to the record it's about.
 export function notificationLink(row: NotificationRow): string | null {
   if (!row.resource_type || !row.resource_id) return null;

@@ -170,7 +170,11 @@ export function useCreateFinanceReport() {
           }),
         }),
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["finance-reports"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["finance-reports"] });
+      qc.invalidateQueries({ queryKey: ["reports-inbox"] });
+      qc.invalidateQueries({ queryKey: ["executive-overview"] });
+    },
   });
 }
 
@@ -191,6 +195,8 @@ export function useUpdateReportStatus() {
         body: JSON.stringify({ status, reviewNote: review_note || undefined }),
       }),
     onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["reports-inbox"] });
+      qc.invalidateQueries({ queryKey: ["executive-overview"] });
       qc.invalidateQueries({ queryKey: ["finance-reports"] });
       qc.invalidateQueries({ queryKey: ["finance-reports", vars.id] });
     },
@@ -225,7 +231,11 @@ export function useDeleteReport() {
     mutationFn: async (id: string) => {
       await apiJson(`/finance-reports/${id}`, { method: "DELETE" });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["finance-reports"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["finance-reports"] });
+      qc.invalidateQueries({ queryKey: ["reports-inbox"] });
+      qc.invalidateQueries({ queryKey: ["executive-overview"] });
+    },
   });
 }
 
@@ -250,6 +260,8 @@ export function useUpdateFinanceReport() {
         }),
       }),
     onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["reports-inbox"] });
+      qc.invalidateQueries({ queryKey: ["executive-overview"] });
       qc.invalidateQueries({ queryKey: ["finance-reports"] });
       qc.invalidateQueries({ queryKey: ["finance-reports", vars.id] });
     },

@@ -59,6 +59,7 @@ interface AuthContextValue {
   /** Backend-resolved department access (roles + overrides). */
   canReadDepartment: (code: string) => boolean;
   canWriteDepartment: (code: string) => boolean;
+  moduleWriteAccess: { tender?: boolean; operations?: boolean };
   /** Departments (and Water) this person can work in; more than one means they can switch. */
   workspaces: WorkspaceCode[];
   /** The one whose menu and home page they see now. */
@@ -82,6 +83,7 @@ type MeResponse = Profile & {
   departmentAccess?: DepartmentAccess;
   capabilities?: Capability[];
   viewAs?: boolean;
+  moduleWriteAccess?: { tender?: boolean; operations?: boolean };
 };
 
 const WORKSPACE_KEY = "aims:workspace";
@@ -106,18 +108,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [access, setAccess] = useState<DepartmentAccess>({ read: [], write: [] });
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [viewAs, setViewAs] = useState(false);
+  const [moduleWriteAccess, setModuleWriteAccess] = useState<{
+    tender?: boolean;
+    operations?: boolean;
+  }>({});
   const [, setWorkspaceTick] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const loadProfile = async () => {
     const me = await apiJson<MeResponse>("/auth/me");
-    const { roles: r, departmentAccess, capabilities: caps, viewAs: v, ...p } = me;
+    const {
+      roles: r,
+      departmentAccess,
+      capabilities: caps,
+      viewAs: v,
+      moduleWriteAccess: moduleAccess,
+      ...p
+    } = me;
     setUser({ id: me.id, email: me.email });
     setProfile(p);
     setRoles(r);
     setAccess(departmentAccess ?? { read: [], write: [] });
     setCapabilities(caps ?? []);
     setViewAs(!!v);
+    setModuleWriteAccess(moduleAccess ?? {});
     return r;
   };
 
@@ -128,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccess({ read: [], write: [] });
     setCapabilities([]);
     setViewAs(false);
+    setModuleWriteAccess({});
   };
 
   // A session that ends mid-use must not leave the old person signed in on the sign-in page.
@@ -212,6 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     viewAs,
     canReadDepartment: (code) => access.read === null || access.read.includes(code),
     canWriteDepartment: (code) => access.write === null || access.write.includes(code),
+    moduleWriteAccess,
     workspaces,
     workspace,
     setWorkspace,

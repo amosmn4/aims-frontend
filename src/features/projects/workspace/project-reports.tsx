@@ -1,8 +1,13 @@
 import { useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
-import { useReports, useStartReport, type ReportRow } from "@/features/reports/use-reports";
+import {
+  useReport,
+  useReports,
+  useStartReport,
+  type ReportRow,
+} from "@/features/reports/use-reports";
 import { REPORT_STATUS_LABEL, REPORT_STATUS_TONE } from "@/features/reports/report-format";
 import type { Project } from "@/features/projects/use-projects";
 import { FormField } from "@/components/form-field";
@@ -17,6 +22,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ReportEditor } from "@/features/reports/report-editor";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
@@ -48,6 +55,7 @@ function periodFor(
   choice: PeriodChoice,
   lastEnd: string | null,
   custom: { start: string; end: string },
+  sharedTeam = false,
 ) {
   const today = iso(new Date());
   const now = new Date();
@@ -55,18 +63,25 @@ function periodFor(
   if (choice === "week") {
     const monday = new Date(now);
     monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-    return { start: iso(monday), end: today };
+    return { start: iso(monday), end: sharedTeam ? addDays(iso(monday), 6) : today };
   }
   if (choice === "custom") return custom;
-  return { start: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`, end: today };
+  return {
+    start: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`,
+    end: sharedTeam ? iso(new Date(now.getFullYear(), now.getMonth() + 1, 0)) : today,
+  };
 }
 
-/** Reports about a project: anyone on it writes one for any period and shares it with the team. */
+/** Company teams prepare one shared report per period for the CEO. */
 export function ProjectReports({ project, canWrite }: { project: Project; canWrite: boolean }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const reportsQ = useReports({ kind: "project", subjectId: project.id });
   const [choosing, setChoosing] = useState(false);
+  const [activeReport, setActiveReport] = useState<string | null>(null);
+  const sharedTeam = project.scope === "company";
+  const openReport = (id: string) =>
+    sharedTeam ? setActiveReport(id) : void navigate({ to: REPORT_PATH, params: { reportId: id } });
   const reports = reportsQ.data ?? [];
   const lastEnd =
     reports
@@ -80,13 +95,14 @@ export function ProjectReports({ project, canWrite }: { project: Project; canWri
         <div>
           <h3>Reports</h3>
           <p className="text-xs text-muted-foreground">
-            Anyone on the project writes one for whatever period suits, and shares it with the team.
-            AIMS fills in the figures, decisions and discussions.
+            {sharedTeam
+              ? "One report per period. Everyone edits it; anyone can send it to the CEO."
+              : "Record progress and share it with the project team."}
           </p>
         </div>
         {canWrite && (
           <Button size="sm" onClick={() => setChoosing(true)}>
-            <Plus className="mr-1 h-4 w-4" /> Write report
+            <Plus className="mr-1 h-4 w-4" /> {sharedTeam ? "Open team report" : "Write report"}
           </Button>
         )}
       </div>
@@ -100,14 +116,28 @@ export function ProjectReports({ project, canWrite }: { project: Project; canWri
       ) : reports.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
           No reports yet.
-          {canWrite && " Press Write report and AIMS drafts one from what the team has logged."}
+          {canWrite &&
+            (sharedTeam
+              ? " Open a team report to start from the work logged here."
+              : " Press Write report to start from the work logged here.")}
         </p>
       ) : (
         <ul className="divide-y rounded-md border">
           {reports.map((r) => (
-            <ReportLine key={r.id} report={r} mine={r.createdBy === user?.id} />
+            <ReportLine
+              key={r.id}
+              report={r}
+              mine={r.createdBy === user?.id}
+              sharedTeam={sharedTeam}
+              canWrite={canWrite}
+              onOpen={() => openReport(r.id)}
+            />
           ))}
         </ul>
+      )}
+
+      {activeReport && (
+        <TeamReportDialog reportId={activeReport} onClose={() => setActiveReport(null)} />
       )}
 
       {choosing && (
@@ -115,28 +145,41 @@ export function ProjectReports({ project, canWrite }: { project: Project; canWri
           project={project}
           lastEnd={lastEnd}
           onClose={() => setChoosing(false)}
-          onStarted={(id) => navigate({ to: REPORT_PATH, params: { reportId: id } })}
+          onStarted={openReport}
         />
       )}
     </div>
   );
 }
 
-function ReportLine({ report: r, mine }: { report: ReportRow; mine: boolean }) {
+function ReportLine({
+  report: r,
+  mine,
+  sharedTeam,
+  canWrite,
+  onOpen,
+}: {
+  report: ReportRow;
+  mine: boolean;
+  sharedTeam: boolean;
+  canWrite: boolean;
+  onOpen: () => void;
+}) {
   const who = r.creator.fullName ?? r.creator.email;
   const draft = r.status === "draft";
   return (
     <li>
-      <Link
-        to={REPORT_PATH}
-        params={{ reportId: r.id }}
-        className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm hover:bg-secondary/50"
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex w-full flex-wrap items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-secondary/50"
       >
-        <Initials name={who} />
+        {!sharedTeam && <Initials name={who} />}
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium">{r.title}</span>
           <span className="block text-xs text-muted-foreground">
-            {who} · {rangeLabel(r.periodStart.slice(0, 10), r.periodEnd.slice(0, 10))}
+            {sharedTeam ? "Team report" : who} ·{" "}
+            {rangeLabel(r.periodStart.slice(0, 10), r.periodEnd.slice(0, 10))}
             {r.submittedAt && !draft ? ` · shared ${formatDate(r.submittedAt)}` : ""}
           </span>
         </span>
@@ -146,12 +189,16 @@ function ReportLine({ report: r, mine }: { report: ReportRow; mine: boolean }) {
             REPORT_STATUS_TONE[r.status],
           )}
         >
-          {draft ? "Not shared yet" : REPORT_STATUS_LABEL[r.status]}
+          {draft ? "Draft" : REPORT_STATUS_LABEL[r.status]}
         </span>
         <span className="rounded-md border px-2.5 py-1 text-xs font-medium">
-          {mine && (draft || r.status === "shared") ? "Open to edit" : "Read"}
+          {canWrite &&
+          (sharedTeam || mine) &&
+          (draft || r.status === "shared" || r.status === "changes_requested")
+            ? "Edit"
+            : "Read"}
         </span>
-      </Link>
+      </button>
     </li>
   );
 }
@@ -169,11 +216,12 @@ function WriteReportDialog({
 }) {
   const start = useStartReport();
   const today = iso(new Date());
-  const canContinue = !!lastEnd && lastEnd < today;
+  const sharedTeam = project.scope === "company";
+  const canContinue = !sharedTeam && !!lastEnd && lastEnd < today;
   const [choice, setChoice] = useState<PeriodChoice>(canContinue ? "since_last" : "month");
   const [custom, setCustom] = useState({ start: project.start_date ?? today, end: today });
   const [error, setError] = useState<string>();
-  const period = periodFor(choice, lastEnd, custom);
+  const period = periodFor(choice, lastEnd, custom, sharedTeam);
 
   const options: { value: PeriodChoice; label: string; hint?: string }[] = [
     ...(canContinue
@@ -188,12 +236,18 @@ function WriteReportDialog({
     {
       value: "week",
       label: "This week",
-      hint: rangeLabel(periodFor("week", null, custom).start, today),
+      hint: rangeLabel(
+        periodFor("week", null, custom, sharedTeam).start,
+        periodFor("week", null, custom, sharedTeam).end,
+      ),
     },
     {
       value: "month",
-      label: "This month so far",
-      hint: rangeLabel(periodFor("month", null, custom).start, today),
+      label: sharedTeam ? "This month" : "This month so far",
+      hint: rangeLabel(
+        periodFor("month", null, custom, sharedTeam).start,
+        periodFor("month", null, custom, sharedTeam).end,
+      ),
     },
     { value: "custom", label: "Choose dates" },
   ];
@@ -212,7 +266,7 @@ function WriteReportDialog({
         periodType: choice === "month" ? "monthly" : "other",
         periodStart: period.start,
         periodEnd: period.end,
-        title: `${project.name} — progress, ${rangeLabel(period.start, period.end)}`,
+        title: `${project.name}: progress, ${rangeLabel(period.start, period.end)}`,
       });
       onClose();
       onStarted(created.id);
@@ -225,10 +279,11 @@ function WriteReportDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Write a report</DialogTitle>
+          <DialogTitle>{sharedTeam ? "Open team report" : "Write a report"}</DialogTitle>
           <DialogDescription>
-            Pick the period it covers. AIMS fills in what was finished, decided and discussed in it;
-            you edit and add before sharing.
+            {sharedTeam
+              ? "Choose a period. An existing team report opens automatically."
+              : "Choose a period and review the progress recorded in AIMS."}
           </DialogDescription>
         </DialogHeader>
         <fieldset className="space-y-2">
@@ -283,9 +338,38 @@ function WriteReportDialog({
           </Button>
           <Button onClick={go} disabled={start.isPending}>
             {start.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Start report
+            {sharedTeam ? "Open report" : "Start report"}
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function TeamReportDialog({ reportId, onClose }: { reportId: string; onClose: () => void }) {
+  const reportQ = useReport(reportId);
+  const [dirty, setDirty] = useState(false);
+  const { guardClose } = useUnsavedChanges(dirty);
+  return (
+    <Dialog open onOpenChange={(open) => !open && guardClose(onClose)}>
+      <DialogContent className="max-h-[92dvh] sm:max-w-6xl">
+        <DialogHeader className="sr-only">
+          <DialogTitle>Team report</DialogTitle>
+          <DialogDescription>Prepare and submit the shared project report.</DialogDescription>
+        </DialogHeader>
+        {reportQ.isError ? (
+          <LoadError
+            what="the team report"
+            error={reportQ.error}
+            onRetry={() => reportQ.refetch()}
+          />
+        ) : reportQ.data ? (
+          <ReportEditor report={reportQ.data} onLeave={onClose} onDirtyChange={setDirty} />
+        ) : (
+          <p role="status" className="py-8 text-center text-sm text-muted-foreground">
+            Loading the team report...
+          </p>
+        )}
       </DialogContent>
     </Dialog>
   );

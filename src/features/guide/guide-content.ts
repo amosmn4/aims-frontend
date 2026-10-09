@@ -51,11 +51,21 @@ export const ROLE_GUIDES: RoleGuide[] = [
         q: "Start a new project",
         steps: [
           "On your **Home** page or the **Projects** page, click **New project**.",
-          "Type the **Project name**, pick the **Service line**, and choose **One-off** or **Recurring**.",
-          "Pick the **Client**, or choose **Create new client** if they're new. You can leave it empty and add it later.",
+          "Type the **Project name**, pick the **Client** or create one, and choose the **HR service**.",
+          "AIMS suggests the work type from the service. Open **More details** to change it or add dates, a contract, a description or access restrictions.",
           "Click **Create project**. You land straight inside the new project.",
         ],
         to: "/hr/projects",
+      },
+      {
+        q: "Record the work you handled",
+        steps: [
+          "On **Home**, click **Log work update** and choose the client project. You can also log an update from inside a project.",
+          "Write what you handled and choose the **Date of work**. Add a blocker or next step if useful, then click **Save update**.",
+          "Open **Updates & discussion** in the project to see its history. Department-visible updates can be pulled into HR and personal reports.",
+          "For company-wide work, open **Projects** in the menu, choose the company project and click **Log work update**. Its updates appear in that project's reports.",
+        ],
+        to: "/hr",
       },
       {
         q: "Add or change a project's client",
@@ -116,13 +126,14 @@ export const ROLE_GUIDES: RoleGuide[] = [
         steps: [
           "The **Needs attention** list on your **Home** page shows overdue tasks, projects past their end date and contracts ending soon.",
           "Open **Reports** for projects by service line and recruitment results. Click **Export HR report to Excel** to download.",
-          "To send your monthly report, click **New report for the CEO**, then **Fill figures from AIMS**, add a **Summary for the CEO** and click **Submit to CEO**.",
+          "In **Reports to the CEO**, start the report for the displayed month or open your draft. AIMS includes figures and work updates from that period.",
+          "Use **Refresh from work** to pull in later updates. Review the figures, fill the required sections and click **Send to the CEO**. Use **Save and finish later** to keep a draft.",
         ],
         to: "/hr/reports",
       },
     ],
     goodToKnow: [
-      "One-off work has an end date. Recurring work continues for the client and never shows as overdue.",
+      "One-off work has a specific outcome; you can add its end date later. Recurring work continues for the client, while its tasks can still become overdue.",
       "Choosing a service line sets One-off or Recurring for you. You can still change it.",
       "Training and salary surveys are simply projects on those service lines.",
     ],
@@ -230,7 +241,7 @@ export const ROLE_GUIDES: RoleGuide[] = [
     intro:
       "You're the front door for client requests: log every inbound request, send it to the right department, and make sure its project gets started once won.",
     start: [
-      { label: "Requests overview", to: "/operations" },
+      { label: "Operations home", to: "/operations" },
       { label: "Client requests", to: "/operations/requests" },
     ],
     howTo: [
@@ -240,7 +251,7 @@ export const ROLE_GUIDES: RoleGuide[] = [
           "Click **New client request**.",
           "Fill in **What is being requested?** Pick the **Client**, or click **Not a client yet? Type the company name**.",
           "Choose **Route to department** and, if you know who should handle it, **Assign to**. Leave it on **Not routed yet** to route it later.",
-          "Add contact details if you have them and click **Log client request**.",
+          "Open **More details** to add contact details, source, service, value or notes. Click **Log client request** when ready.",
         ],
         to: "/operations/requests",
       },
@@ -310,7 +321,7 @@ export const ROLE_GUIDES: RoleGuide[] = [
     start: [
       { label: "Invoices & billing", to: "/finance/invoices" },
       { label: "Debtors", to: "/finance/debtors" },
-      { label: "Reports", to: "/finance/reports" },
+      { label: "Reports to the CEO", to: "/reports/departments/finance" },
     ],
     howTo: [
       {
@@ -383,16 +394,25 @@ export const ROLE_GUIDES: RoleGuide[] = [
         to: "/finance/upload",
       },
       {
-        q: "Send a report to the CEO",
+        q: "Send the monthly work report to the CEO",
         steps: [
-          "Open **Reports** and click **New finance report**.",
+          "Open **Reports to the CEO** from Home and start or continue the displayed month's report.",
+          "Use **Refresh from work** to include later updates. Review the figures and write what changed, any blockers and what happens next.",
+          "Click **Save and finish later** to keep a draft, or **Send to the CEO** for review.",
+        ],
+        to: "/reports/departments/finance",
+      },
+      {
+        q: "Send a detailed financial snapshot to the CEO",
+        steps: [
+          "Open **Financial snapshots** in the Reports menu and click **New finance report**.",
           "Pick the period, write the **Finance commentary**, and click **Save as draft** or **Submit to CEO**.",
           "The CEO approves it or requests changes. Use **Export PDF** to share a copy.",
         ],
         to: "/finance/reports",
       },
       {
-        q: "Fix a report the CEO sent back",
+        q: "Fix a financial snapshot the CEO sent back",
         steps: [
           "Open the report marked **Changes requested** and read the CEO's note at the top.",
           "Click **Update & resubmit**, edit the title or commentary, and tick **Refresh the figures with the latest invoices and payments** if the numbers changed.",
@@ -729,6 +749,47 @@ export const ROLE_GUIDES: RoleGuide[] = [
 
 export const EVERYONE_HOW_TO: HowTo[] = [
   {
+    q: "Start a company project with colleagues from other departments",
+    steps: [
+      "Open **Company projects** in the **Projects** menu and click **New project**.",
+      "Give the project a name, select your teammates and click **Create project**. You can add dates under **Schedule**.",
+      "Everyone on the team can edit the project, manage the team, add tasks and log work updates. The creator has the same access as everyone else.",
+      "Use **Files** for project documents. Files on the project, its tasks and its team report are shared with the whole team and the CEO.",
+    ],
+    to: "/projects/company",
+  },
+  {
+    q: "Send one company project report as a team",
+    steps: [
+      "Open the project, select **Reports** and click **Open team report**. Choose a period and click **Open report**.",
+      "AIMS opens the shared draft for that period. Any teammate can add the team's progress and use **Save and finish later**.",
+      "If a teammate saves first, your writing stays in the editor. Copy what you need before choosing **Load latest report**.",
+      "Anyone on the team can click **Send to the CEO**. The whole team receives feedback and can update a report returned for changes.",
+      "Company project work stays in the team report and is excluded from personal reports.",
+    ],
+    to: "/reports/projects",
+  },
+  {
+    q: "Record progress without filling in a full report",
+    steps: [
+      "On HR, IT, Marketing, Finance or Operations **Home**, start with **Your work**. The specialist figures and tools can be expanded when needed.",
+      "Click **New project**, name the work and choose a service if available. Pick the client for client work, or leave it empty for department work. Contracts, dates and access restrictions are under **More details**.",
+      "Click **Log work update**, choose the project, write what you handled and select the **Date of work**. Add a blocker or next step when useful, then click **Save update**.",
+      "Open the project to add tasks or read **Updates & discussion**. For company-wide work, follow **Company projects** and log the update inside that project.",
+    ],
+    to: "/projects",
+  },
+  {
+    q: "Prepare a department report from recorded work",
+    steps: [
+      "Open **Reports to the CEO** from your department Home or Reports menu. Start the displayed month or continue your draft.",
+      "Click **Refresh from work** to include later updates. AIMS pulls department-visible project updates from the report period; restricted and company work stays in its project reports.",
+      "Review **figures from AIMS**, then fill the required sections. Use **Save and finish later** or **Send to the CEO** at the top of the page.",
+      "If the CEO asks for changes, open the returned report, update it and resend. Use **My report** for your own personal report.",
+    ],
+    to: "/reports/departments",
+  },
+  {
     q: "See what's waiting on you",
     steps: [
       "Open **Home** in the menu. **Your work** at the top lists what's waiting on you: tasks, client requests and tickets given to you, reports to send and projects needing attention.",
@@ -761,7 +822,7 @@ export const EVERYONE_HOW_TO: HowTo[] = [
     q: "Edit or delete a project",
     steps: [
       "Click the pencil or bin icon on the project in any project list, or **Edit project** / **Delete project** on the project itself.",
-      "Only people in the project's department can change it.",
+      "Department projects follow department permissions. Everyone on a company project team can edit or delete that project.",
     ],
     to: "/projects",
   },
@@ -856,7 +917,7 @@ export const GLOSSARY: { term: string; meaning: string }[] = [
   {
     term: "One-off / Recurring",
     meaning:
-      "One-off work has an end date. Recurring work carries on for the client, like a retainer.",
+      "One-off work delivers a specific outcome. Recurring work carries on for the client, like a retainer.",
   },
   {
     term: "Client request",
@@ -898,7 +959,7 @@ export const GLOSSARY: { term: string; meaning: string }[] = [
   {
     term: "Start here",
     meaning:
-      "A welcome box on your home page in your first two weeks, with three things to do first. Click Hide this to remove it.",
+      "Three starting points on your home page. HR, IT, Marketing, Finance and Operations keep this visible until you hide it. Other areas show it for the first two weeks. Click Hide this to remove it.",
   },
   {
     term: "Your work",

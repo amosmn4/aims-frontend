@@ -59,11 +59,15 @@ export function EditTenderDialog({ tender, onClose }: { tender: TenderRow; onClo
   const save = useSaveTender();
 
   const submit = () => {
+    if (save.isPending) return;
     const next: typeof errors = {};
     if (!form.title.trim()) next.title = "Enter the tender title.";
     if (!form.departmentId) next.departmentId = "Choose a department.";
-    if (form.estimatedValue && Number(form.estimatedValue) < 0)
-      next.estimatedValue = "Value can't be negative.";
+    if (
+      form.estimatedValue &&
+      (!Number.isFinite(Number(form.estimatedValue)) || Number(form.estimatedValue) < 0)
+    )
+      next.estimatedValue = "Enter a valid value of zero or more.";
     setErrors(next);
     if (Object.keys(next).length > 0) return;
     save.mutate(
@@ -91,9 +95,10 @@ export function EditTenderDialog({ tender, onClose }: { tender: TenderRow; onClo
   };
 
   return (
-    <Dialog open onOpenChange={(open) => !open && guardClose(onClose)}>
+    <Dialog open onOpenChange={(open) => !open && !save.isPending && guardClose(onClose)}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
         <form
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
             submit();
@@ -134,7 +139,13 @@ export function EditTenderDialog({ tender, onClose }: { tender: TenderRow; onClo
                 required
                 error={errors.departmentId}
               >
-                <Select value={form.departmentId} onValueChange={(v) => set("departmentId", v)}>
+                <Select
+                  value={form.departmentId}
+                  onValueChange={(v) => {
+                    set("departmentId", v);
+                    set("serviceLineId", "");
+                  }}
+                >
                   <SelectTrigger id="edit-tender-department" aria-invalid={!!errors.departmentId}>
                     <SelectValue placeholder="Choose a department…" />
                   </SelectTrigger>
@@ -193,11 +204,13 @@ export function EditTenderDialog({ tender, onClose }: { tender: TenderRow; onClo
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>None</SelectItem>
-                    {(serviceLinesQ.data ?? []).map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
+                    {(serviceLinesQ.data ?? [])
+                      .filter((s) => s.department_id === form.departmentId)
+                      .map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </FormField>
@@ -254,7 +267,12 @@ export function EditTenderDialog({ tender, onClose }: { tender: TenderRow; onClo
             </FormField>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => guardClose(onClose)}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={save.isPending}
+              onClick={() => guardClose(onClose)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={save.isPending}>

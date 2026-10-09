@@ -27,12 +27,6 @@ export const RESOURCE_TYPE_LABELS: Record<LibraryResourceType, string> = {
   it_system: "System or site",
 };
 
-export const ACCESS_TYPE_LABELS: Record<DocumentAccessType, string> = {
-  everyone: "Everyone",
-  department: "Departments",
-  user: "Specific people",
-};
-
 /** Where a file is attached, grouped the way people look for it. */
 export type DocumentPlace =
   "library" | "projects" | "client_requests" | "tenders" | "reports" | "contracts" | "systems";
@@ -161,6 +155,7 @@ export interface DocumentRow {
   latest_version: DocumentVersionRow | null;
   /** Empty means the same people who can see where it's attached. */
   access_grants: DocumentAccessGrantRow[];
+  team_shared?: boolean;
 }
 
 export interface DocumentAccessGrantRow {
@@ -198,6 +193,7 @@ type BackendDocument = {
   updatedAt: string;
   latestVersion: BackendVersion | null;
   accessGrants?: BackendAccessGrant[];
+  teamShared?: boolean;
 };
 
 type BackendAccessGrant = {
@@ -238,6 +234,7 @@ function mapDocument(d: BackendDocument): DocumentRow {
     updated_at: d.updatedAt,
     latest_version: d.latestVersion ? mapVersion(d.latestVersion) : null,
     access_grants: (d.accessGrants ?? []).map(mapAccessGrant),
+    team_shared: !!d.teamShared,
   };
 }
 
@@ -293,14 +290,6 @@ export function useDocuments(filters: DocumentFilters = {}) {
   });
 }
 
-export function useDocument(id: string | undefined) {
-  return useQuery({
-    queryKey: ["documents", id],
-    enabled: !!id,
-    queryFn: async () => mapDocument(await apiJson<BackendDocument>(`/documents/${id}`)),
-  });
-}
-
 export function useDocumentVersions(id: string | undefined) {
   return useQuery({
     queryKey: ["documents", id, "versions"],
@@ -345,45 +334,6 @@ export function useUploadDocument() {
       if (input.access) form.append("access", JSON.stringify(input.access));
       return mapDocument(
         await apiJson<BackendDocument>("/documents", { method: "POST", body: form }),
-      );
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
-  });
-}
-
-export function useUploadNewVersion() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ documentId, file }: { documentId: string; file: File }) => {
-      const form = new FormData();
-      form.append("file", file);
-      return mapDocument(
-        await apiJson<BackendDocument>(`/documents/${documentId}/versions`, {
-          method: "POST",
-          body: form,
-        }),
-      );
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),
-  });
-}
-
-export function useUpdateDocument() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: {
-      id: string;
-      title?: string;
-      description?: string;
-      category?: string;
-      tags?: string[];
-    }) => {
-      const { id, ...body } = input;
-      return mapDocument(
-        await apiJson<BackendDocument>(`/documents/${id}`, {
-          method: "PATCH",
-          body: JSON.stringify(body),
-        }),
       );
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["documents"] }),

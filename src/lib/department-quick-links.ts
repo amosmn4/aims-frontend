@@ -221,8 +221,8 @@ export const DEPARTMENT_QUICK_LINKS: Record<DepartmentCode, QuickLink[]> = {
       icon: Upload,
     },
     {
-      to: "/finance/reports",
-      label: "Reports",
+      to: "/reports/departments/finance",
+      label: "Reports to the CEO",
       description: "The monthly report to the CEO",
       icon: BarChart3,
     },

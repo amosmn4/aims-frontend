@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Loader2, Pencil, Trash2, X } from "lucide-react";
 import {
   useProject,
+  companyRole,
   useUpdateTask,
   useDeleteTask,
   useAddTaskDependency,
@@ -98,7 +99,7 @@ function TaskDetailBody({
   projectTasks?: Task[];
   onEditDirtyChange: (dirty: boolean) => void;
 }) {
-  const { profile } = useAuth();
+  const { profile, isAdminOrCeo, viewAs } = useAuth();
   const projectQ = useProject(task.project_id);
   const detailed = tracksDeliveryMetrics(projectQ.data?.department_code);
   const updateTask = useUpdateTask();
@@ -110,7 +111,12 @@ function TaskDetailBody({
   const [isEditing, setIsEditing] = useState(false);
 
   // Mirrors the backend rule: department access, or the task's own assignee.
-  const canManageTask = canManageDocuments || task.assignee_id === profile?.id;
+  const sharedTeam = projectQ.data?.scope === "company";
+  const canManageTask =
+    !viewAs &&
+    (sharedTeam
+      ? !!companyRole(projectQ.data!, profile?.id, isAdminOrCeo)
+      : canManageDocuments || task.assignee_id === profile?.id);
 
   const dependencyCandidates = (projectTasks ?? []).filter(
     (t) => t.id !== task.id && !task.depends_on.some((d) => d.id === t.id),
@@ -189,6 +195,7 @@ function TaskDetailBody({
         <EditTaskForm
           task={task}
           detailed={detailed}
+          allowedIds={sharedTeam ? projectQ.data?.members.map((m) => m.user_id) : undefined}
           onDirtyChange={onEditDirtyChange}
           onDone={stopEditing}
         />
@@ -323,7 +330,8 @@ function TaskDetailBody({
       <AttachmentsPanel
         resourceType="task"
         resourceId={task.id}
-        canManage={canManageDocuments || task.assignee_id === profile?.id}
+        sharedTeam={sharedTeam}
+        canManage={canManageTask}
       />
     </>
   );
@@ -334,11 +342,13 @@ type EditTaskErrors = Partial<Record<"title" | "hours" | "extensionReason", stri
 function EditTaskForm({
   task,
   detailed,
+  allowedIds,
   onDirtyChange,
   onDone,
 }: {
   task: Task;
   detailed: boolean;
+  allowedIds?: readonly string[];
   onDirtyChange: (dirty: boolean) => void;
   onDone: () => void;
 }) {
@@ -455,7 +465,12 @@ function EditTaskForm({
       </FormField>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <FormField id="edit-task-assignee" label="Assign to">
-          <StaffSelect id="edit-task-assignee" value={assigneeId} onChange={setAssigneeId} />
+          <StaffSelect
+            id="edit-task-assignee"
+            value={assigneeId}
+            onChange={setAssigneeId}
+            allowedIds={allowedIds}
+          />
         </FormField>
         <FormField id="edit-task-due" label="Due date">
           <Input

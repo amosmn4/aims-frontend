@@ -1,12 +1,4 @@
-import {
-  Home,
-  ListChecks,
-  Building2,
-  FolderKanban,
-  Inbox,
-  Briefcase,
-  BarChart3,
-} from "lucide-react";
+import { Home, ListChecks, Building2, FolderKanban, BarChart3 } from "lucide-react";
 import type { NavChild, NavItem } from "@/components/app-shell";
 import type { DepartmentCode } from "@/lib/auth";
 
@@ -61,11 +53,16 @@ export const CLIENT_REQUESTS_PATH: Record<DepartmentCode, string> = {
 /** The Reports menu: the department's report, your own, projects, the team's, the charts. */
 function reportsChildren(code: DepartmentCode, isDepartmentHead: boolean): NavChild[] {
   return [
-    { to: `/reports/departments/${code}`, label: "Department report" },
+    { to: `/reports/departments/${code}`, label: "Reports to the CEO" },
     { to: "/reports/mine", label: "My report" },
     { to: "/reports/projects", label: "Project reports" },
     ...(isDepartmentHead ? [{ to: "/reports/team", label: "Team reports" }] : []),
-    { to: `/${code}/reports`, label: "Analytics", divider: true },
+    {
+      to: `/${code}/reports`,
+      label: code === "finance" ? "Financial snapshots" : "Figures & analysis",
+      roles: code === "finance" ? ["finance"] : undefined,
+      divider: true,
+    },
   ];
 }
 
@@ -89,7 +86,7 @@ function projectsChildren(
   ];
 }
 
-/** Same seven items, same order, for every department. */
+/** Five consistent navigation groups for every department. */
 export function buildDepartmentNav(
   code: DepartmentCode,
   hasWaterAccess = false,
@@ -106,6 +103,8 @@ export function buildDepartmentNav(
     { to: `${base}/calendar`, label: "Calendar" },
     { to: `${base}/shared-projects`, label: "Shared with me" },
     { to: `${base}/documents`, label: "Documents" },
+    { to: requests, label: "Client requests", divider: true },
+    { to: `${base}/workspace`, label: "Clients & contracts" },
     ...(hasWaterAccess ? [{ to: "/water", label: "Water Project", divider: true }] : []),
   ];
 
@@ -114,10 +113,21 @@ export function buildDepartmentNav(
     { to: "/projects/mine", label: "My tasks", icon: ListChecks, match: ["/projects/mine"] },
     {
       to: workChildren[0].to,
-      label: `${DEPARTMENT_NAMES[code]} work`,
+      label: "Department work",
       icon: Building2,
       // The department prefix catches its other pages; longer matches below win.
-      match: [base, "/calendar", "/documents", ...(hasWaterAccess ? ["/water"] : [])],
+      match: [
+        base,
+        "/calendar",
+        "/documents",
+        requests,
+        "/requests",
+        "/pipeline/engagements",
+        "/engagements",
+        "/clients",
+        "/departments",
+        ...(hasWaterAccess ? ["/water"] : []),
+      ],
       children: workChildren,
     },
     {
@@ -131,18 +141,6 @@ export function buildDepartmentNav(
         ...(code === "tender" ? [] : ["/tender"]),
       ],
       children: projectsChildren(code, projects, companyProjects),
-    },
-    {
-      to: requests,
-      label: "Client requests",
-      icon: Inbox,
-      match: [requests, "/requests", "/pipeline/engagements", "/engagements"],
-    },
-    {
-      to: `${base}/workspace`,
-      label: "Clients & contracts",
-      icon: Briefcase,
-      match: [`${base}/workspace`, "/clients", "/departments"],
     },
     {
       to: `/reports/departments/${code}`,
@@ -167,5 +165,11 @@ export function buildSetupNav(): NavItem[] {
   return [
     { to: "/departments", label: "Home", icon: Home, match: ["/departments"] },
     { to: "/projects/mine", label: "My tasks", icon: ListChecks, match: ["/projects/mine"] },
+    {
+      to: "/projects/company",
+      label: "Company projects",
+      icon: FolderKanban,
+      match: ["/projects"],
+    },
   ];
 }

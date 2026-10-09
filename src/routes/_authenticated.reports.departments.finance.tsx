@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { FileText, Loader2 } from "lucide-react";
-import { RequireRole } from "@/components/require-role";
+import { RequireDepartmentAccess } from "@/components/require-role";
 import { LoadError } from "@/components/load-error";
 import { FinancialManagementDashboard } from "@/features/finance/financial-management-dashboard";
 import { useFinanceReports } from "@/features/finance/use-finance-reports";
@@ -10,6 +10,8 @@ import {
   STATUS_STYLES,
 } from "@/features/finance/finance-report-snapshot";
 import { ReportHeader } from "@/features/reports/report-header";
+import { DepartmentReportsPanel } from "@/features/reports/department-reports-panel";
+import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format-date";
 
 export const Route = createFileRoute("/_authenticated/reports/departments/finance")({
@@ -18,25 +20,39 @@ export const Route = createFileRoute("/_authenticated/reports/departments/financ
 });
 
 function FinanceReport() {
+  const { isAdminOrCeo, hasRole } = useAuth();
+  const canReadFinancialReports = isAdminOrCeo || hasRole("finance");
   return (
-    <RequireRole
-      roles={["finance"]}
-      message="The Finance report is for the Finance team and the CEO."
+    <RequireDepartmentAccess
+      code="finance"
+      message="Ask the CEO for Finance access to open these reports."
     >
       <div className="space-y-4">
         <ReportHeader
-          title="Finance report"
-          description="Who owes us and whom we owe, days to get paid, and profit and loss."
+          title="Finance reports to the CEO"
+          description="Prepare the monthly work report from your project updates and figures. Financial snapshots remain available for detailed financial reporting."
           actions={
-            <Link to="/finance/reports" className="text-xs text-primary hover:underline">
-              Finance reports to the CEO
-            </Link>
+            canReadFinancialReports ? (
+              <Link to="/finance/reports" className="text-xs text-primary hover:underline">
+                Financial snapshots
+              </Link>
+            ) : undefined
           }
         />
-        <SubmittedReports />
-        <FinancialManagementDashboard />
+        <DepartmentReportsPanel departmentCode="finance" />
+        {canReadFinancialReports && (
+          <details className="rounded-xl border bg-card p-4">
+            <summary className="cursor-pointer text-sm font-semibold">
+              Financial figures and snapshots
+            </summary>
+            <div className="mt-4 space-y-4">
+              <SubmittedReports />
+              <FinancialManagementDashboard />
+            </div>
+          </details>
+        )}
       </div>
-    </RequireRole>
+    </RequireDepartmentAccess>
   );
 }
 

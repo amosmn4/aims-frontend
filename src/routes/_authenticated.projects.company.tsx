@@ -1,9 +1,14 @@
+import { useState } from "react";
+import { Input } from "@/components/ui/input";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
-import { useProjects, PROJECT_STATUS_LABELS, type Project } from "@/features/projects/use-projects";
+import {
+  useProjects,
+  projectProgress,
+  PROJECT_STATUS_LABELS,
+} from "@/features/projects/use-projects";
 import { PROJECT_STATUS_TONE } from "@/features/hr/hr-project-table";
 import { NewCompanyProjectDialog } from "@/features/company-projects/new-company-project-dialog";
-import { Initials } from "@/features/projects/workspace/initials";
 import { PageHeader } from "@/components/app-shell";
 import { LoadError } from "@/components/load-error";
 import { usePermissions } from "@/lib/permissions";
@@ -16,17 +21,21 @@ export const Route = createFileRoute("/_authenticated/projects/company")({
   component: CompanyProjectsPage,
 });
 
-function progress(p: Project) {
-  const total = (p.task_count ?? 0) + (p.deliverable_count ?? 0);
-  const done = (p.tasks_done ?? 0) + (p.deliverables_done ?? 0);
-  return total === 0 ? null : Math.round((done / total) * 100);
-}
-
 function CompanyProjectsPage() {
   const { isAdminOrCeo } = useAuth();
   const { canCreateCompanyProject } = usePermissions();
   const projectsQ = useProjects({ scope: "company" });
-  const projects = projectsQ.data ?? [];
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("open");
+  const allProjects = projectsQ.data ?? [];
+  const projects = allProjects.filter(
+    (p) =>
+      (status === "all" ||
+        (status === "open"
+          ? !["completed", "cancelled"].includes(p.status)
+          : p.status === status)) &&
+      `${p.name} ${p.description ?? ""}`.toLowerCase().includes(search.trim().toLowerCase()),
+  );
 
   return (
     <div className="space-y-4">
@@ -34,11 +43,37 @@ function CompanyProjectsPage() {
         title="Company projects"
         description={
           isAdminOrCeo
-            ? "Projects that run across departments. Only each project's team and you can see them."
-            : "Projects you are on that run across departments."
+            ? "Shared work across departments, reported by each team."
+            : "Shared projects with equal access for everyone on the team."
         }
         actions={canCreateCompanyProject ? <NewCompanyProjectDialog size="sm" /> : undefined}
       />
+
+      {allProjects.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search projects"
+            aria-label="Search company projects"
+            className="w-full sm:max-w-xs"
+          />
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+            aria-label="Project status"
+            className="h-9 rounded-md border bg-card px-3 text-sm"
+          >
+            <option value="open">Open projects</option>
+            <option value="all">All projects</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <span className="text-xs text-muted-foreground">
+            {projects.length} {projects.length === 1 ? "project" : "projects"}
+          </span>
+        </div>
+      )}
 
       {projectsQ.isLoading ? (
         <div className="flex justify-center py-12">
@@ -53,16 +88,14 @@ function CompanyProjectsPage() {
       ) : projects.length === 0 ? (
         <div className="rounded-lg border bg-card px-4 py-12 text-center">
           <p className="text-sm font-medium">
-            {canCreateCompanyProject
-              ? "No company projects yet"
-              : "You're not on a company project yet"}
+            {allProjects.length ? "No matching projects" : "No company projects yet"}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {canCreateCompanyProject
-              ? "Set one up for work that spans departments, like opening a new country."
-              : "When someone adds you to one, it appears here and under Projects in your menu."}
+            {allProjects.length
+              ? "Try a different search or status."
+              : "Create a project and add your team."}
           </p>
-          {canCreateCompanyProject && (
+          {canCreateCompanyProject && allProjects.length === 0 && (
             <div className="mt-4 flex justify-center">
               <NewCompanyProjectDialog />
             </div>
@@ -71,7 +104,7 @@ function CompanyProjectsPage() {
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {projects.map((p) => {
-            const pct = progress(p);
+            const pct = projectProgress(p);
             return (
               <Link
                 key={p.id}
@@ -106,11 +139,10 @@ function CompanyProjectsPage() {
                   </p>
                 </div>
                 <div className="mt-auto flex items-center gap-2 text-xs text-muted-foreground">
-                  {p.lead_name && <Initials name={p.lead_name} />}
                   <span>
-                    Lead: {p.lead_name ?? "—"} · {p.members.length}{" "}
-                    {p.members.length === 1 ? "person" : "people"}
+                    {p.members.length} {p.members.length === 1 ? "team member" : "team members"}
                   </span>
+                  <span className="ml-auto text-primary">Open project</span>
                 </div>
               </Link>
             );

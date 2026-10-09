@@ -23,11 +23,13 @@ export function AttachmentsPanel({
   resourceType,
   resourceId,
   canManage = false,
-  title = "Documents",
+  title = "Files",
+  sharedTeam = false,
 }: {
   resourceType: DocumentResourceType;
   resourceId: string;
   canManage?: boolean;
+  sharedTeam?: boolean;
   /** Heading above the list. */
   title?: string;
 }) {
@@ -36,7 +38,10 @@ export function AttachmentsPanel({
   const uploads = useDocumentUploads();
   const [versionsDoc, setVersionsDoc] = useState<DocumentRow | null>(null);
   const [accessDoc, setAccessDoc] = useState<DocumentRow | null>(null);
-  const noun = RESOURCE_TYPE_LABELS[resourceType].toLowerCase();
+  const noun =
+    sharedTeam && resourceType === "department_report"
+      ? "team report"
+      : RESOURCE_TYPE_LABELS[resourceType].toLowerCase();
   const documents = documentsQ.data ?? [];
 
   // Clears the finished list on its own, so the panel doesn't collect old rows.
@@ -58,7 +63,13 @@ export function AttachmentsPanel({
           <span className="text-sm font-semibold">{title}</span>
           {documents.length > 0 && <Badge variant="secondary">{documents.length}</Badge>}
         </div>
-        {canManage && <DocumentUploadDialog resourceType={resourceType} resourceId={resourceId} />}
+        {canManage && (
+          <DocumentUploadDialog
+            resourceType={resourceType}
+            resourceId={resourceId}
+            sharedTeam={sharedTeam}
+          />
+        )}
       </div>
 
       {canManage && (
@@ -95,8 +106,8 @@ export function AttachmentsPanel({
               <p className="text-sm font-medium">No files on this {noun} yet</p>
               <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
                 {canManage
-                  ? `Keep anything people need for this ${noun} here — drag a file onto the box above, or use "Attach file". ${DOCUMENT_ACCEPT_HINT}.`
-                  : `Files added to this ${noun} appear here. Ask whoever runs it to add one.`}
+                  ? `Attach files the team needs for this ${noun}. ${DOCUMENT_ACCEPT_HINT}.`
+                  : `Files added to this ${noun} appear here.`}
               </p>
             </div>
           }
@@ -109,7 +120,7 @@ export function AttachmentsPanel({
               )
           }
           onShowVersions={setVersionsDoc}
-          onShowAccess={setAccessDoc}
+          onShowAccess={sharedTeam ? undefined : setAccessDoc}
         />
       )}
 

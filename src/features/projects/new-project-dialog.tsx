@@ -49,6 +49,13 @@ import {
 
 const today = () => new Date().toISOString().slice(0, 10);
 const NO_CONTRACT = "__no_contract__";
+const PROJECT_EXAMPLES: Record<string, string> = {
+  hr: "Safaricom graduate recruitment 2026",
+  it: "Client website launch",
+  marketing: "October client outreach campaign",
+  finance: "Monthly invoice reconciliation",
+  operations: "Client onboarding and handover",
+};
 // Mirrors the backend @Roles() on POST /contracts.
 const CONTRACT_WRITE_ROLES: AppRole[] = [
   "finance",
@@ -76,13 +83,22 @@ export function NewProjectDialog({
 } = {}) {
   const [open, setOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
   const { guardClose } = useUnsavedChanges(dirty);
   const close = () => {
     setDirty(false);
+    setSaving(false);
     setOpen(false);
   };
   return (
-    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : guardClose(close))}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (saving) return;
+        if (o) setOpen(true);
+        else guardClose(close);
+      }}
+    >
       <DialogTrigger asChild>
         {trigger ?? (
           <Button>
@@ -96,6 +112,7 @@ export function NewProjectDialog({
             fixedDepartmentId={fixedDepartmentId}
             defaultServiceLineCode={defaultServiceLineCode}
             onDirtyChange={setDirty}
+            onSavingChange={setSaving}
             onCancel={() => guardClose(close)}
             onDone={close}
           />
@@ -109,12 +126,14 @@ function NewProjectForm({
   fixedDepartmentId,
   defaultServiceLineCode,
   onDirtyChange,
+  onSavingChange,
   onCancel,
   onDone,
 }: {
   fixedDepartmentId?: string;
   defaultServiceLineCode?: string;
   onDirtyChange: (dirty: boolean) => void;
+  onSavingChange: (saving: boolean) => void;
   onCancel: () => void;
   onDone: () => void;
 }) {
@@ -124,6 +143,10 @@ function NewProjectForm({
   const eligibleQ = useEligibleDepartments();
   const serviceLinesQ = useServiceLines();
   const createProject = useCreateProject();
+  useEffect(
+    () => onSavingChange(createProject.isPending),
+    [createProject.isPending, onSavingChange],
+  );
 
   const [name, setName] = useState("");
   const [departmentId, setDepartmentId] = useState(
@@ -201,8 +224,14 @@ function NewProjectForm({
     if (!typeTouched) setEngagementType(line.is_recurring ? "ongoing" : "one_off");
   }, [serviceLineId, lineTouched, defaultLine, mostUsedLine, typeTouched, departmentId]);
 
-  const departmentName =
-    (departmentsQ.data ?? []).find((d) => d.id === departmentId)?.name ?? "the department";
+  const department = (departmentsQ.data ?? []).find((d) => d.id === departmentId);
+  const departmentName = department?.name ?? "the department";
+  const isHr = department?.code === "hr";
+  const simpleSetup = ["hr", "it", "marketing", "finance", "operations"].includes(
+    department?.code ?? "",
+  );
+  const setupUnavailable =
+    departmentsQ.isLoading || serviceLinesQ.isLoading || serviceLinesQ.isError;
 
   const clearError = (key: keyof Errors) =>
     setErrors((e) => ({ ...e, [key]: undefined, form: undefined }));
@@ -217,6 +246,7 @@ function NewProjectForm({
   };
 
   const submit = () => {
+    if (createProject.isPending || setupUnavailable) return;
     const found: Errors = {};
     if (!name.trim()) found.name = "Give the project a name";
     if (!departmentId) found.departmentId = "Choose a department";
@@ -225,7 +255,10 @@ function NewProjectForm({
     if (engagementType === "one_off" && endDate && endDate < startDate)
       found.endDate = "The end date can't be before the start date";
     setErrors(found);
-    if (Object.keys(found).length > 0) return;
+    if (Object.keys(found).length > 0) {
+      if (simpleSetup && found.endDate) setShowMore(true);
+      return;
+    }
 
     createProject.mutate(
       {
@@ -258,6 +291,174 @@ function NewProjectForm({
 
   const clientContracts = contractsQ.data ?? [];
 
+  const typeField = (
+    <FormField id="np-type" label="Type of work" required>
+      <div
+        id="np-type"
+        className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+        role="radiogroup"
+        aria-label="Type of work"
+      >
+        {(
+          [
+            [
+              "one_off",
+              "One-off",
+              simpleSetup ? "A specific piece of work" : "Has an end date",
+              Target,
+            ],
+            [
+              "ongoing",
+              "Recurring",
+              simpleSetup ? "Continues over time" : "Continues for the client",
+              Repeat,
+            ],
+          ] as const
+        ).map(([value, label, hint, Icon]) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={engagementType === value}
+            onClick={() => {
+              setEngagementType(value);
+              setTypeTouched(true);
+            }}
+            className={cn(
+              "flex items-start gap-2 rounded-lg border p-3 text-left transition-colors",
+              engagementType === value
+                ? "border-primary bg-primary/5 ring-1 ring-primary"
+                : "hover:border-primary/60",
+            )}
+          >
+            <Icon className="mt-0.5 h-4 w-4 text-primary" />
+            <span>
+              <span className="block text-sm font-medium">{label}</span>
+              <span className="block text-xs text-muted-foreground">{hint}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </FormField>
+  );
+
+  const clientField = (
+    <FormField
+      id="np-client"
+      label="Client"
+      hint={simpleSetup && !isHr ? "Optional for work within the company." : undefined}
+    >
+      <ClientPicker
+        id="np-client"
+        value={clientId}
+        onChange={(v) => {
+          setClientId(v);
+          setContractId("");
+        }}
+        allowNone
+        departmentId={departmentId || undefined}
+        placeholder="Select or create a client"
+      />
+    </FormField>
+  );
+
+  const contractField = (
+    <div className="space-y-2">
+      {clientId && (
+        <FormField id="np-contract" label="Contract">
+          {contractsQ.isError ? (
+            <LoadError
+              what="contracts"
+              error={contractsQ.error}
+              onRetry={() => contractsQ.refetch()}
+              className="p-3"
+            />
+          ) : (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Select
+                value={contractId || NO_CONTRACT}
+                onValueChange={(v) => setContractId(v === NO_CONTRACT ? "" : v)}
+                disabled={contractsQ.isLoading}
+              >
+                <SelectTrigger id="np-contract" className="min-w-0 flex-1">
+                  <SelectValue
+                    placeholder={contractsQ.isLoading ? "Loading contracts…" : undefined}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_CONTRACT}>
+                    {clientContracts.length === 0 && !contractsQ.isLoading
+                      ? "This client has no contracts yet"
+                      : "No contract"}
+                  </SelectItem>
+                  {clientContracts.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.contract_number ? `${c.contract_number} — ${c.title}` : c.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {canCreateContract && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    const line = lines.find((l) => l.id === serviceLineId);
+                    setContractDraft({
+                      ...emptyContractDraft(),
+                      title: name.trim(),
+                      client_id: clientId,
+                      department_id: departmentId,
+                      service_line_id: line?.id ?? "",
+                      billing_frequency: engagementType === "ongoing" ? "monthly" : "one_off",
+                      start_date: startDate || today(),
+                      end_date: engagementType === "one_off" ? endDate : "",
+                      status: "active",
+                    });
+                  }}
+                >
+                  <Plus className="mr-1 h-4 w-4" /> New contract
+                </Button>
+              )}
+            </div>
+          )}
+        </FormField>
+      )}
+      <ActionHint topic="project contract">A contract is optional. Add it now or later.</ActionHint>
+    </div>
+  );
+
+  const dateFields = (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <FormField id="np-start" label="Start date">
+        <Input
+          id="np-start"
+          type="date"
+          value={startDate}
+          onChange={(e) => {
+            setStartDate(e.target.value);
+            clearError("endDate");
+          }}
+        />
+      </FormField>
+      {engagementType === "one_off" && (
+        <FormField id="np-end" label="End date" error={errors.endDate}>
+          <Input
+            id="np-end"
+            type="date"
+            value={endDate}
+            min={startDate || undefined}
+            aria-invalid={!!errors.endDate}
+            onChange={(e) => {
+              setEndDate(e.target.value);
+              clearError("endDate");
+            }}
+          />
+        </FormField>
+      )}
+    </div>
+  );
+
   return (
     <>
       <form
@@ -270,7 +471,9 @@ function NewProjectForm({
         <DialogHeader>
           <DialogTitle>New project</DialogTitle>
           <DialogDescription>
-            Just the basics — you can add tasks and documents inside the project.
+            {isHr
+              ? "Name the client work and choose the HR service. Add contracts, dates and other details when you need them."
+              : "Name the work and choose a service if available. Add dates, a contract and other details when you need them."}
           </DialogDescription>
           <RequiredNote />
         </DialogHeader>
@@ -284,7 +487,7 @@ function NewProjectForm({
                 setName(e.target.value);
                 clearError("name");
               }}
-              placeholder="e.g. Safaricom graduate recruitment 2026"
+              placeholder={`e.g. ${PROJECT_EXAMPLES[department?.code ?? ""] ?? "Client service delivery"}`}
               aria-invalid={!!errors.name}
               autoFocus
             />
@@ -339,6 +542,8 @@ function NewProjectForm({
             </FormField>
           )}
 
+          {simpleSetup && clientField}
+
           {serviceLinesQ.isError ? (
             <LoadError
               what="service lines"
@@ -350,7 +555,7 @@ function NewProjectForm({
             lines.length > 0 && (
               <FormField
                 id="np-line"
-                label="Service line"
+                label={isHr ? "HR service" : "Service line"}
                 required
                 error={errors.serviceLineId}
                 hint={suggested ? `The one used most in ${departmentName}` : undefined}
@@ -359,7 +564,7 @@ function NewProjectForm({
                   id="np-line"
                   className="flex flex-wrap gap-2"
                   role="radiogroup"
-                  aria-label="Service line"
+                  aria-label={isHr ? "HR service" : "Service line"}
                 >
                   {lines.map((l) => (
                     <button
@@ -384,153 +589,19 @@ function NewProjectForm({
             )
           )}
 
-          <FormField id="np-type" label="Type of work" required>
-            <div
-              id="np-type"
-              className="grid grid-cols-1 gap-2 sm:grid-cols-2"
-              role="radiogroup"
-              aria-label="Type of work"
-            >
-              {(
-                [
-                  ["one_off", "One-off", "Has an end date", Target],
-                  ["ongoing", "Recurring", "Continues for the client", Repeat],
-                ] as const
-              ).map(([value, label, hint, Icon]) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={engagementType === value}
-                  onClick={() => {
-                    setEngagementType(value);
-                    setTypeTouched(true);
-                  }}
-                  className={cn(
-                    "flex items-start gap-2 rounded-lg border p-3 text-left transition-colors",
-                    engagementType === value
-                      ? "border-primary bg-primary/5 ring-1 ring-primary"
-                      : "hover:border-primary/60",
-                  )}
-                >
-                  <Icon className="mt-0.5 h-4 w-4 text-primary" />
-                  <span>
-                    <span className="block text-sm font-medium">{label}</span>
-                    <span className="block text-xs text-muted-foreground">{hint}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </FormField>
+          {simpleSetup && serviceLineId && (
+            <p className="text-sm text-muted-foreground">
+              {engagementType === "ongoing"
+                ? "Recurring work that continues over time."
+                : "One-off work with a specific outcome."}{" "}
+              Work type, dates and a contract can be changed under More details.
+            </p>
+          )}
 
-          <div className="space-y-2">
-            <FormField id="np-client" label="Client">
-              <ClientPicker
-                id="np-client"
-                value={clientId}
-                onChange={(v) => {
-                  setClientId(v);
-                  setContractId("");
-                }}
-                allowNone
-                departmentId={departmentId || undefined}
-                placeholder="Select or create a client"
-              />
-            </FormField>
-
-            {clientId && (
-              <FormField id="np-contract" label="Contract">
-                {contractsQ.isError ? (
-                  <LoadError
-                    what="contracts"
-                    error={contractsQ.error}
-                    onRetry={() => contractsQ.refetch()}
-                    className="p-3"
-                  />
-                ) : (
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Select
-                      value={contractId || NO_CONTRACT}
-                      onValueChange={(v) => setContractId(v === NO_CONTRACT ? "" : v)}
-                      disabled={contractsQ.isLoading}
-                    >
-                      <SelectTrigger id="np-contract" className="min-w-0 flex-1">
-                        <SelectValue
-                          placeholder={contractsQ.isLoading ? "Loading contracts…" : undefined}
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NO_CONTRACT}>
-                          {clientContracts.length === 0 && !contractsQ.isLoading
-                            ? "This client has no contracts yet"
-                            : "No contract"}
-                        </SelectItem>
-                        {clientContracts.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.contract_number ? `${c.contract_number} — ${c.title}` : c.title}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {canCreateContract && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          const line = lines.find((l) => l.id === serviceLineId);
-                          setContractDraft({
-                            ...emptyContractDraft(),
-                            title: name.trim(),
-                            client_id: clientId,
-                            department_id: departmentId,
-                            service_line_id: line?.id ?? "",
-                            billing_frequency: engagementType === "ongoing" ? "monthly" : "one_off",
-                            start_date: startDate || today(),
-                            end_date: engagementType === "one_off" ? endDate : "",
-                            status: "active",
-                          });
-                        }}
-                      >
-                        <Plus className="mr-1 h-4 w-4" /> New contract
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </FormField>
-            )}
-            <ActionHint topic="project contract">
-              A contract is optional — add it now or later.
-            </ActionHint>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <FormField id="np-start" label="Start date">
-              <Input
-                id="np-start"
-                type="date"
-                value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  clearError("endDate");
-                }}
-              />
-            </FormField>
-            {engagementType === "one_off" && (
-              <FormField id="np-end" label="End date" error={errors.endDate}>
-                <Input
-                  id="np-end"
-                  type="date"
-                  value={endDate}
-                  min={startDate || undefined}
-                  aria-invalid={!!errors.endDate}
-                  onChange={(e) => {
-                    setEndDate(e.target.value);
-                    clearError("endDate");
-                  }}
-                />
-              </FormField>
-            )}
-          </div>
+          {!simpleSetup && typeField}
+          {!simpleSetup && clientField}
+          {!simpleSetup && contractField}
+          {!simpleSetup && dateFields}
 
           <button
             type="button"
@@ -541,10 +612,15 @@ function NewProjectForm({
             <ChevronDown
               className={cn("h-3.5 w-3.5 transition-transform", showMore && "rotate-180")}
             />
-            More options (description, who can see it)
+            {simpleSetup
+              ? "More details (work type, dates, contract and access)"
+              : "More options (description, who can see it)"}
           </button>
           {showMore && (
             <div className="space-y-4 rounded-lg border bg-muted/30 p-3">
+              {simpleSetup && typeField}
+              {simpleSetup && contractField}
+              {simpleSetup && dateFields}
               <FormField id="np-desc" label="Description">
                 <Textarea
                   id="np-desc"
@@ -571,10 +647,15 @@ function NewProjectForm({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={createProject.isPending}
+          >
             Cancel
           </Button>
-          <Button type="submit" disabled={createProject.isPending}>
+          <Button type="submit" disabled={createProject.isPending || setupUnavailable}>
             {createProject.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Create project
           </Button>

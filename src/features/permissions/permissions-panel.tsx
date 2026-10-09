@@ -72,7 +72,6 @@ export function PermissionsPanel({ departmentId }: { departmentId: string | unde
     current: { effective: boolean; source: string },
   ) => {
     if (!departmentId) return;
-    // role default -> grant -> deny -> role default (clear)
     const next: "grant" | "deny" | "clear" =
       current.source === "role" ? (current.effective ? "deny" : "grant") : "clear";
     setOverride.mutate(
@@ -119,6 +118,11 @@ export function PermissionsPanel({ departmentId }: { departmentId: string | unde
         Each person starts with what their role allows. Click View or Edit to change it just for
         them; click again to go back to their role.
       </p>
+      <p className="text-xs text-muted-foreground">
+        View opens department work. Edit allows changes; Tender edit access covers the company bid
+        pipeline. Share a record for access to one item. Company projects require team membership.
+        Billing and publishing are controlled through roles.
+      </p>
       {staff.length === 0 || !department ? (
         <p className="py-6 text-center text-xs text-muted-foreground">
           Nobody belongs to this department yet. Set each person's department on the Staff page.
@@ -149,7 +153,7 @@ export function PermissionsPanel({ departmentId }: { departmentId: string | unde
                   <CapabilityToggle
                     effective={s.capabilities.read.effective}
                     source={s.capabilities.read.source}
-                    disabled={setOverride.isPending}
+                    disabled={setOverride.isPending || s.roles.includes("ceo")}
                     onCycle={() => cycle(s.user_id, "read", s.capabilities.read)}
                     icon={Eye}
                     label="View"
@@ -158,13 +162,18 @@ export function PermissionsPanel({ departmentId }: { departmentId: string | unde
                   <CapabilityToggle
                     effective={s.capabilities.write.effective}
                     source={s.capabilities.write.source}
-                    disabled={setOverride.isPending}
+                    disabled={setOverride.isPending || s.roles.includes("ceo")}
                     onCycle={() => cycle(s.user_id, "write", s.capabilities.write)}
                     icon={Pencil}
                     label="Edit"
                     personName={name}
                   />
                 </div>
+                {s.roles.includes("ceo") && (
+                  <p className="basis-full text-xs text-muted-foreground">
+                    The CEO has company access through their role.
+                  </p>
+                )}
               </li>
             );
           })}
