@@ -212,7 +212,7 @@ export function ReportEditor({
       setSections(latest.sections);
       markClean();
       setConflict(false);
-      qc.setQueryData(["reports", report.id], latest);
+      qc.setQueryData(["reports", "detail", report.id], latest);
     } catch (error) {
       toast.error(errorText(error, "Could not load the latest report"));
     }
@@ -614,51 +614,79 @@ export function ReportEditor({
             </details>
           )}
 
-          {bodySections.map((section) => (
-            <ReportSectionEditor
-              key={section.id}
-              section={section}
-              readOnly={readOnly}
-              aiEnabled={aiEnabled}
-              drafting={busyJob === section.id}
-              onChange={changeSection}
-              onDraft={() => void draftSection(section.id)}
-            />
-          ))}
+          {bodySections
+            .filter((section) => section.required)
+            .map((section) => (
+              <ReportSectionEditor
+                key={section.id}
+                section={section}
+                readOnly={readOnly}
+                aiEnabled={aiEnabled}
+                drafting={busyJob === section.id}
+                onChange={changeSection}
+                onDraft={() => void draftSection(section.id)}
+              />
+            ))}
+          <details
+            className="space-y-3"
+            open={
+              readOnly &&
+              bodySections.some((section) => !section.required && !isSectionEmpty(section))
+            }
+          >
+            <summary className="cursor-pointer rounded-lg border bg-card px-4 py-3 text-sm font-medium">
+              Work, blockers and next steps
+            </summary>
+            {bodySections
+              .filter((section) => !section.required)
+              .map((section) => (
+                <ReportSectionEditor
+                  key={section.id}
+                  section={section}
+                  readOnly={readOnly}
+                  aiEnabled={aiEnabled}
+                  drafting={busyJob === section.id}
+                  onChange={changeSection}
+                  onDraft={() => void draftSection(section.id)}
+                />
+              ))}
+          </details>
         </div>
 
         <aside className="h-fit space-y-4 rounded-lg border bg-muted/30 p-4">
           <div>
             <SectionHeading>Before you send</SectionHeading>
             <ul className="space-y-1.5 text-sm">
-              {sections.map((s) => {
-                const done = !isSectionEmpty(s);
-                return (
-                  <li key={s.id} className="flex items-start gap-2">
-                    {done ? (
-                      <Check
-                        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success"
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <Circle
-                        className={cn(
-                          "mt-0.5 h-3.5 w-3.5 shrink-0",
-                          s.required ? "text-warning" : "text-muted-foreground",
-                        )}
-                        aria-hidden="true"
-                      />
-                    )}
-                    <span className={done ? "text-muted-foreground" : ""}>
-                      {s.title}
-                      {!done && s.required && <span className="text-warning"> (required)</span>}
-                      {!done && !s.required && (
-                        <span className="text-muted-foreground"> (optional)</span>
+              {sections
+                .filter((section) => section.required)
+                .map((s) => {
+                  const done = !isSectionEmpty(s);
+                  return (
+                    <li key={s.id} className="flex items-start gap-2">
+                      {done ? (
+                        <Check
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <Circle
+                          className={cn(
+                            "mt-0.5 h-3.5 w-3.5 shrink-0",
+                            s.required ? "text-warning" : "text-muted-foreground",
+                          )}
+                          aria-hidden="true"
+                        />
                       )}
-                    </span>
-                  </li>
-                );
-              })}
+                      <span className={done ? "text-muted-foreground" : ""}>
+                        {s.title}
+                        {!done && s.required && <span className="text-warning"> (required)</span>}
+                        {!done && !s.required && (
+                          <span className="text-muted-foreground"> (optional)</span>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
             </ul>
           </div>
 

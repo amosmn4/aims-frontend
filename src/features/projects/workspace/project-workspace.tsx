@@ -1,3 +1,4 @@
+import { DepartmentReportsPanel } from "@/features/reports/department-reports-panel";
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -68,15 +69,6 @@ export const PROJECT_TABS = [
 ] as const;
 export type ProjectTab = (typeof PROJECT_TABS)[number];
 
-const TAB_LABELS: Record<ProjectTab, string> = {
-  overview: "Overview",
-  tasks: "Tasks",
-  deliverables: "Deliverables",
-  discussions: "Updates & discussion",
-  reports: "Reports",
-  documents: "Files",
-};
-
 /** Shared project workspace for recording work and reporting progress. */
 export function ProjectWorkspace({
   project,
@@ -95,7 +87,7 @@ export function ProjectWorkspace({
   /** Department projects: share, edit and delete, which live with the route. */
   departmentActions?: ReactNode;
 }) {
-  const { profile, isAdminOrCeo, viewAs } = useAuth();
+  const { profile, isAdminOrCeo, viewAs, canReadDepartment } = useAuth();
   const { options, nameOf } = useStaffOptions();
   const tasksQ = useTasks({ projectId: project.id });
   const deliverablesQ = useDeliverables(project.id);
@@ -221,77 +213,45 @@ export function ProjectWorkspace({
         </div>
       </div>
 
-      <div className="ws-tabbar" role="tablist" aria-label="Project sections">
-        {PROJECT_TABS.map((t) => {
-          const n = counts[t];
-          return (
-            <button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={view === t}
-              onClick={() => onViewChange(t)}
-              className={`ws-tabbtn ${view === t ? "active" : ""}`}
-            >
-              {TAB_LABELS[t]}
-              {!!n && (
-                <span className="ml-1.5 rounded-full bg-secondary px-1.5 text-[11px] tabular-nums text-muted-foreground">
-                  {n}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="ws-tabbar min-w-0 flex-1" role="tablist" aria-label="Project sections">
+          {(
+            [
+              ["overview", "Work"],
+              ["discussions", "Updates"],
+              ["reports", "Reports"],
+            ] as const
+          ).map(([tab, label]) => {
+            const selected = view === tab || (tab === "overview" && view === "tasks");
+            const count = tab === "overview" ? counts.tasks : counts[tab];
+            return (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => onViewChange(tab)}
+                className={`ws-tabbtn ${selected ? "active" : ""}`}
+              >
+                {label}
+                {!!count && <span className="ml-1.5 text-xs text-muted-foreground">{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+        <select
+          aria-label="More project tools"
+          className="h-9 rounded-md border bg-card px-2 text-sm"
+          value={view === "documents" || view === "deliverables" ? view : ""}
+          onChange={(event) => event.target.value && onViewChange(event.target.value as ProjectTab)}
+        >
+          <option value="">More</option>
+          <option value="documents">Files</option>
+          <option value="deliverables">Deliverables</option>
+        </select>
       </div>
 
-      {view === "overview" && (
-        <div className="space-y-3">
-          <ProjectOverview
-            pct={pct}
-            tasksDone={tasks.filter((t) => t.status === "completed").length}
-            taskCount={tasks.length}
-            delivered={deliverables.filter((d) => d.status === "delivered").length}
-            deliverableCount={deliverables.length}
-            late={[
-              ...lateTasks.map((t) => ({
-                id: t.id,
-                title: t.title,
-                kind: "Task" as const,
-                who: nameOf(t.assignee_id),
-                due: t.due_date,
-              })),
-              ...lateDeliverables.map((d) => ({
-                id: d.id,
-                title: d.title,
-                kind: "Deliverable" as const,
-                who: null,
-                due: d.due_date,
-              })),
-            ]}
-            decisions={posts.filter((p) => p.is_decision)}
-            latestReport={reports[0] ?? null}
-            onOpen={onViewChange}
-          />
-          <MilestonesPanel projectId={project.id} milestones={milestones} canManage={canAdd} />
-          {!isCompany && <ClientContractPanel project={project} canManage={canAdd} />}
-          {project.service_line_code === RECRUITMENT_SERVICE_LINE && (
-            <>
-              <div className="ws-panel !mt-0">
-                <h3>Recruitment numbers</h3>
-                <RecruitmentFunnelPanel projectId={project.id} canManage={canAdd} />
-              </div>
-              <div className="ws-panel !mt-0">
-                <RecruitmentPlacementsPanel projectId={project.id} canManage={canAdd} />
-              </div>
-            </>
-          )}
-          {project.department_code === "it" && project.methodology === "system_development" && (
-            <SdlcPanel project={project} canManage={canAdd} />
-          )}
-        </div>
-      )}
-
-      {view === "tasks" && (
+      {(view === "overview" || view === "tasks") && (
         <div className="space-y-3">
           {lockNote}
           {canAdd && (
@@ -310,12 +270,66 @@ export function ProjectWorkspace({
             <TasksTab
               tasks={tasks}
               profileMap={profileMap}
-              canMoveTask={(t) => canAdd || t.assignee_id === profile?.id}
+              canMoveTask={(t) =>
+                !viewAs && (canAdd || (!isCompany && t.assignee_id === profile?.id))
+              }
               onTaskClick={(t) => setSelectedTaskId(t.id)}
               onStatusChange={moveTask}
             />
           )}
         </div>
+      )}
+
+      {view === "overview" && (
+        <details className="rounded-lg border bg-card p-4">
+          <summary className="cursor-pointer text-sm font-medium">
+            Project details and milestones
+          </summary>
+          <div className="mt-4 space-y-3">
+            <ProjectOverview
+              pct={pct}
+              tasksDone={tasks.filter((t) => t.status === "completed").length}
+              taskCount={tasks.length}
+              delivered={deliverables.filter((d) => d.status === "delivered").length}
+              deliverableCount={deliverables.length}
+              late={[
+                ...lateTasks.map((t) => ({
+                  id: t.id,
+                  title: t.title,
+                  kind: "Task" as const,
+                  who: nameOf(t.assignee_id),
+                  due: t.due_date,
+                })),
+                ...lateDeliverables.map((d) => ({
+                  id: d.id,
+                  title: d.title,
+                  kind: "Deliverable" as const,
+                  who: null,
+                  due: d.due_date,
+                })),
+              ]}
+              decisions={posts.filter((p) => p.is_decision)}
+              latestReport={reports[0] ?? null}
+              onOpen={onViewChange}
+            />
+            <MilestonesPanel projectId={project.id} milestones={milestones} canManage={canAdd} />
+            {!isCompany && <ClientContractPanel project={project} canManage={canAdd} />}
+            {project.service_line_code === RECRUITMENT_SERVICE_LINE && (
+              <>
+                <div className="ws-panel !mt-0">
+                  <h3>Recruitment numbers</h3>
+                  <RecruitmentFunnelPanel projectId={project.id} canManage={canAdd} />
+                </div>
+                <div className="ws-panel !mt-0">
+                  <RecruitmentPlacementsPanel projectId={project.id} canManage={canAdd} />
+                </div>
+              </>
+            )}
+            {project.department_code === "it" && project.methodology === "system_development" && (
+              <SdlcPanel project={project} canManage={canAdd} />
+            )}
+          </div>
+        </details>
       )}
 
       {view === "deliverables" && (
@@ -337,7 +351,22 @@ export function ProjectWorkspace({
         </div>
       )}
 
-      {view === "reports" && <ProjectReports project={project} canWrite={canWriteReports} />}
+      {view === "reports" &&
+        (isCompany || !project.department_code || !canReadDepartment(project.department_code) ? (
+          <ProjectReports project={project} canWrite={canWriteReports} />
+        ) : (
+          <div className="space-y-4">
+            <DepartmentReportsPanel departmentCode={project.department_code} />
+            <details className="rounded-lg border bg-card p-4">
+              <summary className="cursor-pointer text-sm font-medium">
+                Project progress reports (optional)
+              </summary>
+              <div className="mt-4">
+                <ProjectReports project={project} canWrite={canWriteReports} />
+              </div>
+            </details>
+          </div>
+        ))}
 
       {view === "documents" && (
         <div className="space-y-3">

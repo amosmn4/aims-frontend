@@ -10,11 +10,12 @@ import {
 import { apiJson } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth";
 import type { PaginatedResponse } from "@/hooks/use-pagination";
+import type { WaterExpenseTotals } from "./water-expense-types";
 
 // Same rule as the Water layout guard and the backend's @Roles("water").
 export function useCanManageWater() {
-  const { hasRole, isAdminOrCeo } = useAuth();
-  return isAdminOrCeo || hasRole("water");
+  const { hasRole, isAdminOrCeo, viewAs } = useAuth();
+  return !viewAs && (isAdminOrCeo || hasRole("water"));
 }
 
 // Skips the deleted record's own detail query so it doesn't refetch into a 404.
@@ -134,6 +135,7 @@ export interface WaterUsageUploadRow {
 }
 
 export interface WaterMeterReadingRow {
+  cumulative_usage: number | null;
   id: string;
   meter_id: string;
   meter_number: string;
@@ -243,8 +245,25 @@ export interface WaterBulkSummary {
   zones: WaterBulkFigure & { names: string[] };
 }
 
+export interface HouseholdReconciliation {
+  metersRead: number;
+  metersTotal: number;
+  counterMetersRead: number;
+  complete: boolean;
+  estimated: boolean;
+  issues: number;
+  openingBalance: number | null;
+  closingBalance: number | null;
+  purchases: number | null;
+  creditUsed: number | null;
+  measuredUsed: number | null;
+  difference: number | null;
+}
+
 export interface WaterDashboard {
+  household_reconciliation: HouseholdReconciliation | null;
   month: string;
+  expenses: WaterExpenseTotals | null;
   averages: WaterMeterAverages;
   active_households: number;
   active_meters: number;
@@ -491,7 +510,7 @@ export interface WaterZoneDetail {
   direct_household_total: number;
   adjustment_total: number;
   /** "readings" when at least one household balance was measured. */
-  consumption_basis: "readings" | "tokens";
+  consumption_basis: "readings" | "mixed" | "tokens";
   accounted_total: number;
   loss_units: number;
   loss_pct: number | null;
@@ -529,7 +548,7 @@ type BackendZoneDetail = {
   childBulkTotal: number;
   directHouseholdTotal: number;
   adjustmentTotal?: number;
-  consumptionBasis?: "readings" | "tokens";
+  consumptionBasis?: "readings" | "mixed" | "tokens";
   accountedTotal: number;
   lossUnits: number;
   lossPct: number | null;
@@ -984,6 +1003,7 @@ export function useDeleteWaterMeter() {
 /* ---------- Meter readings ---------- */
 
 type BackendReading = {
+  cumulativeUsage?: number | string | null;
   id: string;
   meterId: string;
   meter: {
@@ -1010,6 +1030,7 @@ function mapReading(r: BackendReading): WaterMeterReadingRow {
     meter_type: r.meter.meterType,
     reading_date: r.readingDate,
     value: Number(r.value),
+    cumulative_usage: r.cumulativeUsage == null ? null : Number(r.cumulativeUsage),
     notes: r.notes,
     created_at: r.createdAt,
   };
@@ -1043,6 +1064,7 @@ const READING_DEPENDENT_KEYS = [
   "reading-series",
   "balance-periods",
   "household-flags",
+  "household-reconciliation",
   "zones",
   "meters",
   "dashboard",
@@ -1084,7 +1106,13 @@ export function useWaterReadings(
 export function useLogWaterReading() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { meterId: string; readingDate: string; value: number; notes?: string }) =>
+    mutationFn: (input: {
+      meterId: string;
+      readingDate: string;
+      value: number;
+      cumulativeUsage?: number | null;
+      notes?: string;
+    }) =>
       apiJson("/water/readings", {
         method: "POST",
         body: JSON.stringify({ ...input, readingDate: toUtcInstant(input.readingDate) }),
@@ -1106,6 +1134,7 @@ export function useUpdateWaterReading() {
       meterId?: string;
       readingDate?: string;
       value?: number;
+      cumulativeUsage?: number | null;
       // null clears the notes.
       notes?: string | null;
     }) =>
@@ -1134,15 +1163,22 @@ export function useDeleteWaterReading() {
 
 /* ---------- Household balances (prepaid) ---------- */
 
-export type WaterBalanceFlag = "balance_too_high" | "no_use" | "high_use";
+export type WaterBalanceFlag =
+  "balance_too_high" | "counter_decreased" | "usage_mismatch" | "no_use" | "high_use";
 
 export const WATER_BALANCE_FLAG_LABELS: Record<WaterBalanceFlag, string> = {
   balance_too_high: "Balance higher than possible",
+  counter_decreased: "Usage counter decreased",
+  usage_mismatch: "Usage and credit differ",
   no_use: "No use recorded",
   high_use: "High use",
 };
 
 export const WATER_BALANCE_FLAG_HINTS: Record<WaterBalanceFlag, string> = {
+  counter_decreased:
+    "The lifetime counter is lower than its earlier reading. Check the capture or register a replacement as a separate meter.",
+  usage_mismatch:
+    "Counter usage differs from opening credit plus purchases minus remaining credit. Check both readings and the purchase records.",
   balance_too_high:
     "The balance rose more than the units bought. Check for a missing purchase upload or a misread, then inspect the meter.",
   no_use:
@@ -1151,6 +1187,9 @@ export const WATER_BALANCE_FLAG_HINTS: Record<WaterBalanceFlag, string> = {
 };
 
 export interface WaterBalancePeriod {
+  measured_used: number | null;
+  credit_used: number;
+  difference: number | null;
   from: string;
   to: string;
   opening_balance: number;
@@ -1164,6 +1203,7 @@ export interface WaterBalancePeriod {
 }
 
 export interface WaterBalanceReadingRow {
+  cumulative_usage: number | null;
   id: string;
   reading_date: string;
   balance: number;
@@ -1173,6 +1213,9 @@ export interface WaterBalanceReadingRow {
 }
 
 type BackendBalancePeriod = {
+  measuredUsed?: number | null;
+  creditUsed?: number;
+  difference?: number | null;
   from: string;
   to: string;
   openingBalance: number;
@@ -1187,6 +1230,9 @@ type BackendBalancePeriod = {
 
 function mapBalancePeriod(p: BackendBalancePeriod): WaterBalancePeriod {
   return {
+    measured_used: p.measuredUsed ?? null,
+    credit_used: p.creditUsed ?? p.used,
+    difference: p.difference ?? null,
     from: p.from,
     to: p.to,
     opening_balance: p.openingBalance,
@@ -1210,6 +1256,7 @@ export function useWaterBalancePeriods(meterId: string | undefined, enabled = tr
           id: string;
           readingDate: string;
           balance: number;
+          cumulativeUsage?: number | null;
           notes: string | null;
           period: BackendBalancePeriod | null;
         }[]
@@ -1218,6 +1265,7 @@ export function useWaterBalancePeriods(meterId: string | undefined, enabled = tr
         id: r.id,
         reading_date: r.readingDate,
         balance: r.balance,
+        cumulative_usage: r.cumulativeUsage ?? null,
         notes: r.notes,
         period: r.period ? mapBalancePeriod(r.period) : null,
       }));
@@ -1233,6 +1281,19 @@ export interface WaterHouseholdFlagRow {
   zone_name: string | null;
   flag: WaterBalanceFlag;
   period: WaterBalancePeriod;
+}
+
+export function useWaterHouseholdReconciliation(month: string) {
+  return useQuery({
+    queryKey: ["water", "household-reconciliation", month],
+    queryFn: () =>
+      apiJson<{
+        month: string;
+        units: number;
+        basis: WaterConsumptionBasis;
+        reconciliation: HouseholdReconciliation;
+      }>(`/water/household-reconciliation?month=${encodeURIComponent(month)}`),
+  });
 }
 
 export function useWaterHouseholdFlags(months = 3) {
@@ -1428,7 +1489,9 @@ export function useWaterUsageRecords(
 /* ---------- Analytics ---------- */
 
 type BackendDashboard = {
+  householdReconciliation?: HouseholdReconciliation;
   month: string;
+  expenses?: WaterExpenseTotals | null;
   averages?: {
     perHouseholdMeter: number | null;
     perBulkMeter: number | null;
@@ -1459,7 +1522,9 @@ type BackendDashboard = {
 
 function mapDashboard(raw: BackendDashboard): WaterDashboard {
   return {
+    household_reconciliation: raw.householdReconciliation ?? null,
     month: raw.month,
+    expenses: raw.expenses ?? null,
     averages: {
       per_household_meter: raw.averages?.perHouseholdMeter ?? null,
       per_bulk_meter: raw.averages?.perBulkMeter ?? null,
@@ -2175,7 +2240,7 @@ export function useWaterMeterSeries(
 
 /* ---------- Released, used, bought — three figures that are never one ---------- */
 
-export type WaterConsumptionBasis = "readings" | "tokens";
+export type WaterConsumptionBasis = "readings" | "mixed" | "tokens";
 
 export const WATER_ADJUSTMENT_LABELS: Record<string, string> = {
   line_fill: "Line fill",
@@ -2186,6 +2251,7 @@ export const WATER_ADJUSTMENT_LABELS: Record<string, string> = {
 
 /** Released is what a meter passed, used is what dials moved, bought is credit paid for. */
 export interface WaterBalance {
+  household_reconciliation: HouseholdReconciliation | null;
   released: number;
   into_network: number;
   used: number;
@@ -2202,6 +2268,7 @@ export interface WaterBalance {
 }
 
 type BackendBalance = {
+  householdReconciliation?: HouseholdReconciliation;
   released: number;
   intoNetwork: number;
   used: number;
@@ -2218,6 +2285,7 @@ type BackendBalance = {
 function mapBalance(w: BackendBalance): WaterBalance {
   const reconciliation = mapReconciliation(w.reconciliation);
   return {
+    household_reconciliation: w.householdReconciliation ?? null,
     released: w.released,
     into_network: w.intoNetwork,
     used: w.used,
@@ -2226,7 +2294,7 @@ function mapBalance(w: BackendBalance): WaterBalance {
     adjustments_by_kind: w.adjustmentsByKind ?? {},
     consumption_basis: w.consumptionBasis,
     household_meters_read: w.householdMetersRead ?? 0,
-    provisional: w.provisional ?? w.consumptionBasis === "tokens",
+    provisional: w.provisional ?? w.consumptionBasis !== "readings",
     unused_credit: w.unusedCredit ?? null,
     unaccounted: reconciliation.gap,
     unaccounted_pct: reconciliation.gap_pct,

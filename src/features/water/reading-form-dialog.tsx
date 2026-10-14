@@ -38,13 +38,16 @@ export interface ReadingFormValue {
   meter_type?: WaterMeterType;
   reading_date: string;
   value: number;
+  cumulative_usage?: number | null;
   notes: string | null;
 }
 
-/** "network": main/bulk dial totals. "household": prepaid balance left on the meter. */
+/** Household captures keep lifetime usage and prepaid units remaining separate. */
 export type ReadingKind = "network" | "household";
 
-type ReadingErrors = Partial<Record<"meter" | "readingDate" | "reading", string>>;
+type ReadingErrors = Partial<
+  Record<"meter" | "readingDate" | "reading" | "cumulativeUsage", string>
+>;
 
 // Add ("new") or edit a reading. `meterId` locks the meter (e.g. on a meter's page).
 export function ReadingFormDialog({
@@ -112,6 +115,9 @@ function ReadingForm({
   const [meterNumber, setMeterNumber] = useState(value?.meter_number ?? "");
   const [readingDate, setReadingDate] = useState(initialDate);
   const [reading, setReading] = useState(value ? String(value.value) : "");
+  const [cumulativeUsage, setCumulativeUsage] = useState(
+    value?.cumulative_usage == null ? "" : String(value.cumulative_usage),
+  );
   const [notes, setNotes] = useState(value?.notes ?? "");
   const [errors, setErrors] = useState<ReadingErrors>({});
   const isPending = logReading.isPending || updateReading.isPending;
@@ -120,6 +126,7 @@ function ReadingForm({
     meterId !== initialMeterId ||
     readingDate !== initialDate ||
     reading !== (value ? String(value.value) : "") ||
+    cumulativeUsage !== (value?.cumulative_usage == null ? "" : String(value.cumulative_usage)) ||
     notes !== (value?.notes ?? "");
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
 
@@ -157,12 +164,24 @@ function ReadingForm({
         ? "Enter the balance shown on the meter"
         : "Enter the number shown on the meter's dial";
     else if (!Number.isFinite(num) || num < 0) found.reading = "Enter a number of 0 or more";
+    const cumulative = cumulativeUsage.trim() ? Number(cumulativeUsage) : null;
+    if (household && (!value || value.cumulative_usage != null) && cumulative === null)
+      found.cumulativeUsage = "Enter the lifetime units used shown on the meter";
+    else if (
+      household &&
+      cumulative !== null &&
+      (!Number.isFinite(cumulative) ||
+        cumulative < 0 ||
+        cumulative > 999999999999.99 ||
+        Math.abs(cumulative * 100 - Math.round(cumulative * 100)) > 0.00001)
+    )
+      found.cumulativeUsage = "Enter a nonnegative reading with at most two decimal places";
     setErrors(found);
     if (Object.values(found).some(Boolean) || !chosenMeterId) return;
 
     const onError = (err: unknown) =>
       toast.error(err instanceof Error ? err.message : "Couldn't save reading");
-    const noun = household ? "Balance" : "Reading";
+    const noun = "Reading";
 
     if (value) {
       updateReading.mutate(
@@ -171,6 +190,7 @@ function ReadingForm({
           meterId: chosenMeterId,
           readingDate,
           value: num,
+          ...(household && { cumulativeUsage: cumulative }),
           notes: notes.trim() || null,
         },
         {
@@ -184,12 +204,19 @@ function ReadingForm({
       return;
     }
     logReading.mutate(
-      { meterId: chosenMeterId, readingDate, value: num, notes: notes.trim() || undefined },
+      {
+        meterId: chosenMeterId,
+        readingDate,
+        value: num,
+        ...(household && { cumulativeUsage: cumulative }),
+        notes: notes.trim() || undefined,
+      },
       {
         onSuccess: () => {
           toast.success(`${noun} recorded`);
           if (!addAnother) return onDone();
           setReading("");
+          setCumulativeUsage("");
           setNotes("");
           if (!fixedMeterId) {
             setMeterId("");
@@ -205,9 +232,9 @@ function ReadingForm({
     errors[key] ? { "aria-invalid": true, "aria-describedby": `${id}-error` } : {};
 
   const title = value
-    ? `Edit ${household ? "balance" : "reading"} on meter ${value.meter_number}`
+    ? `Edit reading on meter ${value.meter_number}`
     : household
-      ? `Record balance${fixedMeter ? ` on meter ${fixedMeter.meter_number}` : ""}`
+      ? `Record household reading${fixedMeter ? ` on meter ${fixedMeter.meter_number}` : ""}`
       : "Record reading";
 
   return (
@@ -225,7 +252,7 @@ function ReadingForm({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             {household
-              ? "Enter the credit left on the prepaid meter's screen. Usage is worked out from this and the units bought since the last balance."
+              ? "Capture the lifetime units used and the prepaid units still remaining on the same meter at the same time."
               : "Enter the number on the dial of a main or bulk meter."}
           </DialogDescription>
         </DialogHeader>
@@ -350,12 +377,12 @@ function ReadingForm({
             </FormField>
             <FormField
               id="reading-value"
-              label={household ? "Balance on meter (units)" : "Reading value (m³)"}
+              label={household ? "Remaining prepaid units (m³)" : "Reading value (m³)"}
               required
               error={errors.reading}
               hint={
                 household
-                  ? "The credit left, as shown on the meter."
+                  ? "Purchased units still available on the meter, not its lifetime usage."
                   : "The full number on the dial. 1 m³ = 1,000 litres."
               }
             >
@@ -375,6 +402,34 @@ function ReadingForm({
               />
             </FormField>
           </div>
+          {household && (
+            <FormField
+              id="reading-cumulative"
+              label="Cumulative usage (m³)"
+              required={!value || value.cumulative_usage != null}
+              error={errors.cumulativeUsage}
+              hint={
+                value && value.cumulative_usage == null
+                  ? "This older capture has no usage counter. Add it only if you know the reading at that time."
+                  : "Lifetime units used. A rise from 519 to 525 means 6 m³ used between captures."
+              }
+            >
+              <Input
+                id="reading-cumulative"
+                type="number"
+                min="0"
+                max="999999999999.99"
+                step="0.01"
+                inputMode="decimal"
+                value={cumulativeUsage}
+                onChange={(e) => {
+                  setCumulativeUsage(e.target.value);
+                  clearError("cumulativeUsage");
+                }}
+                {...invalid("cumulativeUsage", "reading-cumulative")}
+              />
+            </FormField>
+          )}
           <FormField id="reading-notes" label="Notes (optional)">
             <Input
               id="reading-notes"
@@ -402,11 +457,7 @@ function ReadingForm({
           )}
           <Button type="submit" disabled={isPending}>
             {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {value
-              ? `Save ${household ? "balance" : "reading"}`
-              : household
-                ? "Record balance"
-                : "Record reading"}
+            {value ? "Save reading" : household ? "Record reading" : "Record reading"}
           </Button>
         </DialogFooter>
       </form>

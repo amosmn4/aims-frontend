@@ -23,7 +23,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-type Errors = Partial<Record<"date" | "finalReading" | "newMeterReading", string>>;
+type Errors = Partial<
+  Record<
+    | "date"
+    | "finalReading"
+    | "newMeterReading"
+    | "finalCumulativeUsage"
+    | "newMeterCumulativeUsage",
+    string
+  >
+>;
 
 /** Retires a meter while keeping every reading and purchase it ever had. */
 export function TakeOutOfUseDialog({
@@ -75,8 +84,10 @@ function TakeOutOfUseForm({
   const [reason, setReason] = useState<WaterInactiveReason>("replaced");
   const [date, setDate] = useState(() => toLocalDateTimeInputValue(new Date()));
   const [finalReading, setFinalReading] = useState("");
+  const [finalCumulativeUsage, setFinalCumulativeUsage] = useState("");
   const [newMeterNumber, setNewMeterNumber] = useState("");
   const [newMeterReading, setNewMeterReading] = useState("");
+  const [newMeterCumulativeUsage, setNewMeterCumulativeUsage] = useState("");
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<Errors>({});
 
@@ -98,6 +109,18 @@ function TakeOutOfUseForm({
     const start = parse(newMeterReading);
     if (start !== undefined && (!Number.isFinite(start) || start < 0))
       found.newMeterReading = "Enter a number of 0 or more";
+    const finalCounter = parse(finalCumulativeUsage);
+    const newCounter = parse(newMeterCumulativeUsage);
+    if (
+      finalCounter !== undefined &&
+      (!Number.isFinite(finalCounter) || finalCounter < 0 || fin === undefined)
+    )
+      found.finalCumulativeUsage = "Enter a valid lifetime counter and remaining units";
+    if (
+      newCounter !== undefined &&
+      (!Number.isFinite(newCounter) || newCounter < 0 || start === undefined)
+    )
+      found.newMeterCumulativeUsage = "Enter a valid starting counter and remaining units";
     setErrors(found);
     if (Object.values(found).some(Boolean)) return;
 
@@ -108,9 +131,11 @@ function TakeOutOfUseForm({
         reason,
         date,
         finalReading: fin,
+        ...(household && { finalCumulativeUsage: finalCounter }),
         note: note.trim() || undefined,
         newMeterNumber: replacing ? newMeterNumber.trim() : undefined,
         newMeterReading: replacing ? start : undefined,
+        ...(household && replacing && { newMeterCumulativeUsage: newCounter }),
       },
       {
         onSuccess: (res) => {
@@ -198,6 +223,22 @@ function TakeOutOfUseForm({
         </FormField>
       </div>
 
+      {household && (
+        <FormField
+          id="retire-final-counter"
+          label={"Final lifetime usage (m\u00b3, optional)"}
+          error={errors.finalCumulativeUsage}
+        >
+          <Input
+            id="retire-final-counter"
+            type="number"
+            min="0"
+            step="0.01"
+            value={finalCumulativeUsage}
+            onChange={(e) => markDirty(setFinalCumulativeUsage)(e.target.value)}
+          />
+        </FormField>
+      )}
       {reason === "replaced" && (
         <div className="grid grid-cols-1 gap-3 rounded-md border p-3 sm:grid-cols-2">
           <FormField
@@ -228,6 +269,23 @@ function TakeOutOfUseForm({
               aria-invalid={!!errors.newMeterReading}
             />
           </FormField>
+          {household && (
+            <FormField
+              id="retire-new-counter"
+              label={"Starting lifetime usage (m\u00b3, optional)"}
+              error={errors.newMeterCumulativeUsage}
+            >
+              <Input
+                id="retire-new-counter"
+                type="number"
+                min="0"
+                step="0.01"
+                disabled={!newMeterNumber.trim()}
+                value={newMeterCumulativeUsage}
+                onChange={(e) => markDirty(setNewMeterCumulativeUsage)(e.target.value)}
+              />
+            </FormField>
+          )}
           <p className="text-xs text-muted-foreground sm:col-span-2">
             The new meter takes over the customer, zone, plot and vending system.
           </p>

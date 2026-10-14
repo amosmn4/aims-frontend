@@ -6,11 +6,15 @@ import {
   useCanManageWater,
   useDeleteWaterReading,
   useWaterHouseholdFlags,
+  useWaterHouseholdReconciliation,
   useWaterReadings,
   WATER_BALANCE_FLAG_HINTS,
   type WaterMeterReadingRow,
 } from "@/features/water/use-water";
 import { ReadingFormDialog, type ReadingFormValue } from "@/features/water/reading-form-dialog";
+import { HouseholdReconciliationPanel } from "@/features/water/household-reconciliation";
+import { waterToday } from "@/features/water/water-expense-types";
+import { Label } from "@/components/ui/label";
 import { BalanceFlagBadge } from "@/features/water/household-balance-log";
 import { ListEmpty, ListNoMatches } from "@/features/water/water-ui";
 import { confirmDeleteReading, deleteErrorToast } from "@/features/water/water-delete";
@@ -50,11 +54,13 @@ const units = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits
 
 function HouseholdBalancesPage() {
   const canManage = useCanManageWater();
+  const [month, setMonth] = useState(() => waterToday().slice(0, 7));
+  const reconciliationQ = useWaterHouseholdReconciliation(month);
   const [editing, setEditing] = useState<ReadingFormValue | "new" | null>(null);
 
   const addButton = (
     <Button size="sm" onClick={() => setEditing("new")}>
-      <Plus className="h-4 w-4 mr-1" /> Record balance
+      <Plus className="h-4 w-4 mr-1" /> Record household reading
     </Button>
   );
 
@@ -62,11 +68,33 @@ function HouseholdBalancesPage() {
     <div className="space-y-4">
       <PageHeader
         title="Household balances"
-        description="The credit left on each prepaid meter. With the units bought in between, it shows what each household really used."
+        description="Capture lifetime units used and prepaid units remaining. The two readings keep consumption and purchased credit separate."
         actions={canManage ? addButton : undefined}
       />
       {!canManage && <ViewOnlyBanner area="the Water Project" />}
 
+      <div className="w-40 space-y-1">
+        <Label htmlFor="household-month" className="text-xs">
+          Reconciliation month
+        </Label>
+        <Input
+          id="household-month"
+          type="month"
+          value={month}
+          onChange={(e) => e.target.value && setMonth(e.target.value)}
+        />
+      </div>
+      {reconciliationQ.isError ? (
+        <LoadError
+          what="household reconciliation"
+          error={reconciliationQ.error}
+          onRetry={() => reconciliationQ.refetch()}
+        />
+      ) : reconciliationQ.data ? (
+        <HouseholdReconciliationPanel value={reconciliationQ.data.reconciliation} />
+      ) : (
+        <p className="text-sm text-muted-foreground">Loading reconciliation...</p>
+      )}
       <NeedsChecking />
       <BalanceReadings canManage={canManage} addButton={addButton} onEdit={setEditing} />
 
@@ -223,7 +251,7 @@ function BalanceReadings({
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="flex flex-wrap items-end gap-3 p-4 pb-0">
-        <div className="mr-auto text-sm font-semibold">All balance readings</div>
+        <div className="mr-auto text-sm font-semibold">All household readings</div>
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
@@ -274,7 +302,8 @@ function BalanceReadings({
                   <TableHead>Read on</TableHead>
                   <TableHead>Meter</TableHead>
                   <TableHead>Zone</TableHead>
-                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead className="text-right">Remaining units</TableHead>
+                  <TableHead className="text-right">Lifetime used</TableHead>
                   <TableHead>Notes</TableHead>
                   {canManage && (
                     <TableHead className="w-20">
@@ -301,6 +330,9 @@ function BalanceReadings({
                     <TableCell className="text-sm">{r.zone_name ?? "—"}</TableCell>
                     <TableCell className="text-right text-xs tabular-nums">
                       {units(r.value)}
+                    </TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {r.cumulative_usage === null ? "Not captured" : units(r.cumulative_usage)}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {r.notes ?? "—"}

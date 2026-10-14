@@ -223,7 +223,7 @@ function MeterDetailPage() {
               {canRecordReading && (
                 <Button size="sm" onClick={() => setReadingDialog("new")}>
                   <Plus className="h-3.5 w-3.5 mr-1" />{" "}
-                  {isReadingMeter ? "Record reading" : "Record balance"}
+                  {isReadingMeter ? "Record reading" : "Record household reading"}
                 </Button>
               )}
               <Button

@@ -11,6 +11,7 @@ const TABS = [
   { to: "/water/balances", label: "Household balances" },
   { to: "/water/readings", label: "Bulk & Main Readings" },
   { to: "/water/upload", label: "Upload usage file" },
+  { to: "/water/expenses", label: "Expenses" },
   { to: "/water/reports", label: "Reports" },
   { to: "/water/ai", label: "AI Insights" },
 ] as const;
@@ -43,6 +44,7 @@ function WaterLayout() {
                 <Link
                   key={tab.to}
                   to={tab.to}
+                  activeOptions={{ exact: tab.to === "/water" }}
                   className={cn(
                     "px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
                     active

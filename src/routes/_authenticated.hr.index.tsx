@@ -32,8 +32,7 @@ import { LoadError } from "@/components/load-error";
 import { ViewOnlyBanner } from "@/components/view-only-banner";
 import { formatDate } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
-import { MyWorkPanel } from "@/features/my-work/my-work-panel";
-import { StartHerePanel } from "@/features/start-here/start-here-panel";
+import { DepartmentWorkPanel } from "@/features/my-work/department-work-panel";
 
 export const Route = createFileRoute("/_authenticated/hr/")({
   head: () => ({ meta: [{ title: "HR Dashboard — AIMS" }] }),
@@ -47,6 +46,30 @@ const inDays = (n: number) => {
 };
 
 function HrDashboard() {
+  const [toolsOpen, setToolsOpen] = useState(false);
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Human Resources"
+        description="Client HR services, work updates and team reports to the CEO."
+      />
+      <DepartmentWorkPanel departmentCode="hr" />
+      <details
+        className="rounded-lg border bg-card p-4"
+        onToggle={(event) => setToolsOpen(event.currentTarget.open)}
+      >
+        <summary className="cursor-pointer text-sm font-semibold">Human Resources tools</summary>
+        {toolsOpen && (
+          <div className="mt-4">
+            <HrDashboardTools />
+          </div>
+        )}
+      </details>
+    </div>
+  );
+}
+
+function HrDashboardTools() {
   const { canWriteDepartment } = useAuth();
   const canManage = canWriteDepartment("hr");
   const { department, lines, missing, loadFailed, retry } = useHrDepartment();
@@ -128,7 +151,7 @@ function HrDashboard() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Human Resources"
+        title="Human Resources tools"
         description="The work we run for clients: projects by service line, what needs chasing, and how recruitment is going."
         actions={
           canManage && department ? (
@@ -150,9 +173,6 @@ function HrDashboard() {
       />
 
       {!canManage && department && <ViewOnlyBanner area="HR" action="add clients or projects" />}
-
-      <MyWorkPanel departmentCode="hr" />
-      <StartHerePanel departmentCode="hr" persistent />
 
       {isLoading ? (
         <div className="flex justify-center py-16">

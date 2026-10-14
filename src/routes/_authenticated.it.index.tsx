@@ -39,6 +39,32 @@ export const Route = createFileRoute("/_authenticated/it/")({
 const BUILDING = new Set(["planning", "active"]);
 
 function ItOverview() {
+  const [toolsOpen, setToolsOpen] = useState(false);
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Information Technology"
+        description="Projects, work updates and team reports to the CEO."
+      />
+      <DepartmentWorkPanel departmentCode="it" />
+      <details
+        className="rounded-lg border bg-card p-4"
+        onToggle={(event) => setToolsOpen(event.currentTarget.open)}
+      >
+        <summary className="cursor-pointer text-sm font-semibold">
+          Information Technology tools
+        </summary>
+        {toolsOpen && (
+          <div className="mt-4">
+            <ItOverviewTools />
+          </div>
+        )}
+      </details>
+    </div>
+  );
+}
+
+function ItOverviewTools() {
   const { isAdminOrCeo, hasRole, canWriteDepartment } = useAuth();
   const canManageSystems = isAdminOrCeo || hasRole("it");
   const canAddProjects = canWriteDepartment("it");
@@ -70,7 +96,7 @@ function ItOverview() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Information Technology"
+        title="Information Technology tools"
         description="What staff need fixed, how our websites and systems are holding up, and what IT is building."
         actions={
           canManageSystems ? (
@@ -89,156 +115,151 @@ function ItOverview() {
 
       {!canManageSystems && <ViewOnlyBanner area="IT" action="add systems or work on tickets" />}
 
-      <DepartmentWorkPanel departmentCode="it" />
-
-      <details className="rounded-xl border bg-card p-4">
-        <summary className="cursor-pointer text-sm font-semibold">IT figures and tools</summary>
-        <div className="mt-4 space-y-5">
-          <section aria-labelledby="it-glance">
-            <SectionHeading id="it-glance">At a glance</SectionHeading>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <StatLink
-                to="/it/tickets"
-                search={{ view: "list" }}
-                label="Tickets waiting for IT"
-                value={unfinished.length}
-                hint={`${openCount} not started yet`}
-                icon={LifeBuoy}
-                tone={unfinished.length > 0 ? "warning" : "default"}
-              />
-              <StatLink
-                to="/it/tickets"
-                search={{ view: "list" }}
-                label="Waited longer than we aim to"
-                value={breaching.length}
-                hint={breaching.length > 0 ? "Pick these up first" : "Everything picked up in time"}
-                icon={Timer}
-                tone={breaching.length > 0 ? "danger" : "positive"}
-              />
-              <StatLink
-                to="/it/systems-sites"
-                label="Websites and systems live"
-                value={live.length}
-                hint={`${systems.length} listed in total`}
-                icon={Server}
-              />
-              <StatLink
-                to="/it/systems-sites"
-                label="Average uptime last month"
-                value={averageUptime === null ? "—" : formatUptimePercent(averageUptime)}
-                hint={`Across ${measured.length} system${measured.length === 1 ? "" : "s"}`}
-                icon={Activity}
-                tone={averageUptime !== null && averageUptime < 99 ? "warning" : "default"}
-                emptyText={averageUptime === null ? "No uptime written down yet" : undefined}
-              />
-            </div>
-          </section>
-
-          <QuickLinks links={DEPARTMENT_QUICK_LINKS.it} />
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <TicketPressurePanel
-              canLogTickets={canManageSystems}
-              onLogTicket={() => setLogging(true)}
+      <div className="mt-4 space-y-5">
+        <section aria-labelledby="it-glance">
+          <SectionHeading id="it-glance">At a glance</SectionHeading>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatLink
+              to="/it/tickets"
+              search={{ view: "list" }}
+              label="Tickets waiting for IT"
+              value={unfinished.length}
+              hint={`${openCount} not started yet`}
+              icon={LifeBuoy}
+              tone={unfinished.length > 0 ? "warning" : "default"}
             />
-            <SystemsHealthPanel canManage={canManageSystems} />
+            <StatLink
+              to="/it/tickets"
+              search={{ view: "list" }}
+              label="Waited longer than we aim to"
+              value={breaching.length}
+              hint={breaching.length > 0 ? "Pick these up first" : "Everything picked up in time"}
+              icon={Timer}
+              tone={breaching.length > 0 ? "danger" : "positive"}
+            />
+            <StatLink
+              to="/it/systems-sites"
+              label="Websites and systems live"
+              value={live.length}
+              hint={`${systems.length} listed in total`}
+              icon={Server}
+            />
+            <StatLink
+              to="/it/systems-sites"
+              label="Average uptime last month"
+              value={averageUptime === null ? "—" : formatUptimePercent(averageUptime)}
+              hint={`Across ${measured.length} system${measured.length === 1 ? "" : "s"}`}
+              icon={Activity}
+              tone={averageUptime !== null && averageUptime < 99 ? "warning" : "default"}
+              emptyText={averageUptime === null ? "No uptime written down yet" : undefined}
+            />
           </div>
+        </section>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <TicketFlowChart />
-            <section className="rounded-xl border bg-card" aria-labelledby="builds-heading">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-                <h2 id="builds-heading" className="flex items-center gap-1.5 text-sm font-semibold">
-                  <Hammer className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> What IT is
-                  building
-                </h2>
-                {departmentId && (
-                  <Link
-                    to="/projects"
-                    search={{ dept: departmentId, status: "active" }}
-                    className="text-xs font-medium text-primary hover:underline"
-                  >
-                    All IT projects
-                  </Link>
+        <QuickLinks links={DEPARTMENT_QUICK_LINKS.it} />
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <TicketPressurePanel
+            canLogTickets={canManageSystems}
+            onLogTicket={() => setLogging(true)}
+          />
+          <SystemsHealthPanel canManage={canManageSystems} />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <TicketFlowChart />
+          <section className="rounded-xl border bg-card" aria-labelledby="builds-heading">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+              <h2 id="builds-heading" className="flex items-center gap-1.5 text-sm font-semibold">
+                <Hammer className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> What IT is
+                building
+              </h2>
+              {departmentId && (
+                <Link
+                  to="/projects"
+                  search={{ dept: departmentId, status: "active" }}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  All IT projects
+                </Link>
+              )}
+            </div>
+
+            {projectsQ.isError ? (
+              <div className="p-4">
+                <LoadError
+                  what="IT projects"
+                  error={projectsQ.error}
+                  onRetry={() => projectsQ.refetch()}
+                />
+              </div>
+            ) : departmentsQ.isLoading || projectsQ.isLoading ? (
+              <div className="flex justify-center py-10">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              </div>
+            ) : builds.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+                <p className="text-sm font-medium">Nothing being built right now</p>
+                <p className="max-w-sm text-xs text-muted-foreground">
+                  A new website, an integration or an internal system goes here, with the stage it
+                  has reached.
+                </p>
+                {canAddProjects && departmentId && (
+                  <NewProjectDialog fixedDepartmentId={departmentId} />
                 )}
               </div>
-
-              {projectsQ.isError ? (
-                <div className="p-4">
-                  <LoadError
-                    what="IT projects"
-                    error={projectsQ.error}
-                    onRetry={() => projectsQ.refetch()}
-                  />
-                </div>
-              ) : departmentsQ.isLoading || projectsQ.isLoading ? (
-                <div className="flex justify-center py-10">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                </div>
-              ) : builds.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
-                  <p className="text-sm font-medium">Nothing being built right now</p>
-                  <p className="max-w-sm text-xs text-muted-foreground">
-                    A new website, an integration or an internal system goes here, with the stage it
-                    has reached.
-                  </p>
-                  {canAddProjects && departmentId && (
-                    <NewProjectDialog fixedDepartmentId={departmentId} />
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-3 p-4">
-                  <ul className="flex flex-wrap gap-1.5">
-                    {SDLC_STAGES.map((stage) => (
-                      <li key={stage}>
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs",
-                            (byStage.get(stage) ?? 0) > 0
-                              ? "border-primary/40 text-foreground"
-                              : "text-muted-foreground",
-                          )}
-                        >
-                          {SDLC_STAGE_LABELS[stage]}
-                          <span className="font-semibold tabular-nums">
-                            {byStage.get(stage) ?? 0}
+            ) : (
+              <div className="space-y-3 p-4">
+                <ul className="flex flex-wrap gap-1.5">
+                  {SDLC_STAGES.map((stage) => (
+                    <li key={stage}>
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs",
+                          (byStage.get(stage) ?? 0) > 0
+                            ? "border-primary/40 text-foreground"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {SDLC_STAGE_LABELS[stage]}
+                        <span className="font-semibold tabular-nums">
+                          {byStage.get(stage) ?? 0}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <ul className="divide-y">
+                  {builds.slice(0, 5).map((p) => (
+                    <li key={p.id}>
+                      <Link
+                        to="/projects/$projectId"
+                        params={{ projectId: p.id }}
+                        className="flex items-center justify-between gap-3 py-2 text-sm hover:bg-secondary/40"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{p.name}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {p.client_name ?? "Internal"} · {PROJECT_STATUS_LABELS[p.status]}
                           </span>
                         </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <ul className="divide-y">
-                    {builds.slice(0, 5).map((p) => (
-                      <li key={p.id}>
-                        <Link
-                          to="/projects/$projectId"
-                          params={{ projectId: p.id }}
-                          className="flex items-center justify-between gap-3 py-2 text-sm hover:bg-secondary/40"
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate font-medium">{p.name}</span>
-                            <span className="block text-xs text-muted-foreground">
-                              {p.client_name ?? "Internal"} · {PROJECT_STATUS_LABELS[p.status]}
-                            </span>
-                          </span>
-                          <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs">
-                            {p.sdlc_stage ? SDLC_STAGE_LABELS[p.sdlc_stage] : "Stage not set"}
-                          </span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </section>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <InventoryAttentionPanel />
-            <HrmsLicencesPanel />
-          </div>
+                        <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs">
+                          {p.sdlc_stage ? SDLC_STAGE_LABELS[p.sdlc_stage] : "Stage not set"}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
         </div>
-      </details>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <InventoryAttentionPanel />
+          <HrmsLicencesPanel />
+        </div>
+      </div>
 
       <TicketFormDialog
         open={logging}

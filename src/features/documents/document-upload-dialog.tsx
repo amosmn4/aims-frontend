@@ -424,9 +424,7 @@ export function DocumentUploadDialog({
           </details>
 
           {inheritedTeam ? (
-            <p className="text-xs text-muted-foreground">
-              Shared with the whole project team and the CEO.
-            </p>
+            <p className="text-xs text-muted-foreground">Shared with the whole team and the CEO.</p>
           ) : (
             <fieldset>
               <legend className="mb-2 text-sm font-medium">Who can see this file</legend>

@@ -41,7 +41,7 @@ const linkClass = "text-xs font-medium text-primary hover:underline";
 /** A department's own reports to the CEO: start one, track it and reply. */
 export function DepartmentReportsPanel({ departmentCode }: { departmentCode: string }) {
   const navigate = useNavigate();
-  const { isCeo, user } = useAuth();
+  const { isCeo } = useAuth();
   const { canSubmitReports } = usePermissions();
   const departmentsQ = useDepartments();
   const department = departmentsQ.data?.find((d) => d.code === departmentCode);
@@ -73,19 +73,12 @@ export function DepartmentReportsPanel({ departmentCode }: { departmentCode: str
   };
 
   const rowAction = (r: ReportRow) => {
-    if (r.status === "draft" && r.creator.id !== user?.id) {
-      return (
-        <span className="text-xs text-muted-foreground">
-          {personName(r.creator)} is preparing{" "}
-          {samePeriod(r.periodStart, period?.start) ? "this month's report" : "this report"}
-        </span>
-      );
-    }
-    const label =
-      r.status === "changes_requested"
+    const label = !canPrepare
+      ? "Read report"
+      : r.status === "changes_requested"
         ? "Fix and resend"
         : r.status === "draft"
-          ? "Open your draft"
+          ? "Open team draft"
           : "Read it";
     return (
       <Link to="/reports/$reportId" params={{ reportId: r.id }} className={linkClass}>
@@ -102,8 +95,7 @@ export function DepartmentReportsPanel({ departmentCode }: { departmentCode: str
           {department ? `${department.name} reports to the CEO` : "Reports to the CEO"}
         </h3>
         <p className="text-xs text-muted-foreground">
-          One report a month for the whole department. Anyone here can write it; only one of you
-          sends it.
+          One shared report per month. Authorised teammates can edit and send it to the CEO.
         </p>
         {!isCeo && !canPrepare && (
           <p className="text-xs text-muted-foreground">
@@ -134,7 +126,7 @@ export function DepartmentReportsPanel({ departmentCode }: { departmentCode: str
             params={{ reportId: r.id }}
             className={cn(linkClass, "mt-1 inline-block")}
           >
-            Fix and resend
+            {canPrepare ? "Fix and resend" : "Read feedback"}
           </Link>
         </div>
       ))}
@@ -214,7 +206,7 @@ export function DepartmentReportsPanel({ departmentCode }: { departmentCode: str
                       {r.title}
                     </Link>
                     <span className="block text-xs text-muted-foreground">
-                      by {personName(r.creator)}
+                      Department team report
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">

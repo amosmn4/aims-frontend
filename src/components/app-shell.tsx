@@ -239,6 +239,32 @@ function navScore(item: NavItem, pathname: string): number {
 }
 
 /** The one menu item for this page: the most specific match wins. */
+function simplifyNavigation(items: NavItem[]): NavItem[] {
+  const core = items.filter((item) =>
+    ["/dashboard", "/departments", "/projects", "/reports"].includes(item.to),
+  );
+  const extra = items.filter((item) => !core.includes(item));
+  if (!extra.length) return core;
+  return [
+    ...core,
+    {
+      to: extra[0].to,
+      label: "Tools",
+      icon: Briefcase,
+      match: extra.flatMap((item) => item.match ?? [item.to]),
+      children: extra.flatMap((item) =>
+        item.children?.length
+          ? item.children.map((child, index) => ({
+              ...child,
+              label: `${item.label}: ${child.label}`,
+              divider: index === 0,
+            }))
+          : [{ to: item.to, label: item.label }],
+      ),
+    },
+  ];
+}
+
 export function activeNavItem(items: NavItem[], pathname: string): NavItem | null {
   let best: NavItem | null = null;
   let bestScore = -1;
@@ -412,7 +438,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     .filter((p) => p.status !== "completed" && p.status !== "cancelled")
     .map((p) => ({ id: p.id, name: p.name }));
   const visibleNav = isCeo
-    ? CEO_NAV
+    ? simplifyNavigation(CEO_NAV)
     : departmentScope
       ? buildDepartmentNav(
           departmentScope,
@@ -424,8 +450,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         ? buildWaterNav()
         : !hasAnyDepartment
           ? buildSetupNav()
-          : NAV.filter(
-              (i) => !i.adminOnly || isAdminOrCeo || (i.extraRoles ? hasRole(i.extraRoles) : false),
+          : simplifyNavigation(
+              NAV.filter(
+                (i) =>
+                  !i.adminOnly || isAdminOrCeo || (i.extraRoles ? hasRole(i.extraRoles) : false),
+              ),
             );
 
   const activeItem = activeNavItem(visibleNav, location.pathname);
@@ -470,7 +499,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   /* ---------------- SIDEBAR MODE ---------------- */
   if (mode === "sidebar") {
     return (
-      <div className={cn("min-h-screen flex bg-secondary/40", minimalUi && "aims-workspace")}>
+      <div
+        className={cn(
+          "aims-shell min-h-screen flex bg-secondary/40",
+          minimalUi && "aims-workspace",
+        )}
+      >
         <aside className="hidden lg:flex flex-col w-60 bg-sidebar text-sidebar-foreground border-r border-sidebar-border sticky top-0 h-screen">
           <ShellLogo to={home} className="h-14 px-4 border-b border-sidebar-border" />
           <nav aria-label="Main menu" className="flex-1 overflow-y-auto p-2 space-y-0.5">
@@ -587,7 +621,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   /* ---------------- TOP NAV MODE ---------------- */
   return (
     <div
-      className={cn("min-h-screen flex flex-col bg-secondary/40", minimalUi && "aims-workspace")}
+      className={cn(
+        "aims-shell min-h-screen flex flex-col bg-secondary/40",
+        minimalUi && "aims-workspace",
+      )}
     >
       <header className="sticky top-0 z-30 bg-sidebar text-sidebar-foreground border-b border-sidebar-border">
         <ViewAsBanner />

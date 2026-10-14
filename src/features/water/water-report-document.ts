@@ -11,6 +11,7 @@ import {
 import { formatPeriodKey } from "@/features/water/water-ui";
 import { zoneSetLines } from "@/features/water/zone-tree";
 import { formatDate, formatDateTime } from "@/lib/format-date";
+import { WATER_EXPENSE_CATEGORY_LABELS, formatWaterMoney } from "./water-expense-types";
 import {
   slugForFile,
   type ReportBlock,
@@ -142,6 +143,40 @@ export function buildWaterReportDocument({
           pointsChange(d.nrw_tank_to_network_pct, p.nrw_tank_to_network_pct),
         ],
         ["Revenue", kes(d.revenue), kes(p.revenue), change(d.revenue, p.revenue)],
+        ...(d.expenses
+          ? [
+              [
+                "Expenses recorded",
+                formatWaterMoney(d.expenses.recorded),
+                p.expenses ? formatWaterMoney(p.expenses.recorded) : "Not recorded",
+                p.expenses
+                  ? formatWaterMoney(d.expenses.recorded - p.expenses.recorded)
+                  : "Not recorded",
+              ],
+              [
+                "Expenses paid during the month",
+                formatWaterMoney(d.expenses.paid),
+                p.expenses ? formatWaterMoney(p.expenses.paid) : "Not recorded",
+                p.expenses ? formatWaterMoney(d.expenses.paid - p.expenses.paid) : "Not recorded",
+              ],
+              [
+                "Unpaid bills recorded this month",
+                formatWaterMoney(d.expenses.unpaid),
+                p.expenses ? formatWaterMoney(p.expenses.unpaid) : "Not recorded",
+                p.expenses
+                  ? formatWaterMoney(d.expenses.unpaid - p.expenses.unpaid)
+                  : "Not recorded",
+              ],
+              [
+                "Collections less paid expenses",
+                formatWaterMoney(d.revenue - d.expenses.paid),
+                p.expenses ? formatWaterMoney(p.revenue - p.expenses.paid) : "Not recorded",
+                p.expenses
+                  ? formatWaterMoney(d.revenue - d.expenses.paid - (p.revenue - p.expenses.paid))
+                  : "Not recorded",
+              ],
+            ]
+          : []),
         [
           "Households buying water",
           d.active_households.toLocaleString(),
@@ -150,6 +185,76 @@ export function buildWaterReportDocument({
         ],
       ],
     },
+
+    ...(d.expenses
+      ? [
+          { kind: "heading", text: "Water expenses" } as ReportBlock,
+          {
+            kind: "paragraph",
+            text: "Costs follow the expense date. Paid totals follow the payment date, including older bills. Unpaid amounts are bills recorded this month that are currently unpaid. Collections less paid expenses excludes opening balances and unrecorded costs.",
+            muted: true,
+          } as ReportBlock,
+          {
+            kind: "table",
+            columns: ["Category", "Recorded", "Paid this month", "Unpaid"],
+            numeric: [1, 2, 3],
+            rows: d.expenses.categories
+              .filter((row) => row.count > 0 || row.paid > 0)
+              .map((row) => [
+                WATER_EXPENSE_CATEGORY_LABELS[row.category],
+                formatWaterMoney(row.recorded),
+                formatWaterMoney(row.paid),
+                formatWaterMoney(row.unpaid),
+              ]),
+            emptyText: "No Water expenses recorded this month yet.",
+          } as ReportBlock,
+        ]
+      : []),
+
+    ...(d.household_reconciliation
+      ? [
+          { kind: "heading", text: "Household reconciliation" } as ReportBlock,
+          {
+            kind: "paragraph",
+            text: `Usable reading pairs: ${d.household_reconciliation.metersRead} of ${d.household_reconciliation.metersTotal} meters. ${d.household_reconciliation.counterMetersRead} have lifetime counters. Opening prepaid balance + purchases - remaining balance gives usage from credit; the difference compares only meters with both calculations.`,
+          } as ReportBlock,
+          {
+            kind: "table",
+            columns: ["Measure", "Units"],
+            numeric: [1],
+            rows: [
+              ["Opening prepaid balance", d.household_reconciliation.openingBalance],
+              ["Purchases for meters read", d.household_reconciliation.purchases],
+              ["Remaining prepaid units", d.household_reconciliation.closingBalance],
+              ["Usage from prepaid credit", d.household_reconciliation.creditUsed],
+              ["Usage from lifetime counters", d.household_reconciliation.measuredUsed],
+              ["Counter / credit difference", d.household_reconciliation.difference],
+            ].map(([label, number]) => [
+              String(label),
+              number === null
+                ? "Not available"
+                : `${Number(number).toLocaleString(undefined, { maximumFractionDigits: 2 })} m\u00b3`,
+            ]),
+          } as ReportBlock,
+          ...(!d.household_reconciliation.complete || d.household_reconciliation.estimated
+            ? [
+                {
+                  kind: "paragraph",
+                  text: "This period is not fully covered by exact readings. Figures cover captured intervals, with estimates where intervals cross period boundaries.",
+                  muted: true,
+                } as ReportBlock,
+              ]
+            : []),
+          ...(d.household_reconciliation.issues > 0
+            ? [
+                {
+                  kind: "paragraph",
+                  text: "Some counter readings and prepaid balances do not reconcile. Check the household readings and purchase uploads.",
+                } as ReportBlock,
+              ]
+            : []),
+        ]
+      : []),
 
     { kind: "heading", text: "Water loss by zone" },
     {

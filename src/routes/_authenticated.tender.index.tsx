@@ -70,8 +70,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-import { MyWorkPanel } from "@/features/my-work/my-work-panel";
-import { StartHerePanel } from "@/features/start-here/start-here-panel";
+import { DepartmentWorkPanel } from "@/features/my-work/department-work-panel";
 import { useAuth } from "@/lib/auth";
 export const Route = createFileRoute("/_authenticated/tender/")({
   head: () => ({ meta: [{ title: "Tenders — AIMS" }] }),
@@ -206,7 +205,7 @@ export function TenderWorkspace() {
           </Link>
         )}
       </section>
-      {ownWork && <MyWorkPanel departmentCode="tender" />}
+      {ownWork && <DepartmentWorkPanel departmentCode="tender" />}
       <QuickLinks links={DEPARTMENT_QUICK_LINKS.tender} />
       <details
         className="rounded-lg border bg-card"
@@ -222,7 +221,6 @@ export function TenderWorkspace() {
           </div>
         )}
       </details>
-      {ownWork && <StartHerePanel departmentCode="tender" persistent />}
     </div>
   );
 }

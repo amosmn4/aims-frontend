@@ -772,20 +772,20 @@ export const EVERYONE_HOW_TO: HowTo[] = [
   {
     q: "Record progress without filling in a full report",
     steps: [
-      "On HR, IT, Marketing, Finance or Operations **Home**, start with **Your work**. The specialist figures and tools can be expanded when needed.",
+      "On your department **Home**, start with **Your team's projects**. Department and shared company projects appear together. Specialist tools are optional.",
       "Click **New project**, name the work and choose a service if available. Pick the client for client work, or leave it empty for department work. Contracts, dates and access restrictions are under **More details**.",
       "Click **Log work update**, choose the project, write what you handled and select the **Date of work**. Add a blocker or next step when useful, then click **Save update**.",
-      "Open the project to add tasks or read **Updates & discussion**. For company-wide work, follow **Company projects** and log the update inside that project.",
+      "Open a project and use **Work** for tasks, **Updates** to record progress, and **Reports** for its reports. **More** contains files and deliverables.",
     ],
     to: "/projects",
   },
   {
     q: "Prepare a department report from recorded work",
     steps: [
-      "Open **Reports to the CEO** from your department Home or Reports menu. Start the displayed month or continue your draft.",
+      "Click **Open team report** on your department Home. AIMS opens the shared report for the displayed month; any authorised teammate can continue it.",
       "Click **Refresh from work** to include later updates. AIMS pulls department-visible project updates from the report period; restricted and company work stays in its project reports.",
-      "Review **figures from AIMS**, then fill the required sections. Use **Save and finish later** or **Send to the CEO** at the top of the page.",
-      "If the CEO asks for changes, open the returned report, update it and resend. Use **My report** for your own personal report.",
+      "Review the figures and write a short summary. Expand **Work, blockers and next steps** when needed. Use **Save and finish later** or **Send to the CEO**.",
+      "CEO feedback reaches the authorised department team. Anyone authorised can update a returned report and resend it. Personal reports are optional under **Tools**.",
     ],
     to: "/reports/departments",
   },

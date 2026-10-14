@@ -75,9 +75,7 @@ export function DocumentList({
               key={doc.id}
               doc={doc}
               uploaderName={doc.created_by ? profileMap.get(doc.created_by) : undefined}
-              visibleTo={
-                doc.team_shared ? "Project team and CEO" : visibleToText(doc, departmentMap)
-              }
+              visibleTo={doc.team_shared ? "Team and CEO" : visibleToText(doc, departmentMap)}
               canManage={canManage(doc)}
               showLocation={showResourceType}
               onOpen={setPreviewDoc}

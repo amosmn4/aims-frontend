@@ -16,55 +16,44 @@ interface Step {
   link: StepLink;
 }
 
-const MONTHLY_REPORT = "Send your monthly report";
-
-const STEPS: Record<StartHereCode, Step[]> = {
-  hr: [
-    { label: "See your tasks", link: (c) => <Link to="/projects/mine">{c}</Link> },
-    { label: "Open a project", link: (c) => <Link to="/hr/projects">{c}</Link> },
-    { label: MONTHLY_REPORT, link: (c) => <Link to="/hr/reports">{c}</Link> },
-  ],
-  finance: [
-    {
-      label: "Record an invoice",
-      link: (c) => (
-        <Link to="/finance/invoices" search={{ new: 1 }}>
-          {c}
-        </Link>
-      ),
-    },
-    { label: "Check who owes money", link: (c) => <Link to="/finance/debtors">{c}</Link> },
-    { label: MONTHLY_REPORT, link: (c) => <Link to="/reports/departments/finance">{c}</Link> },
-  ],
-  it: [
-    { label: "See open tickets", link: (c) => <Link to="/it/tickets">{c}</Link> },
-    { label: "Check systems & uptime", link: (c) => <Link to="/it/systems-sites">{c}</Link> },
-    { label: MONTHLY_REPORT, link: (c) => <Link to="/it/reports">{c}</Link> },
-  ],
-  marketing: [
-    { label: "Add a lead", link: (c) => <Link to="/marketing/leads">{c}</Link> },
-    { label: "Plan a campaign", link: (c) => <Link to="/marketing/campaigns">{c}</Link> },
-    { label: MONTHLY_REPORT, link: (c) => <Link to="/marketing/reports">{c}</Link> },
-  ],
-  tender: [
-    {
-      label: "Register a bid and prepare its checklist",
-      link: (c) => <Link to="/tender">{c}</Link>,
-    },
-    { label: "Check closing bids and record progress", link: (c) => <Link to="/tender">{c}</Link> },
-    { label: MONTHLY_REPORT, link: (c) => <Link to="/tender/reports">{c}</Link> },
-  ],
-  operations: [
-    { label: "Log a client request", link: (c) => <Link to="/operations/requests">{c}</Link> },
-    { label: "Route new requests", link: (c) => <Link to="/requests">{c}</Link> },
-    { label: MONTHLY_REPORT, link: (c) => <Link to="/operations/reports">{c}</Link> },
-  ],
-  water: [
-    { label: "Record a meter reading", link: (c) => <Link to="/water/readings">{c}</Link> },
-    { label: "Upload a usage file", link: (c) => <Link to="/water/upload">{c}</Link> },
-    { label: "Check this month's report", link: (c) => <Link to="/water/reports">{c}</Link> },
-  ],
-};
+const STEPS: Record<StartHereCode, Step[]> = Object.fromEntries(
+  ["hr", "finance", "it", "marketing", "tender", "operations"].map((code) => [
+    code,
+    [
+      {
+        label: "1. Open your project",
+        link: (children: ReactNode) => <Link to="/projects">{children}</Link>,
+      },
+      {
+        label: "2. Log a work update",
+        link: (children: ReactNode) => (
+          <Link to="/guide" search={{ role: code as Exclude<StartHereCode, "water"> }}>
+            {children}
+          </Link>
+        ),
+      },
+      {
+        label: "3. Open the team report",
+        link: (children: ReactNode) => (
+          <Link to={`/reports/departments/${code as Exclude<StartHereCode, "water">}`}>
+            {children}
+          </Link>
+        ),
+      },
+    ],
+  ]),
+) as Record<StartHereCode, Step[]>;
+STEPS.water = [
+  {
+    label: "Record a meter reading",
+    link: (children) => <Link to="/water/readings">{children}</Link>,
+  },
+  { label: "Upload a usage file", link: (children) => <Link to="/water/upload">{children}</Link> },
+  {
+    label: "Check this month's report",
+    link: (children) => <Link to="/water/reports">{children}</Link>,
+  },
+];
 
 const isCode = (code: string): code is StartHereCode => code in STEPS;
 

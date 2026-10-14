@@ -1,3 +1,4 @@
+import { ExecutiveOverviewCharts, type ExecutiveCharts } from "./executive-overview-charts";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
@@ -9,9 +10,12 @@ import type { DepartmentCode } from "@/lib/auth";
 
 interface Overview {
   generatedAt: string;
+  charts: ExecutiveCharts;
   period: { start: string; end: string; dueDate: string };
   totals: {
     openProjects: number;
+    completedInPeriod: number;
+    overdueTasks: number;
     atRisk: number;
     lateProjects: number;
     waitingOnCeo: number;
@@ -74,8 +78,8 @@ export function ExecutiveOverview() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Company overview"
-        description="Team progress, delivery risks and reports awaiting your decision."
+        title="CEO dashboard"
+        description="Company delivery, department progress and decisions awaiting you."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button asChild>
@@ -117,16 +121,16 @@ export function ExecutiveOverview() {
                 hint: "Department and company work",
               },
               {
-                label: "Projects marked at risk",
-                value: data.totals.atRisk,
+                label: `Completed in ${reportMonth}`,
+                value: data.totals.completedInPeriod,
                 to: "/projects",
-                hint: `${data.totals.lateProjects} past their planned finish`,
+                hint: "Projects with a recorded completion date",
               },
               {
-                label: "Bids closing this week",
-                value: data.totals.closingBids,
-                to: "/tender",
-                hint: "Still being prepared for submission",
+                label: "Overdue tasks",
+                value: data.totals.overdueTasks,
+                to: "/projects/department",
+                hint: `${data.totals.atRisk} projects at risk, ${data.totals.lateProjects} late`,
               },
             ].map((item) => (
               <Link
@@ -140,6 +144,7 @@ export function ExecutiveOverview() {
               </Link>
             ))}
           </div>
+          <ExecutiveOverviewCharts charts={data.charts} reportMonth={reportMonth} />
           <div className="grid gap-4 lg:grid-cols-2">
             <section className="rounded-lg border bg-card p-4" aria-labelledby="ceo-decisions">
               <div className="flex items-center justify-between gap-2">
@@ -222,46 +227,51 @@ export function ExecutiveOverview() {
               )}
             </section>
           </div>
-          <section className="rounded-lg border bg-card p-4" aria-labelledby="ceo-departments">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 id="ceo-departments" className="font-semibold">
-                Department progress and reporting
-              </h2>
-              <Link to="/departments" className="text-sm text-primary hover:underline">
-                Open departments
-              </Link>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Monthly work reports for {reportMonth}, due {formatDate(data.period.dueDate)}.
-              Financial snapshots and personal reports are tracked separately.
-            </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {data.departments.map((d) => {
-                const missing = !d.report || d.report.status === "not_sent";
-                return (
-                  <Link
-                    key={d.id}
-                    to={`/reports/departments/${d.code}`}
-                    className="rounded-md border p-3 hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <p className="text-sm font-semibold">{d.name}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {d.openProjects} open projects · {d.atRisk} at risk · {d.lateProjects} late
-                    </p>
-                    <p
-                      className={`mt-2 text-xs font-medium ${missing || d.report?.status === "changes_requested" ? "text-warning" : "text-primary"}`}
+          <details className="rounded-lg border bg-card p-4">
+            <summary className="cursor-pointer text-sm font-semibold">
+              Department reports and delivery details
+            </summary>
+            <section className="mt-4" aria-labelledby="ceo-departments">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 id="ceo-departments" className="font-semibold">
+                  Department progress and reporting
+                </h2>
+                <Link to="/departments" className="text-sm text-primary hover:underline">
+                  Open departments
+                </Link>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Monthly work reports for {reportMonth}, due {formatDate(data.period.dueDate)}.
+                Financial snapshots and personal reports are tracked separately.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {data.departments.map((d) => {
+                  const missing = !d.report || d.report.status === "not_sent";
+                  return (
+                    <Link
+                      key={d.id}
+                      to={`/reports/departments/${d.code}`}
+                      className="rounded-md border p-3 hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      {missing
-                        ? reportLate
-                          ? "Monthly report overdue"
-                          : "Monthly report not sent yet"
-                        : (REPORT_LABELS[d.report!.status] ?? d.report!.status)}
-                    </p>
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
+                      <p className="text-sm font-semibold">{d.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {d.openProjects} open projects · {d.atRisk} at risk · {d.lateProjects} late
+                      </p>
+                      <p
+                        className={`mt-2 text-xs font-medium ${missing || d.report?.status === "changes_requested" ? "text-warning" : "text-primary"}`}
+                      >
+                        {missing
+                          ? reportLate
+                            ? "Monthly report overdue"
+                            : "Monthly report not sent yet"
+                          : (REPORT_LABELS[d.report!.status] ?? d.report!.status)}
+                      </p>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          </details>
           <section className="rounded-lg border bg-card p-4" aria-labelledby="ceo-updates">
             <h2 id="ceo-updates" className="font-semibold">
               Recent work from the teams

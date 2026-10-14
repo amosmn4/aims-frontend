@@ -366,8 +366,8 @@ export function DocumentAccessDialog({
 
         {doc?.team_shared ? (
           <p className="text-sm text-muted-foreground">
-            This file is shared with the project team and the CEO. Manage access from the project
-            team.
+            This file is shared with the team and the CEO. Access follows its project or department
+            report.
           </p>
         ) : accessQ.isLoading ? (
           <div className="py-6 flex justify-center">

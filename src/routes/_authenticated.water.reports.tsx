@@ -56,6 +56,9 @@ import { NetworkDiagram } from "@/features/water/network-diagram";
 import { PageHeader } from "@/components/app-shell";
 import { DownloadReportMenu } from "@/features/exports/download-report-menu";
 import { buildWaterReportDocument } from "@/features/water/water-report-document";
+import { HouseholdReconciliationPanel } from "@/features/water/household-reconciliation";
+import { WaterExpenseSummary } from "@/features/water/water-expense-summary";
+import { formatWaterMoney } from "@/features/water/water-expense-types";
 import { useAuth } from "@/lib/auth";
 import { LoadError } from "@/components/load-error";
 import { DateRangeFilter, type DateRange } from "@/components/date-range-filter";
@@ -177,7 +180,7 @@ function WaterReportsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Reports"
-        description="Monthly figures for the water network: volumes, revenue, water loss by zone and meter reading comparisons."
+        description="Monthly figures for the water network: collections, expenses, volumes and water loss."
         actions={
           <div className="flex flex-wrap items-end gap-2">
             <div>
@@ -316,10 +319,62 @@ function WaterReportsPage() {
                       {unitsDelta(s.dashboard.revenue, s.prev_dashboard.revenue) ?? "—"}
                     </TableCell>
                   </TableRow>
+                  {s.dashboard.expenses &&
+                    [
+                      {
+                        label: "Expenses recorded",
+                        now: s.dashboard.expenses.recorded,
+                        before: s.prev_dashboard.expenses?.recorded,
+                      },
+                      {
+                        label: "Expenses paid during the month",
+                        now: s.dashboard.expenses.paid,
+                        before: s.prev_dashboard.expenses?.paid,
+                      },
+                      {
+                        label: "Unpaid bills recorded this month",
+                        now: s.dashboard.expenses.unpaid,
+                        before: s.prev_dashboard.expenses?.unpaid,
+                      },
+                      {
+                        label: "Collections less paid expenses",
+                        now: s.dashboard.revenue - s.dashboard.expenses.paid,
+                        before: s.prev_dashboard.expenses
+                          ? s.prev_dashboard.revenue - s.prev_dashboard.expenses.paid
+                          : undefined,
+                      },
+                    ].map((row) => (
+                      <TableRow key={row.label}>
+                        <TableCell className="text-sm">{row.label}</TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">
+                          {formatWaterMoney(row.now)}
+                        </TableCell>
+                        <TableCell className="text-right text-sm tabular-nums text-muted-foreground">
+                          {row.before === undefined ? "Not recorded" : formatWaterMoney(row.before)}
+                        </TableCell>
+                        <TableCell className="text-right text-xs text-muted-foreground">
+                          {row.before === undefined
+                            ? "Not recorded"
+                            : formatWaterMoney(row.now - row.before)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
                 </TableBody>
               </Table>
             </div>
           </div>
+
+          {s.dashboard.household_reconciliation && (
+            <HouseholdReconciliationPanel value={s.dashboard.household_reconciliation} />
+          )}
+          {s.dashboard.expenses && (
+            <WaterExpenseSummary
+              expenses={s.dashboard.expenses}
+              collections={s.dashboard.revenue}
+              categories
+              figures={false}
+            />
+          )}
 
           <div className="rounded-lg border bg-card p-4">
             <div className="text-sm font-semibold mb-2">Meters in use</div>

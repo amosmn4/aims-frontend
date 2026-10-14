@@ -51,7 +51,7 @@ export function WaterBalance({ month }: { month: string }) {
   const query = isMonth ? monthQ : settledQ;
   const b: Balance | null | undefined = isMonth ? monthQ.data : settledQ.data;
 
-  const settled = !isMonth || !b?.provisional;
+  const settled = b ? !b.provisional : false;
   const verdict = b?.reconciliation.verdict ?? "not_measured";
   // More bought than released is credit on the meters, never shown as a negative loss.
   const surplus = verdict === "bought_ahead" || verdict === "over_read";
@@ -97,7 +97,17 @@ export function WaterBalance({ month }: { month: string }) {
         <div className="space-y-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <StatTile label="Released" value={`${formatUnits(b.released)} m³`} icon={Gauge} />
-            <StatTile label="Used" value={`${formatUnits(b.used)} m³`} icon={Droplets} />
+            <StatTile
+              label={
+                b.consumption_basis === "tokens"
+                  ? "Units bought (usage unknown)"
+                  : b.consumption_basis === "mixed"
+                    ? "Estimated household usage"
+                    : "Household usage"
+              }
+              value={`${formatUnits(b.used)} m³`}
+              icon={Droplets}
+            />
             <StatTile label="Bought" value={`${formatUnits(b.bought)} m³`} icon={Wallet} />
           </div>
 
@@ -130,20 +140,20 @@ export function WaterBalance({ month }: { month: string }) {
               </div>
             </div>
             <Figure
-              label={isMonth ? "Unused credit" : "Bought less used"}
+              label="Remaining prepaid units"
               value={
-                isMonth
-                  ? b.unused_credit === null
-                    ? "—"
-                    : `${formatUnits(b.unused_credit)} m³`
-                  : `${formatUnits(settledQ.data?.bought_less_used ?? 0)} m³`
+                b.unused_credit === null ? "Not available" : `${formatUnits(b.unused_credit)} m³`
               }
             />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">
-              {b.consumption_basis === "readings" ? "From readings" : "From tokens"}
+              {b.consumption_basis === "readings"
+                ? "From readings"
+                : b.consumption_basis === "mixed"
+                  ? "Partial readings / estimates"
+                  : "From purchases"}
             </Badge>
             {b.consumption_basis === "readings" && (
               <Badge variant="outline">

@@ -51,6 +51,7 @@ import { Route as AuthenticatedWaterUploadRouteImport } from './routes/_authenti
 import { Route as AuthenticatedWaterReportsRouteImport } from './routes/_authenticated.water.reports'
 import { Route as AuthenticatedWaterReadingsRouteImport } from './routes/_authenticated.water.readings'
 import { Route as AuthenticatedWaterMetersRouteImport } from './routes/_authenticated.water.meters'
+import { Route as AuthenticatedWaterExpensesRouteImport } from './routes/_authenticated.water.expenses'
 import { Route as AuthenticatedWaterCustomersRouteImport } from './routes/_authenticated.water.customers'
 import { Route as AuthenticatedWaterBalancesRouteImport } from './routes/_authenticated.water.balances'
 import { Route as AuthenticatedWaterAiRouteImport } from './routes/_authenticated.water.ai'
@@ -380,6 +381,12 @@ const AuthenticatedWaterMetersRoute =
   AuthenticatedWaterMetersRouteImport.update({
     id: '/meters',
     path: '/meters',
+    getParentRoute: () => AuthenticatedWaterRoute,
+  } as any)
+const AuthenticatedWaterExpensesRoute =
+  AuthenticatedWaterExpensesRouteImport.update({
+    id: '/expenses',
+    path: '/expenses',
     getParentRoute: () => AuthenticatedWaterRoute,
   } as any)
 const AuthenticatedWaterCustomersRoute =
@@ -1111,6 +1118,7 @@ export interface FileRoutesByFullPath {
   '/water/ai': typeof AuthenticatedWaterAiRoute
   '/water/balances': typeof AuthenticatedWaterBalancesRoute
   '/water/customers': typeof AuthenticatedWaterCustomersRoute
+  '/water/expenses': typeof AuthenticatedWaterExpensesRoute
   '/water/meters': typeof AuthenticatedWaterMetersRoute
   '/water/readings': typeof AuthenticatedWaterReadingsRoute
   '/water/reports': typeof AuthenticatedWaterReportsRoute
@@ -1243,6 +1251,7 @@ export interface FileRoutesByTo {
   '/water/ai': typeof AuthenticatedWaterAiRoute
   '/water/balances': typeof AuthenticatedWaterBalancesRoute
   '/water/customers': typeof AuthenticatedWaterCustomersRoute
+  '/water/expenses': typeof AuthenticatedWaterExpensesRoute
   '/water/meters': typeof AuthenticatedWaterMetersRoute
   '/water/readings': typeof AuthenticatedWaterReadingsRoute
   '/water/reports': typeof AuthenticatedWaterReportsRoute
@@ -1393,6 +1402,7 @@ export interface FileRoutesById {
   '/_authenticated/water/ai': typeof AuthenticatedWaterAiRoute
   '/_authenticated/water/balances': typeof AuthenticatedWaterBalancesRoute
   '/_authenticated/water/customers': typeof AuthenticatedWaterCustomersRoute
+  '/_authenticated/water/expenses': typeof AuthenticatedWaterExpensesRoute
   '/_authenticated/water/meters': typeof AuthenticatedWaterMetersRoute
   '/_authenticated/water/readings': typeof AuthenticatedWaterReadingsRoute
   '/_authenticated/water/reports': typeof AuthenticatedWaterReportsRoute
@@ -1543,6 +1553,7 @@ export interface FileRouteTypes {
     | '/water/ai'
     | '/water/balances'
     | '/water/customers'
+    | '/water/expenses'
     | '/water/meters'
     | '/water/readings'
     | '/water/reports'
@@ -1675,6 +1686,7 @@ export interface FileRouteTypes {
     | '/water/ai'
     | '/water/balances'
     | '/water/customers'
+    | '/water/expenses'
     | '/water/meters'
     | '/water/readings'
     | '/water/reports'
@@ -1824,6 +1836,7 @@ export interface FileRouteTypes {
     | '/_authenticated/water/ai'
     | '/_authenticated/water/balances'
     | '/_authenticated/water/customers'
+    | '/_authenticated/water/expenses'
     | '/_authenticated/water/meters'
     | '/_authenticated/water/readings'
     | '/_authenticated/water/reports'
@@ -2164,6 +2177,13 @@ declare module '@tanstack/react-router' {
       path: '/meters'
       fullPath: '/water/meters'
       preLoaderRoute: typeof AuthenticatedWaterMetersRouteImport
+      parentRoute: typeof AuthenticatedWaterRoute
+    }
+    '/_authenticated/water/expenses': {
+      id: '/_authenticated/water/expenses'
+      path: '/expenses'
+      fullPath: '/water/expenses'
+      preLoaderRoute: typeof AuthenticatedWaterExpensesRouteImport
       parentRoute: typeof AuthenticatedWaterRoute
     }
     '/_authenticated/water/customers': {
@@ -3306,6 +3326,7 @@ interface AuthenticatedWaterRouteChildren {
   AuthenticatedWaterAiRoute: typeof AuthenticatedWaterAiRoute
   AuthenticatedWaterBalancesRoute: typeof AuthenticatedWaterBalancesRoute
   AuthenticatedWaterCustomersRoute: typeof AuthenticatedWaterCustomersRoute
+  AuthenticatedWaterExpensesRoute: typeof AuthenticatedWaterExpensesRoute
   AuthenticatedWaterMetersRoute: typeof AuthenticatedWaterMetersRoute
   AuthenticatedWaterReadingsRoute: typeof AuthenticatedWaterReadingsRoute
   AuthenticatedWaterReportsRoute: typeof AuthenticatedWaterReportsRoute
@@ -3321,6 +3342,7 @@ const AuthenticatedWaterRouteChildren: AuthenticatedWaterRouteChildren = {
   AuthenticatedWaterAiRoute: AuthenticatedWaterAiRoute,
   AuthenticatedWaterBalancesRoute: AuthenticatedWaterBalancesRoute,
   AuthenticatedWaterCustomersRoute: AuthenticatedWaterCustomersRoute,
+  AuthenticatedWaterExpensesRoute: AuthenticatedWaterExpensesRoute,
   AuthenticatedWaterMetersRoute: AuthenticatedWaterMetersRoute,
   AuthenticatedWaterReadingsRoute: AuthenticatedWaterReadingsRoute,
   AuthenticatedWaterReportsRoute: AuthenticatedWaterReportsRoute,

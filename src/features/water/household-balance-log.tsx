@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils";
 
 const BALANCE_FLAG_STYLES: Record<WaterBalanceFlag, string> = {
   balance_too_high: "bg-destructive/15 text-destructive",
+  counter_decreased: "bg-destructive/15 text-destructive",
+  usage_mismatch: "bg-warning/15 text-warning",
   no_use: "bg-warning/15 text-warning",
   high_use: "bg-warning/15 text-warning",
 };
@@ -37,7 +39,7 @@ export function BalanceFlagBadge({ flag }: { flag: WaterBalanceFlag }) {
 
 const units = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
-/** Each balance read on a prepaid meter, and what was used since the one before. */
+/** Each captured usage counter and prepaid balance, with usage between captures. */
 export function HouseholdBalanceLog({
   meterId,
   meterNumber,
@@ -63,7 +65,7 @@ export function HouseholdBalanceLog({
     });
     if (!ok) return;
     deleteReading.mutate(row.id, {
-      onSuccess: () => toast.success("Balance deleted"),
+      onSuccess: () => toast.success("Reading deleted"),
       onError: deleteErrorToast,
     });
   };
@@ -72,14 +74,15 @@ export function HouseholdBalanceLog({
     <div className="rounded-lg border bg-card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 p-4 pb-0">
         <div>
-          <div className="text-sm font-semibold">Balance readings</div>
+          <div className="text-sm font-semibold">Household readings</div>
           <p className="text-xs text-muted-foreground">
-            Used = previous balance + units bought since − balance now.
+            Usage = change in the lifetime counter. Credit check = opening balance + purchases -
+            remaining balance.
           </p>
         </div>
         {onAdd && (
           <Button size="sm" variant="outline" onClick={onAdd}>
-            <Plus className="mr-1 h-3.5 w-3.5" /> Record balance
+            <Plus className="mr-1 h-3.5 w-3.5" /> Record household reading
           </Button>
         )}
       </div>
@@ -89,14 +92,14 @@ export function HouseholdBalanceLog({
         </div>
       ) : rowsQ.isError ? (
         <LoadError
-          what="balance readings"
+          what="household readings"
           error={rowsQ.error}
           onRetry={() => rowsQ.refetch()}
           className="m-4"
         />
       ) : rows.length === 0 ? (
         <div className="py-8 text-center text-xs text-muted-foreground">
-          No balances read yet. Two readings are needed to work out usage.
+          No household readings yet. Capture both figures twice to calculate and reconcile usage.
         </div>
       ) : (
         <div className="mt-3 overflow-x-auto">
@@ -104,9 +107,12 @@ export function HouseholdBalanceLog({
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
                 <th className="px-4 py-2 font-medium">Read on</th>
-                <th className="px-4 py-2 text-right font-medium">Balance</th>
+                <th className="px-4 py-2 text-right font-medium">Remaining units</th>
+                <th className="px-4 py-2 text-right font-medium">Lifetime used</th>
                 <th className="px-4 py-2 text-right font-medium">Bought since last</th>
-                <th className="px-4 py-2 text-right font-medium">Used</th>
+                <th className="px-4 py-2 text-right font-medium">Counter usage</th>
+                <th className="px-4 py-2 text-right font-medium">Usage from credit</th>
+                <th className="px-4 py-2 text-right font-medium">Difference</th>
                 <th className="px-4 py-2 text-right font-medium">Per day</th>
                 <th className="px-4 py-2 font-medium">Check</th>
                 {canManage && (
@@ -131,6 +137,9 @@ export function HouseholdBalanceLog({
                       {units(r.balance)}
                     </td>
                     <td className="px-4 py-2 text-right text-xs tabular-nums">
+                      {r.cumulative_usage === null ? "Not captured" : units(r.cumulative_usage)}
+                    </td>
+                    <td className="px-4 py-2 text-right text-xs tabular-nums">
                       {p ? units(p.purchased) : "—"}
                     </td>
                     <td
@@ -139,7 +148,13 @@ export function HouseholdBalanceLog({
                         p && p.used < 0 && "font-semibold text-destructive",
                       )}
                     >
-                      {p ? units(p.used) : "Starting balance"}
+                      {p?.measured_used != null ? units(p.measured_used) : "Not available"}
+                    </td>
+                    <td className="px-4 py-2 text-right text-xs tabular-nums">
+                      {p ? units(p.credit_used) : "Starting balance"}
+                    </td>
+                    <td className="px-4 py-2 text-right text-xs tabular-nums">
+                      {p?.difference != null ? units(p.difference) : "Not available"}
                     </td>
                     <td className="px-4 py-2 text-right text-xs tabular-nums">
                       {p?.per_day != null ? units(p.per_day) : "—"}
@@ -172,6 +187,7 @@ export function HouseholdBalanceLog({
                               meter_type: "household",
                               reading_date: r.reading_date,
                               value: r.balance,
+                              cumulative_usage: r.cumulative_usage,
                               notes: r.notes,
                             })
                           }

@@ -1,3 +1,4 @@
+import { usePermissions } from "@/lib/permissions";
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
@@ -95,6 +96,7 @@ export function MyWorkPanel({
   className?: string;
 }) {
   const { profile, hasRole, isAdminOrCeo } = useAuth();
+  const { canSubmitReports } = usePermissions();
   const q = useMyWork();
   const dueQ = useReportsDue();
   const sentBackQ = useReports({ status: "changes_requested" }, !isAdminOrCeo);
@@ -104,7 +106,11 @@ export function MyWorkPanel({
   const nudge: ReportNudge = {
     period: dueQ.data?.period,
     own: dueQ.data?.own ?? null,
-    sentBack: (sentBackQ.data ?? []).filter((r) => r.isTeamReport || r.createdBy === profile?.id),
+    sentBack: (sentBackQ.data ?? []).filter((r) =>
+      r.kind === "department"
+        ? canSubmitReports(r.department?.code)
+        : r.isTeamReport || r.createdBy === profile?.id,
+    ),
     projectReports: projectReportsQ.data ?? [],
     teamWaiting: hasRole("department_head") && !isAdminOrCeo ? (dueQ.data?.waitingOnMe ?? 0) : 0,
   };
@@ -155,18 +161,23 @@ function MyWorkBlocks({
   // A report that came back for changes is shown once, in its own louder row.
   const sentBackIds = new Set(nudge.sentBack.map((r) => r.id));
   const departmentReports = reports.filter(
-    (r) => NEEDS_ACTION.includes(r.status) && !(r.reportId && sentBackIds.has(r.reportId)),
+    (r) =>
+      (!departmentCode || departmentCode === "water") &&
+      NEEDS_ACTION.includes(r.status) &&
+      !(r.reportId && sentBackIds.has(r.reportId)),
   );
   const period = nudge.period;
-  const showOwn = !!period && (!nudge.own || nudge.own.status === "draft");
+  const showOwn =
+    departmentCode === "water" && !!period && (!nudge.own || nudge.own.status === "draft");
   const reportedProjects = new Set(
     nudge.projectReports
       .filter((r) => !period || r.periodStart.slice(0, 7) === period.start.slice(0, 7))
       .map((r) => r.subjectId),
   );
-  const projectsToReport = period
-    ? projects.filter((p) => !reportedProjects.has(p.id)).slice(0, 2)
-    : [];
+  const projectsToReport =
+    departmentCode === "water" && period
+      ? projects.filter((p) => !reportedProjects.has(p.id)).slice(0, 2)
+      : [];
   const hasReportRows =
     nudge.sentBack.length > 0 ||
     departmentReports.length > 0 ||
@@ -205,7 +216,9 @@ function MyWorkBlocks({
     return (
       <p className="flex items-center gap-2 px-4 py-6 text-sm text-muted-foreground">
         <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" />
-        Nothing waiting on you. Nice.
+        {departmentCode === "water"
+          ? "Nothing waiting on you. Nice."
+          : "No tasks or follow-ups waiting on you."}
       </p>
     );
   }

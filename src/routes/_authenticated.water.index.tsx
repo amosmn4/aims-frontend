@@ -70,7 +70,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 import { NetworkDiagram } from "@/features/water/network-diagram";
+import { HouseholdReconciliationPanel } from "@/features/water/household-reconciliation";
 import { WaterBalance } from "@/features/water/water-balance";
+import { WaterExpenseSummary } from "@/features/water/water-expense-summary";
 import { OwnWorkPanels } from "@/features/my-work/own-work-panels";
 export const Route = createFileRoute("/_authenticated/water/")({
   head: () => ({ meta: [{ title: "Water Project — Dashboard — AIMS" }] }),
@@ -169,6 +171,9 @@ function WaterDashboardPage() {
       {!canManage && <ViewOnlyBanner area="the Water Project" />}
 
       <WaterBalance month={month} />
+      {d?.household_reconciliation && (
+        <HouseholdReconciliationPanel value={d.household_reconciliation} />
+      )}
 
       <NetworkDiagram />
 
@@ -272,6 +277,8 @@ function WaterDashboardPage() {
               }
             />
           </div>
+
+          {d.expenses && <WaterExpenseSummary expenses={d.expenses} collections={d.revenue} />}
 
           <div className="rounded-lg border bg-card p-4">
             <div className="text-sm font-semibold">Water flow and loss</div>

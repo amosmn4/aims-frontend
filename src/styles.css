@@ -1163,24 +1163,19 @@
 }
 
 .aims-workspace {
-  --sidebar: var(--card);
-  --sidebar-foreground: var(--foreground);
-  --sidebar-border: var(--border);
-  --sidebar-accent: var(--muted);
-  --sidebar-accent-foreground: var(--foreground);
   background-color: var(--muted);
 }
 
-.aims-workspace nav a:hover,
-.aims-workspace nav button:hover {
-  background-color: var(--muted);
-  color: var(--foreground);
+.aims-shell nav a:hover,
+.aims-shell nav button:hover {
+  background-color: var(--sidebar-accent);
+  color: var(--sidebar-foreground);
 }
 
-.aims-workspace nav [aria-current="page"],
-.aims-workspace nav [aria-current="true"] {
-  background-color: color-mix(in oklab, var(--primary) 9%, var(--card));
-  color: var(--primary);
+.aims-shell nav [aria-current="page"],
+.aims-shell nav [aria-current="true"] {
+  background-color: var(--sidebar-accent);
+  color: var(--sidebar-foreground);
   font-weight: 600;
 }
 
@@ -1240,9 +1235,9 @@
   }
 }
 
-.aims-workspace header button:focus-visible,
-.aims-workspace nav button:focus-visible,
-.aims-workspace nav a:focus-visible {
-  outline: 2px solid var(--primary);
+.aims-shell header button:focus-visible,
+.aims-shell nav button:focus-visible,
+.aims-shell nav a:focus-visible {
+  outline: 2px solid var(--sidebar-foreground);
   outline-offset: 2px;
 }
