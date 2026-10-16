@@ -35,6 +35,7 @@ import {
 import { useProjects } from "@/features/projects/use-projects";
 import { NotificationBell } from "@/components/notification-bell";
 import { HeaderSearch } from "@/components/header-search";
+import { useLedgerAccess } from "@/features/payment-ledger/use-payment-ledger";
 import { ViewAsBanner, ViewAsButton } from "@/components/view-as";
 import { UserMenu } from "@/components/nav/user-menu";
 import { WorkspaceSwitcher } from "@/components/nav/workspace-switcher";
@@ -401,6 +402,7 @@ function ShellLogo({
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const ledgerAccess = useLedgerAccess();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   // Ctrl/Cmd+K is handled inside HeaderSearch.
@@ -457,6 +459,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               ),
             );
 
+  if (ledgerAccess.data?.read) {
+    visibleNav.push({
+      to: "/payment-ledger",
+      label: "Payment Ledger",
+      icon: () => null,
+      match: ["/payment-ledger"],
+    });
+  }
   const activeItem = activeNavItem(visibleNav, location.pathname);
   const isActive = (item: NavItem) => item === activeItem;
   const activeChild = visibleNav

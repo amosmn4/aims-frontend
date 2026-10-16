@@ -20,6 +20,7 @@ import { Route as AuthenticatedRequestsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated.reports'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated.projects'
 import { Route as AuthenticatedPipelineRouteImport } from './routes/_authenticated.pipeline'
+import { Route as AuthenticatedPaymentLedgerRouteImport } from './routes/_authenticated.payment-ledger'
 import { Route as AuthenticatedOperationsRouteImport } from './routes/_authenticated.operations'
 import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated.notifications'
 import { Route as AuthenticatedMarketingRouteImport } from './routes/_authenticated.marketing'
@@ -39,6 +40,7 @@ import { Route as AuthenticatedRequestsIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedReportsIndexRouteImport } from './routes/_authenticated.reports.index'
 import { Route as AuthenticatedProjectsIndexRouteImport } from './routes/_authenticated.projects.index'
 import { Route as AuthenticatedPipelineIndexRouteImport } from './routes/_authenticated.pipeline.index'
+import { Route as AuthenticatedPaymentLedgerIndexRouteImport } from './routes/_authenticated.payment-ledger.index'
 import { Route as AuthenticatedOperationsIndexRouteImport } from './routes/_authenticated.operations.index'
 import { Route as AuthenticatedMarketingIndexRouteImport } from './routes/_authenticated.marketing.index'
 import { Route as AuthenticatedItIndexRouteImport } from './routes/_authenticated.it.index'
@@ -79,6 +81,8 @@ import { Route as AuthenticatedProjectsProjectIdRouteImport } from './routes/_au
 import { Route as AuthenticatedPipelineTendersRouteImport } from './routes/_authenticated.pipeline.tenders'
 import { Route as AuthenticatedPipelineProjectsRouteImport } from './routes/_authenticated.pipeline.projects'
 import { Route as AuthenticatedPipelineEngagementsRouteImport } from './routes/_authenticated.pipeline.engagements'
+import { Route as AuthenticatedPaymentLedgerSystemsRouteImport } from './routes/_authenticated.payment-ledger.systems'
+import { Route as AuthenticatedPaymentLedgerAccessRouteImport } from './routes/_authenticated.payment-ledger.access'
 import { Route as AuthenticatedOperationsWorkspaceRouteImport } from './routes/_authenticated.operations.workspace'
 import { Route as AuthenticatedOperationsTasksRouteImport } from './routes/_authenticated.operations.tasks'
 import { Route as AuthenticatedOperationsSharedProjectsRouteImport } from './routes/_authenticated.operations.shared-projects'
@@ -151,6 +155,7 @@ import { Route as AuthenticatedReportsDepartmentsMarketingRouteImport } from './
 import { Route as AuthenticatedReportsDepartmentsItRouteImport } from './routes/_authenticated.reports.departments.it'
 import { Route as AuthenticatedReportsDepartmentsHrRouteImport } from './routes/_authenticated.reports.departments.hr'
 import { Route as AuthenticatedReportsDepartmentsFinanceRouteImport } from './routes/_authenticated.reports.departments.finance'
+import { Route as AuthenticatedPaymentLedgerEntriesEntryIdRouteImport } from './routes/_authenticated.payment-ledger.entries.$entryId'
 import { Route as AuthenticatedMarketingBlogPostIdRouteImport } from './routes/_authenticated.marketing.blog.$postId'
 import { Route as AuthenticatedItSystemsSitesSystemIdRouteImport } from './routes/_authenticated.it.systems-sites_.$systemId'
 import { Route as AuthenticatedFinanceReportsIdRouteImport } from './routes/_authenticated.finance.reports.$id'
@@ -212,6 +217,12 @@ const AuthenticatedPipelineRoute = AuthenticatedPipelineRouteImport.update({
   path: '/pipeline',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedPaymentLedgerRoute =
+  AuthenticatedPaymentLedgerRouteImport.update({
+    id: '/payment-ledger',
+    path: '/payment-ledger',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedOperationsRoute = AuthenticatedOperationsRouteImport.update({
   id: '/operations',
   path: '/operations',
@@ -313,6 +324,12 @@ const AuthenticatedPipelineIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedPipelineRoute,
+  } as any)
+const AuthenticatedPaymentLedgerIndexRoute =
+  AuthenticatedPaymentLedgerIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedPaymentLedgerRoute,
   } as any)
 const AuthenticatedOperationsIndexRoute =
   AuthenticatedOperationsIndexRouteImport.update({
@@ -549,6 +566,18 @@ const AuthenticatedPipelineEngagementsRoute =
     id: '/engagements',
     path: '/engagements',
     getParentRoute: () => AuthenticatedPipelineRoute,
+  } as any)
+const AuthenticatedPaymentLedgerSystemsRoute =
+  AuthenticatedPaymentLedgerSystemsRouteImport.update({
+    id: '/systems',
+    path: '/systems',
+    getParentRoute: () => AuthenticatedPaymentLedgerRoute,
+  } as any)
+const AuthenticatedPaymentLedgerAccessRoute =
+  AuthenticatedPaymentLedgerAccessRouteImport.update({
+    id: '/access',
+    path: '/access',
+    getParentRoute: () => AuthenticatedPaymentLedgerRoute,
   } as any)
 const AuthenticatedOperationsWorkspaceRoute =
   AuthenticatedOperationsWorkspaceRouteImport.update({
@@ -970,6 +999,12 @@ const AuthenticatedReportsDepartmentsFinanceRoute =
     path: '/finance',
     getParentRoute: () => AuthenticatedReportsDepartmentsRoute,
   } as any)
+const AuthenticatedPaymentLedgerEntriesEntryIdRoute =
+  AuthenticatedPaymentLedgerEntriesEntryIdRouteImport.update({
+    id: '/entries/$entryId',
+    path: '/entries/$entryId',
+    getParentRoute: () => AuthenticatedPaymentLedgerRoute,
+  } as any)
 const AuthenticatedMarketingBlogPostIdRoute =
   AuthenticatedMarketingBlogPostIdRouteImport.update({
     id: '/$postId',
@@ -1025,6 +1060,7 @@ export interface FileRoutesByFullPath {
   '/marketing': typeof AuthenticatedMarketingRouteWithChildren
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/operations': typeof AuthenticatedOperationsRouteWithChildren
+  '/payment-ledger': typeof AuthenticatedPaymentLedgerRouteWithChildren
   '/pipeline': typeof AuthenticatedPipelineRouteWithChildren
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/reports': typeof AuthenticatedReportsRouteWithChildren
@@ -1091,6 +1127,8 @@ export interface FileRoutesByFullPath {
   '/operations/shared-projects': typeof AuthenticatedOperationsSharedProjectsRoute
   '/operations/tasks': typeof AuthenticatedOperationsTasksRoute
   '/operations/workspace': typeof AuthenticatedOperationsWorkspaceRoute
+  '/payment-ledger/access': typeof AuthenticatedPaymentLedgerAccessRoute
+  '/payment-ledger/systems': typeof AuthenticatedPaymentLedgerSystemsRoute
   '/pipeline/engagements': typeof AuthenticatedPipelineEngagementsRoute
   '/pipeline/projects': typeof AuthenticatedPipelineProjectsRoute
   '/pipeline/tenders': typeof AuthenticatedPipelineTendersRoute
@@ -1131,6 +1169,7 @@ export interface FileRoutesByFullPath {
   '/it/': typeof AuthenticatedItIndexRoute
   '/marketing/': typeof AuthenticatedMarketingIndexRoute
   '/operations/': typeof AuthenticatedOperationsIndexRoute
+  '/payment-ledger/': typeof AuthenticatedPaymentLedgerIndexRoute
   '/pipeline/': typeof AuthenticatedPipelineIndexRoute
   '/projects/': typeof AuthenticatedProjectsIndexRoute
   '/reports/': typeof AuthenticatedReportsIndexRoute
@@ -1142,6 +1181,7 @@ export interface FileRoutesByFullPath {
   '/finance/reports/$id': typeof AuthenticatedFinanceReportsIdRoute
   '/it/systems-sites/$systemId': typeof AuthenticatedItSystemsSitesSystemIdRoute
   '/marketing/blog/$postId': typeof AuthenticatedMarketingBlogPostIdRoute
+  '/payment-ledger/entries/$entryId': typeof AuthenticatedPaymentLedgerEntriesEntryIdRoute
   '/reports/departments/finance': typeof AuthenticatedReportsDepartmentsFinanceRoute
   '/reports/departments/hr': typeof AuthenticatedReportsDepartmentsHrRoute
   '/reports/departments/it': typeof AuthenticatedReportsDepartmentsItRoute
@@ -1224,6 +1264,8 @@ export interface FileRoutesByTo {
   '/operations/shared-projects': typeof AuthenticatedOperationsSharedProjectsRoute
   '/operations/tasks': typeof AuthenticatedOperationsTasksRoute
   '/operations/workspace': typeof AuthenticatedOperationsWorkspaceRoute
+  '/payment-ledger/access': typeof AuthenticatedPaymentLedgerAccessRoute
+  '/payment-ledger/systems': typeof AuthenticatedPaymentLedgerSystemsRoute
   '/pipeline/engagements': typeof AuthenticatedPipelineEngagementsRoute
   '/pipeline/projects': typeof AuthenticatedPipelineProjectsRoute
   '/pipeline/tenders': typeof AuthenticatedPipelineTendersRoute
@@ -1264,6 +1306,7 @@ export interface FileRoutesByTo {
   '/it': typeof AuthenticatedItIndexRoute
   '/marketing': typeof AuthenticatedMarketingIndexRoute
   '/operations': typeof AuthenticatedOperationsIndexRoute
+  '/payment-ledger': typeof AuthenticatedPaymentLedgerIndexRoute
   '/pipeline': typeof AuthenticatedPipelineIndexRoute
   '/projects': typeof AuthenticatedProjectsIndexRoute
   '/reports': typeof AuthenticatedReportsIndexRoute
@@ -1275,6 +1318,7 @@ export interface FileRoutesByTo {
   '/finance/reports/$id': typeof AuthenticatedFinanceReportsIdRoute
   '/it/systems-sites/$systemId': typeof AuthenticatedItSystemsSitesSystemIdRoute
   '/marketing/blog/$postId': typeof AuthenticatedMarketingBlogPostIdRoute
+  '/payment-ledger/entries/$entryId': typeof AuthenticatedPaymentLedgerEntriesEntryIdRoute
   '/reports/departments/finance': typeof AuthenticatedReportsDepartmentsFinanceRoute
   '/reports/departments/hr': typeof AuthenticatedReportsDepartmentsHrRoute
   '/reports/departments/it': typeof AuthenticatedReportsDepartmentsItRoute
@@ -1309,6 +1353,7 @@ export interface FileRoutesById {
   '/_authenticated/marketing': typeof AuthenticatedMarketingRouteWithChildren
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/operations': typeof AuthenticatedOperationsRouteWithChildren
+  '/_authenticated/payment-ledger': typeof AuthenticatedPaymentLedgerRouteWithChildren
   '/_authenticated/pipeline': typeof AuthenticatedPipelineRouteWithChildren
   '/_authenticated/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/_authenticated/reports': typeof AuthenticatedReportsRouteWithChildren
@@ -1375,6 +1420,8 @@ export interface FileRoutesById {
   '/_authenticated/operations/shared-projects': typeof AuthenticatedOperationsSharedProjectsRoute
   '/_authenticated/operations/tasks': typeof AuthenticatedOperationsTasksRoute
   '/_authenticated/operations/workspace': typeof AuthenticatedOperationsWorkspaceRoute
+  '/_authenticated/payment-ledger/access': typeof AuthenticatedPaymentLedgerAccessRoute
+  '/_authenticated/payment-ledger/systems': typeof AuthenticatedPaymentLedgerSystemsRoute
   '/_authenticated/pipeline/engagements': typeof AuthenticatedPipelineEngagementsRoute
   '/_authenticated/pipeline/projects': typeof AuthenticatedPipelineProjectsRoute
   '/_authenticated/pipeline/tenders': typeof AuthenticatedPipelineTendersRoute
@@ -1415,6 +1462,7 @@ export interface FileRoutesById {
   '/_authenticated/it/': typeof AuthenticatedItIndexRoute
   '/_authenticated/marketing/': typeof AuthenticatedMarketingIndexRoute
   '/_authenticated/operations/': typeof AuthenticatedOperationsIndexRoute
+  '/_authenticated/payment-ledger/': typeof AuthenticatedPaymentLedgerIndexRoute
   '/_authenticated/pipeline/': typeof AuthenticatedPipelineIndexRoute
   '/_authenticated/projects/': typeof AuthenticatedProjectsIndexRoute
   '/_authenticated/reports/': typeof AuthenticatedReportsIndexRoute
@@ -1426,6 +1474,7 @@ export interface FileRoutesById {
   '/_authenticated/finance/reports/$id': typeof AuthenticatedFinanceReportsIdRoute
   '/_authenticated/it/systems-sites_/$systemId': typeof AuthenticatedItSystemsSitesSystemIdRoute
   '/_authenticated/marketing/blog/$postId': typeof AuthenticatedMarketingBlogPostIdRoute
+  '/_authenticated/payment-ledger/entries/$entryId': typeof AuthenticatedPaymentLedgerEntriesEntryIdRoute
   '/_authenticated/reports/departments/finance': typeof AuthenticatedReportsDepartmentsFinanceRoute
   '/_authenticated/reports/departments/hr': typeof AuthenticatedReportsDepartmentsHrRoute
   '/_authenticated/reports/departments/it': typeof AuthenticatedReportsDepartmentsItRoute
@@ -1460,6 +1509,7 @@ export interface FileRouteTypes {
     | '/marketing'
     | '/notifications'
     | '/operations'
+    | '/payment-ledger'
     | '/pipeline'
     | '/projects'
     | '/reports'
@@ -1526,6 +1576,8 @@ export interface FileRouteTypes {
     | '/operations/shared-projects'
     | '/operations/tasks'
     | '/operations/workspace'
+    | '/payment-ledger/access'
+    | '/payment-ledger/systems'
     | '/pipeline/engagements'
     | '/pipeline/projects'
     | '/pipeline/tenders'
@@ -1566,6 +1618,7 @@ export interface FileRouteTypes {
     | '/it/'
     | '/marketing/'
     | '/operations/'
+    | '/payment-ledger/'
     | '/pipeline/'
     | '/projects/'
     | '/reports/'
@@ -1577,6 +1630,7 @@ export interface FileRouteTypes {
     | '/finance/reports/$id'
     | '/it/systems-sites/$systemId'
     | '/marketing/blog/$postId'
+    | '/payment-ledger/entries/$entryId'
     | '/reports/departments/finance'
     | '/reports/departments/hr'
     | '/reports/departments/it'
@@ -1659,6 +1713,8 @@ export interface FileRouteTypes {
     | '/operations/shared-projects'
     | '/operations/tasks'
     | '/operations/workspace'
+    | '/payment-ledger/access'
+    | '/payment-ledger/systems'
     | '/pipeline/engagements'
     | '/pipeline/projects'
     | '/pipeline/tenders'
@@ -1699,6 +1755,7 @@ export interface FileRouteTypes {
     | '/it'
     | '/marketing'
     | '/operations'
+    | '/payment-ledger'
     | '/pipeline'
     | '/projects'
     | '/reports'
@@ -1710,6 +1767,7 @@ export interface FileRouteTypes {
     | '/finance/reports/$id'
     | '/it/systems-sites/$systemId'
     | '/marketing/blog/$postId'
+    | '/payment-ledger/entries/$entryId'
     | '/reports/departments/finance'
     | '/reports/departments/hr'
     | '/reports/departments/it'
@@ -1743,6 +1801,7 @@ export interface FileRouteTypes {
     | '/_authenticated/marketing'
     | '/_authenticated/notifications'
     | '/_authenticated/operations'
+    | '/_authenticated/payment-ledger'
     | '/_authenticated/pipeline'
     | '/_authenticated/projects'
     | '/_authenticated/reports'
@@ -1809,6 +1868,8 @@ export interface FileRouteTypes {
     | '/_authenticated/operations/shared-projects'
     | '/_authenticated/operations/tasks'
     | '/_authenticated/operations/workspace'
+    | '/_authenticated/payment-ledger/access'
+    | '/_authenticated/payment-ledger/systems'
     | '/_authenticated/pipeline/engagements'
     | '/_authenticated/pipeline/projects'
     | '/_authenticated/pipeline/tenders'
@@ -1849,6 +1910,7 @@ export interface FileRouteTypes {
     | '/_authenticated/it/'
     | '/_authenticated/marketing/'
     | '/_authenticated/operations/'
+    | '/_authenticated/payment-ledger/'
     | '/_authenticated/pipeline/'
     | '/_authenticated/projects/'
     | '/_authenticated/reports/'
@@ -1860,6 +1922,7 @@ export interface FileRouteTypes {
     | '/_authenticated/finance/reports/$id'
     | '/_authenticated/it/systems-sites_/$systemId'
     | '/_authenticated/marketing/blog/$postId'
+    | '/_authenticated/payment-ledger/entries/$entryId'
     | '/_authenticated/reports/departments/finance'
     | '/_authenticated/reports/departments/hr'
     | '/_authenticated/reports/departments/it'
@@ -1960,6 +2023,13 @@ declare module '@tanstack/react-router' {
       path: '/pipeline'
       fullPath: '/pipeline'
       preLoaderRoute: typeof AuthenticatedPipelineRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/payment-ledger': {
+      id: '/_authenticated/payment-ledger'
+      path: '/payment-ledger'
+      fullPath: '/payment-ledger'
+      preLoaderRoute: typeof AuthenticatedPaymentLedgerRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/operations': {
@@ -2094,6 +2164,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/pipeline/'
       preLoaderRoute: typeof AuthenticatedPipelineIndexRouteImport
       parentRoute: typeof AuthenticatedPipelineRoute
+    }
+    '/_authenticated/payment-ledger/': {
+      id: '/_authenticated/payment-ledger/'
+      path: '/'
+      fullPath: '/payment-ledger/'
+      preLoaderRoute: typeof AuthenticatedPaymentLedgerIndexRouteImport
+      parentRoute: typeof AuthenticatedPaymentLedgerRoute
     }
     '/_authenticated/operations/': {
       id: '/_authenticated/operations/'
@@ -2374,6 +2451,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/pipeline/engagements'
       preLoaderRoute: typeof AuthenticatedPipelineEngagementsRouteImport
       parentRoute: typeof AuthenticatedPipelineRoute
+    }
+    '/_authenticated/payment-ledger/systems': {
+      id: '/_authenticated/payment-ledger/systems'
+      path: '/systems'
+      fullPath: '/payment-ledger/systems'
+      preLoaderRoute: typeof AuthenticatedPaymentLedgerSystemsRouteImport
+      parentRoute: typeof AuthenticatedPaymentLedgerRoute
+    }
+    '/_authenticated/payment-ledger/access': {
+      id: '/_authenticated/payment-ledger/access'
+      path: '/access'
+      fullPath: '/payment-ledger/access'
+      preLoaderRoute: typeof AuthenticatedPaymentLedgerAccessRouteImport
+      parentRoute: typeof AuthenticatedPaymentLedgerRoute
     }
     '/_authenticated/operations/workspace': {
       id: '/_authenticated/operations/workspace'
@@ -2879,6 +2970,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReportsDepartmentsFinanceRouteImport
       parentRoute: typeof AuthenticatedReportsDepartmentsRoute
     }
+    '/_authenticated/payment-ledger/entries/$entryId': {
+      id: '/_authenticated/payment-ledger/entries/$entryId'
+      path: '/entries/$entryId'
+      fullPath: '/payment-ledger/entries/$entryId'
+      preLoaderRoute: typeof AuthenticatedPaymentLedgerEntriesEntryIdRouteImport
+      parentRoute: typeof AuthenticatedPaymentLedgerRoute
+    }
     '/_authenticated/marketing/blog/$postId': {
       id: '/_authenticated/marketing/blog/$postId'
       path: '/$postId'
@@ -3187,6 +3285,29 @@ const AuthenticatedOperationsRouteWithChildren =
     AuthenticatedOperationsRouteChildren,
   )
 
+interface AuthenticatedPaymentLedgerRouteChildren {
+  AuthenticatedPaymentLedgerAccessRoute: typeof AuthenticatedPaymentLedgerAccessRoute
+  AuthenticatedPaymentLedgerSystemsRoute: typeof AuthenticatedPaymentLedgerSystemsRoute
+  AuthenticatedPaymentLedgerIndexRoute: typeof AuthenticatedPaymentLedgerIndexRoute
+  AuthenticatedPaymentLedgerEntriesEntryIdRoute: typeof AuthenticatedPaymentLedgerEntriesEntryIdRoute
+}
+
+const AuthenticatedPaymentLedgerRouteChildren: AuthenticatedPaymentLedgerRouteChildren =
+  {
+    AuthenticatedPaymentLedgerAccessRoute:
+      AuthenticatedPaymentLedgerAccessRoute,
+    AuthenticatedPaymentLedgerSystemsRoute:
+      AuthenticatedPaymentLedgerSystemsRoute,
+    AuthenticatedPaymentLedgerIndexRoute: AuthenticatedPaymentLedgerIndexRoute,
+    AuthenticatedPaymentLedgerEntriesEntryIdRoute:
+      AuthenticatedPaymentLedgerEntriesEntryIdRoute,
+  }
+
+const AuthenticatedPaymentLedgerRouteWithChildren =
+  AuthenticatedPaymentLedgerRoute._addFileChildren(
+    AuthenticatedPaymentLedgerRouteChildren,
+  )
+
 interface AuthenticatedPipelineRouteChildren {
   AuthenticatedPipelineEngagementsRoute: typeof AuthenticatedPipelineEngagementsRoute
   AuthenticatedPipelineProjectsRoute: typeof AuthenticatedPipelineProjectsRoute
@@ -3372,6 +3493,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedMarketingRoute: typeof AuthenticatedMarketingRouteWithChildren
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedOperationsRoute: typeof AuthenticatedOperationsRouteWithChildren
+  AuthenticatedPaymentLedgerRoute: typeof AuthenticatedPaymentLedgerRouteWithChildren
   AuthenticatedPipelineRoute: typeof AuthenticatedPipelineRouteWithChildren
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRouteWithChildren
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRouteWithChildren
@@ -3404,6 +3526,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedMarketingRoute: AuthenticatedMarketingRouteWithChildren,
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedOperationsRoute: AuthenticatedOperationsRouteWithChildren,
+  AuthenticatedPaymentLedgerRoute: AuthenticatedPaymentLedgerRouteWithChildren,
   AuthenticatedPipelineRoute: AuthenticatedPipelineRouteWithChildren,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRouteWithChildren,
   AuthenticatedReportsRoute: AuthenticatedReportsRouteWithChildren,
