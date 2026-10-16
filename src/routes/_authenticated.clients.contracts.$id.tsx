@@ -1,7 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft,
   Loader2,
   Upload,
   FileText,
@@ -9,11 +8,14 @@ import {
   Download,
   AlertTriangle,
   Calendar,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import {
   useContract,
   useContractDocuments,
+  useDeleteContract,
   useDepartments,
   useProfilesLite,
   uploadContractDocument,
@@ -30,8 +32,16 @@ import {
   type ContractDocumentRow,
 } from "@/features/clients/use-clients-contracts";
 import { useClients, useServiceLines } from "@/features/finance/use-finance-data";
+import { ContractFormDialog } from "@/features/clients/contract-form-dialog";
 import { formatCurrency } from "@/features/finance/finance";
+import { RelatedRecords, type RelatedRecordItem } from "@/components/related-records";
+import { EntityBreadcrumb, type BreadcrumbSegment } from "@/components/entity-breadcrumb";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
+import { formatDate } from "@/lib/format-date";
+import { useAuth, type AppRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -45,18 +55,92 @@ export const Route = createFileRoute("/_authenticated/clients/contracts/$id")({
   component: ContractDetail,
 });
 
+function buildContractRelated(
+  c: NonNullable<ReturnType<typeof useContract>["data"]>,
+  clientName: string | null,
+): RelatedRecordItem[] {
+  const items: RelatedRecordItem[] = [];
+  if (c.tender_id) {
+    items.push({
+      label: "Tender",
+      title: c.tender_title ?? "Tender",
+      to: `/tender/${c.tender_id}`,
+    });
+  }
+  if (c.client_request_id) {
+    items.push({
+      label: "Client request",
+      title: c.client_request_title ?? "Client request",
+      to: `/requests/${c.client_request_id}`,
+    });
+  }
+  for (const p of c.project_ids) {
+    items.push({ label: "Project", title: p.name, to: `/projects/${p.id}` });
+  }
+  if (clientName) {
+    items.push({
+      label: "Client",
+      title: clientName,
+      to: `/clients?q=${encodeURIComponent(clientName)}`,
+    });
+  }
+  return items;
+}
+
+// Plain-language file type, e.g. "PDF" or "Word document", instead of a raw mime type.
+function friendlyFileType(fileName: string, mime: string | null): string {
+  const m = (mime ?? "").toLowerCase();
+  const ext = fileName.includes(".") ? fileName.split(".").pop()!.toLowerCase() : "";
+  if (m === "application/pdf" || ext === "pdf") return "PDF";
+  if (m.includes("wordprocessingml") || m === "application/msword" || ["doc", "docx"].includes(ext))
+    return "Word document";
+  if (
+    m.includes("spreadsheetml") ||
+    m === "application/vnd.ms-excel" ||
+    ["xls", "xlsx", "csv"].includes(ext)
+  )
+    return "Excel sheet";
+  if (m.startsWith("image/")) return "Image";
+  return ext ? ext.toUpperCase() : "File";
+}
+
+function buildContractBreadcrumb(
+  c: NonNullable<ReturnType<typeof useContract>["data"]>,
+): BreadcrumbSegment[] {
+  const segments: BreadcrumbSegment[] = [];
+  if (c.tender_id) {
+    segments.push({ label: "Tenders", to: "/tender" });
+    segments.push({ label: c.tender_title ?? "Tender", to: `/tender/${c.tender_id}` });
+  } else if (c.client_request_id) {
+    segments.push({ label: "Client requests", to: "/requests" });
+    segments.push({
+      label: c.client_request_title ?? "Request",
+      to: `/requests/${c.client_request_id}`,
+    });
+  } else {
+    segments.push({ label: "Contracts", to: "/clients/contracts" });
+  }
+  segments.push({ label: c.title });
+  return segments;
+}
+
 function ContractDetail() {
   const { id } = Route.useParams();
+  const navigate = useNavigate();
   const qc = useQueryClient();
+  const { isAdminOrCeo, hasRole } = useAuth();
   const contractQ = useContract(id);
   const docsQ = useContractDocuments(id);
   const clientsQ = useClients();
   const deptsQ = useDepartments();
   const profilesQ = useProfilesLite();
   const linesQ = useServiceLines();
+  const deleteContract = useDeleteContract();
   const [uploading, setUploading] = useState(false);
   const [uploadCategory, setUploadCategory] = useState<DocumentCategory>("signed");
   const [filterCat, setFilterCat] = useState<DocumentCategory | "all">("all");
+  const [editing, setEditing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const docs = useMemo(() => (docsQ.data ?? []) as ContractDocumentRow[], [docsQ.data]);
   const catCounts = useMemo(() => {
@@ -69,6 +153,20 @@ function ContractDetail() {
     return (
       <div className="py-12 flex justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+  if (contractQ.isError) {
+    return (
+      <div className="space-y-3">
+        <LoadError
+          what="this contract"
+          error={contractQ.error}
+          onRetry={() => contractQ.refetch()}
+        />
+        <Link to="/clients/contracts" className="text-sm text-primary underline">
+          Back to contracts
+        </Link>
       </div>
     );
   }
@@ -91,6 +189,27 @@ function ContractDetail() {
     ? profilesQ.data?.find((p) => p.id === c.account_manager_id)
     : null;
   const renewal = getRenewalInfo(c.end_date);
+  // Mirrors the backend's assertContractDeptAccess exactly — same rule as the Contracts list.
+  const canManage = c.department_id
+    ? isAdminOrCeo || (!!dept?.code && hasRole(dept.code as AppRole))
+    : isAdminOrCeo;
+
+  const handleDelete = async () => {
+    const ok = await confirmDialog({
+      title: `Delete contract "${c.title}"?`,
+      description: "Attached documents will also be removed.",
+      confirmLabel: "Delete contract",
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteContract.mutate(c.id, {
+      onSuccess: () => {
+        toast.success("Contract deleted");
+        navigate({ to: "/clients/contracts" });
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
+    });
+  };
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -117,13 +236,19 @@ function ContractDetail() {
   };
 
   const removeDoc = async (docId: string) => {
-    if (!confirm("Delete this document?")) return;
     const doc = (docsQ.data ?? []).find((d) => d.id === docId);
     if (!doc) return;
+    const ok = await confirmDialog({
+      title: `Delete ${doc.file_name}?`,
+      description: "The file will be removed from this contract.",
+      confirmLabel: "Delete document",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await deleteContractDocument(doc);
       qc.invalidateQueries({ queryKey: ["contract-documents", c.id] });
-      toast.success("Deleted");
+      toast.success("Document deleted");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
     }
@@ -134,12 +259,34 @@ function ContractDetail() {
 
   return (
     <div className="space-y-4">
-      <Link
-        to="/clients/contracts"
-        className="text-xs text-muted-foreground inline-flex items-center gap-1 hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" /> Back to contracts
-      </Link>
+      <div className="flex items-start justify-between gap-2">
+        <EntityBreadcrumb segments={buildContractBreadcrumb(c)} />
+        {canManage && (
+          <div className="flex gap-1 shrink-0">
+            <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+              <Pencil className="h-3.5 w-3.5 mr-1" /> Edit contract
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-destructive"
+              disabled={deleteContract.isPending}
+              onClick={handleDelete}
+            >
+              {deleteContract.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+              )}
+              Delete contract
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {!canManage && !deptsQ.isLoading && (
+        <ViewOnlyBanner area="this contract" action="edit or delete it" />
+      )}
 
       <div className="rounded-lg border bg-card p-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -171,7 +318,7 @@ function ContractDetail() {
             </div>
           </div>
           <div className="text-right">
-            <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">Value</div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground">Value</div>
             <div className="text-xl font-semibold tabular-nums">
               {formatCurrency(Number(c.value))}{" "}
               <span className="text-xs text-muted-foreground">{c.currency}</span>
@@ -186,10 +333,10 @@ function ContractDetail() {
           <Field label="Service line" value={line?.name ?? "—"} />
           <Field label="Account manager" value={mgr ? (mgr.full_name ?? mgr.email) : "—"} />
           <Field label="Billing" value={BILLING_LABELS[c.billing_frequency]} />
-          <Field label="Start" value={c.start_date} />
-          <Field label="End" value={c.end_date ?? "—"} />
-          <Field label="Next invoice" value={c.next_invoice_date ?? "—"} />
-          <Field label="Created" value={new Date(c.created_at).toLocaleDateString()} />
+          <Field label="Start" value={formatDate(c.start_date)} />
+          <Field label="End" value={formatDate(c.end_date)} />
+          <Field label="Next invoice" value={formatDate(c.next_invoice_date)} />
+          <Field label="Created" value={formatDate(c.created_at)} />
         </div>
 
         {c.notes && (
@@ -199,6 +346,13 @@ function ContractDetail() {
           </div>
         )}
       </div>
+
+      <ContractMoneySummary contract={c} />
+
+      <RelatedRecords
+        items={buildContractRelated(c, client?.name ?? null)}
+        engagementTo={`/engagements/contract/${c.id}`}
+      />
 
       {/* Renewal / expiry timeline */}
       <RenewalTimeline startDate={c.start_date} endDate={c.end_date} autoRenew={c.auto_renew} />
@@ -239,19 +393,27 @@ function ContractDetail() {
                 ))}
               </SelectContent>
             </Select>
-            <label className="inline-flex">
-              <input type="file" className="hidden" onChange={onUpload} disabled={uploading} />
-              <Button size="sm" variant="outline" asChild disabled={uploading}>
-                <span>
-                  {uploading ? (
-                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4 mr-1" />
-                  )}
-                  Upload file
-                </span>
-              </Button>
-            </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={onUpload}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploading ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4 mr-1" />
+              )}
+              {uploading ? "Uploading…" : "Upload document"}
+            </Button>
           </div>
         </div>
 
@@ -260,8 +422,10 @@ function ContractDetail() {
           {DOCUMENT_CATEGORIES.filter((k) => (catCounts[k] ?? 0) > 0).map((k) => (
             <button
               key={k}
+              type="button"
+              aria-pressed={filterCat === k}
               onClick={() => setFilterCat(filterCat === k ? "all" : k)}
-              className={`text-[0.625rem] px-2 py-0.5 rounded border transition-colors ${DOCUMENT_CATEGORY_STYLES[k]} ${filterCat === k ? "ring-2 ring-primary/40" : ""}`}
+              className={`text-xs px-2 py-0.5 rounded border transition-colors ${DOCUMENT_CATEGORY_STYLES[k]} ${filterCat === k ? "ring-2 ring-primary/40" : ""}`}
             >
               {DOCUMENT_CATEGORY_LABELS[k]} · {catCounts[k]}
             </button>
@@ -273,9 +437,18 @@ function ContractDetail() {
             <div className="py-4 flex justify-center">
               <Loader2 className="h-4 w-4 animate-spin text-primary" />
             </div>
-          ) : filteredDocs.length === 0 ? (
+          ) : docsQ.isError ? (
+            <LoadError what="documents" error={docsQ.error} onRetry={() => docsQ.refetch()} />
+          ) : docs.length === 0 ? (
             <div className="text-xs text-muted-foreground py-4 text-center">
-              No documents in this category.
+              No documents yet. Upload the signed contract so everyone works from the same copy.
+            </div>
+          ) : filteredDocs.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-4 text-xs text-muted-foreground">
+              <span>No documents in this category</span>
+              <Button size="sm" variant="outline" onClick={() => setFilterCat("all")}>
+                Show all categories
+              </Button>
             </div>
           ) : (
             filteredDocs.map((d) => {
@@ -290,21 +463,32 @@ function ContractDetail() {
                     <div className="truncate font-medium flex items-center gap-2">
                       {d.file_name}
                       <span
-                        className={`text-[0.5625rem] px-1.5 py-0.5 rounded ${DOCUMENT_CATEGORY_STYLES[cat]}`}
+                        className={`text-[0.625rem] px-1.5 py-0.5 rounded ${DOCUMENT_CATEGORY_STYLES[cat]}`}
                       >
                         {DOCUMENT_CATEGORY_LABELS[cat]}
                       </span>
                     </div>
-                    <div className="text-[0.625rem] text-muted-foreground">
+                    <div className="text-xs text-muted-foreground">
                       {d.size_bytes ? `${(d.size_bytes / 1024).toFixed(1)} KB · ` : ""}
-                      {d.mime_type ? `${d.mime_type} · ` : ""}
-                      {new Date(d.created_at).toLocaleDateString()}
+                      {friendlyFileType(d.file_name, d.mime_type)} · {formatDate(d.created_at)}
                     </div>
                   </div>
-                  <Button size="sm" variant="ghost" onClick={() => openDoc(d)} title="Download">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => openDoc(d)}
+                    title={`Download ${d.file_name}`}
+                    aria-label={`Download ${d.file_name}`}
+                  >
                     <Download className="h-3.5 w-3.5" />
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => removeDoc(d.id)} title="Delete">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => removeDoc(d.id)}
+                    title={`Delete ${d.file_name}`}
+                    aria-label={`Delete ${d.file_name}`}
+                  >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -313,6 +497,68 @@ function ContractDetail() {
           )}
         </div>
       </div>
+
+      {editing && (
+        <ContractFormDialog
+          key={c.id}
+          draft={{
+            id: c.id,
+            title: c.title,
+            contract_number: c.contract_number ?? "",
+            client_id: c.client_id,
+            department_id: c.department_id ?? "",
+            service_line_id: c.service_line_id ?? "",
+            account_manager_id: c.account_manager_id ?? "",
+            status: c.status,
+            billing_frequency: c.billing_frequency,
+            start_date: c.start_date,
+            end_date: c.end_date ?? "",
+            value: String(c.value),
+            currency: c.currency,
+            next_invoice_date: c.next_invoice_date ?? "",
+            auto_renew: c.auto_renew,
+            description: c.description ?? "",
+            notes: c.notes ?? "",
+          }}
+          onClose={() => setEditing(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Money in and owed on this contract, from its invoices (void invoices excluded).
+function ContractMoneySummary({
+  contract: c,
+}: {
+  contract: NonNullable<ReturnType<typeof useContract>["data"]>;
+}) {
+  const value = Number(c.value);
+  const pct = value > 0 ? (c.invoiced_total / value) * 100 : 0;
+  const money = (n: number) => formatCurrency(n, c.currency);
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="text-sm font-semibold mb-3">Money summary</div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm">
+        <Field label="Contract value" value={money(value)} />
+        <div className="col-span-2 sm:col-span-1">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground">
+            Invoiced so far
+          </div>
+          <div className="mt-0.5 tabular-nums">{money(c.invoiced_total)}</div>
+          <Progress
+            value={Math.min(100, pct)}
+            className="mt-1.5 h-1.5"
+            aria-label={`${pct.toFixed(0)}% of the contract value invoiced`}
+          />
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {value > 0 ? `${pct.toFixed(0)}% of value` : "No contract value set"}
+          </div>
+        </div>
+        <Field label="Paid" value={money(c.paid_total)} />
+        <Field label="Outstanding" value={money(c.outstanding_total)} />
+        <Field label="Invoices" value={String(c.invoice_count ?? 0)} />
+      </div>
     </div>
   );
 }
@@ -320,7 +566,7 @@ function ContractDetail() {
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="mt-0.5">{value}</div>
     </div>
   );
@@ -365,7 +611,9 @@ function RenewalTimeline({
         <div className="text-sm font-semibold inline-flex items-center gap-1.5">
           <Calendar className="h-4 w-4 text-primary" /> Renewal / expiry timeline
         </div>
-        <span className={`text-[0.625rem] px-1.5 py-0.5 rounded ${info.className}`}>{info.label}</span>
+        <span className={`text-[0.625rem] px-1.5 py-0.5 rounded ${info.className}`}>
+          {info.label}
+        </span>
       </div>
 
       <div className="relative mt-3">
@@ -382,10 +630,10 @@ function RenewalTimeline({
         )}
       </div>
 
-      <div className="flex justify-between text-[0.625rem] text-muted-foreground mt-1.5">
-        <span>Start · {startDate}</span>
-        <span>Today · {today.toISOString().slice(0, 10)}</span>
-        <span>{end ? `End · ${endDate}` : "No end date"}</span>
+      <div className="flex flex-wrap justify-between gap-x-3 text-xs text-muted-foreground mt-1.5">
+        <span>Start · {formatDate(startDate)}</span>
+        <span>Today · {formatDate(today)}</span>
+        <span>{end ? `End · ${formatDate(endDate)}` : "No end date"}</span>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-sm">
@@ -421,7 +669,7 @@ function RenewalTimeline({
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded border p-2">
-      <div className="text-[0.625rem] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="text-sm font-semibold tabular-nums">{value}</div>
     </div>
   );

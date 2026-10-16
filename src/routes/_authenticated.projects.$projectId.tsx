@@ -1,37 +1,34 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
-import { ArrowLeft, Loader2, Plus } from "lucide-react";
+import { ChevronDown, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/confirm-dialog";
 import {
   useProject,
-  useTasks,
+  useProjects,
   useCreateTask,
-  useUpdateTask,
-  useMilestones,
+  useDeleteProject,
   TASK_PRIORITY_LABELS,
-  type Task,
-  type TaskStatus,
   type TaskPriority,
 } from "@/features/projects/use-projects";
-import { useCostItems } from "@/features/project-workspace/use-project-workspace";
-import { useProjectActivities, useLogProjectActivity } from "@/features/pipeline/use-pipeline";
-import { useDepartments, useProfilesLite } from "@/features/clients/use-clients-contracts";
-import { useAuth, type AppRole } from "@/lib/auth";
-import { TaskDetailDialog } from "@/features/projects/task-detail-dialog";
-import { AttachmentsPanel } from "@/features/documents/attachments-panel";
-import { ActivityPane } from "@/components/pipeline/activity-pane";
-import { WorkspaceHeader } from "@/components/project-workspace/workspace-header";
-import { OverviewTab } from "@/components/project-workspace/overview-tab";
-import { TasksTab } from "@/components/project-workspace/tasks-tab";
-import { GanttTab } from "@/components/project-workspace/gantt-tab";
-import { TeamTab } from "@/components/project-workspace/team-tab";
-import { FinancialsTab } from "@/components/project-workspace/financials-tab";
-import { CalendarTab } from "@/components/project-workspace/calendar-tab";
-import { RaidTab } from "@/components/project-workspace/raid-tab";
+import { useDepartments } from "@/features/clients/use-clients-contracts";
+import { EditProjectDialog } from "@/features/projects/edit-project-dialog";
+import { useProjectAccess } from "@/features/projects/use-project-sharing";
+import { ShareDialog } from "@/features/permissions/share-dialog";
+import { ProjectBackLink, useProjectBack } from "@/features/projects/project-back-link";
+import { StaffSelect } from "@/features/projects/staff-picker";
+import {
+  PROJECT_TABS,
+  ProjectWorkspace,
+  type ProjectTab,
+} from "@/features/projects/workspace/project-workspace";
+import { LoadError } from "@/components/load-error";
+import { FormField, RequiredNote } from "@/components/form-field";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -48,32 +45,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-const TABS = [
-  ["overview", "Overview"],
-  ["tasks", "Tasks"],
-  ["gantt", "Gantt & Timeline"],
-  ["team", "Team & Resources"],
-  ["financials", "Financials"],
-  ["calendar", "Calendar"],
-  ["comms", "Communications"],
-  ["raid", "Risks & Issues"],
-  ["documents", "Documents"],
-] as const;
-
+// Older links may name tabs that no longer exist; they open the Overview.
 const searchSchema = z.object({
-  view: z
-    .union([
-      z.literal("overview"),
-      z.literal("tasks"),
-      z.literal("gantt"),
-      z.literal("team"),
-      z.literal("financials"),
-      z.literal("calendar"),
-      z.literal("comms"),
-      z.literal("raid"),
-      z.literal("documents"),
-    ])
-    .catch("overview"),
+  view: z.string().optional().catch(undefined),
+  from: z.string().optional().catch(undefined),
 });
 
 export const Route = createFileRoute("/_authenticated/projects/$projectId")({
@@ -83,26 +58,23 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
 
 function ProjectDetail() {
   const { projectId } = Route.useParams();
-  const { view } = Route.useSearch();
+  const { view: requestedView, from } = Route.useSearch();
   const navigate = Route.useNavigate();
 
   const projectQ = useProject(projectId);
-  const tasksQ = useTasks({ projectId });
-  const milestonesQ = useMilestones(projectId);
-  const costItemsQ = useCostItems(projectId);
-  const activitiesQ = useProjectActivities(projectId);
-  const logActivity = useLogProjectActivity(projectId);
-  const updateTask = useUpdateTask();
-  const { hasRole, isAdminOrCeo } = useAuth();
+  const deleteProject = useDeleteProject();
   const departmentsQ = useDepartments();
-  const profilesQ = useProfilesLite();
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
-  const tasks = tasksQ.data ?? [];
-  const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
-  const profileMap = new Map((profilesQ.data ?? []).map((p) => [p.id, p.full_name ?? p.email]));
-
-  const setView = (v: (typeof TABS)[number][0]) => navigate({ search: { view: v }, replace: true });
+  const project = projectQ.data;
+  const departmentCode =
+    project?.department_code ??
+    departmentsQ.data?.find((d) => d.id === project?.department_id)?.code;
+  const back = useProjectBack(departmentCode, from);
+  const access = useProjectAccess(
+    project?.scope === "department" ? projectId : undefined,
+    departmentCode,
+  );
 
   if (projectQ.isLoading) {
     return (
@@ -111,215 +83,294 @@ function ProjectDetail() {
       </div>
     );
   }
-  const project = projectQ.data;
-  if (!project) return <div className="text-sm text-muted-foreground">Project not found.</div>;
-
-  const departmentCode = departmentsQ.data?.find((d) => d.id === project.department_id)?.code;
-  const canManageDocuments = isAdminOrCeo || (!!departmentCode && hasRole(departmentCode as AppRole));
-
-  const handleStatusChange = (taskId: string, status: TaskStatus) => {
-    updateTask.mutate(
-      { id: taskId, status },
-      { onError: (err) => toast.error(err instanceof Error ? err.message : "Update failed") },
+  if (!project) {
+    return (
+      <div className="space-y-3">
+        <ProjectBackLink back={back} />
+        <LoadError what="this project" error={projectQ.error} onRetry={() => projectQ.refetch()} />
+      </div>
     );
+  }
+
+  const view: ProjectTab = (PROJECT_TABS as readonly string[]).includes(requestedView ?? "")
+    ? (requestedView as ProjectTab)
+    : "overview";
+  const isCompany = project.scope === "company";
+
+  const handleDeleteProject = async () => {
+    const ok = await confirmDialog({
+      title: `Delete "${project.name}"?`,
+      description:
+        "This removes all its tasks, deliverables, discussions and files too. This can't be undone.",
+      confirmLabel: "Delete project",
+      destructive: true,
+    });
+    if (!ok) return;
+    deleteProject.mutate(project.id, {
+      onSuccess: () => {
+        toast.success("Project deleted");
+        navigate({ href: back.href });
+      },
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Delete failed"),
+    });
   };
 
-  const actualCost = (costItemsQ.data ?? []).reduce((a, c) => a + c.actual_amount, 0);
+  const departmentActions = access.canEdit && (
+    <>
+      <ShareDialog resource="projects" resourceId={projectId} recordLabel="project" />
+      <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+        <Pencil className="h-3.5 w-3.5 mr-1" /> Edit project
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="text-muted-foreground hover:text-destructive"
+        disabled={deleteProject.isPending}
+        onClick={handleDeleteProject}
+      >
+        {deleteProject.isPending ? (
+          <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+        ) : (
+          <Trash2 className="h-3.5 w-3.5 mr-1" />
+        )}
+        Delete project
+      </Button>
+    </>
+  );
 
   return (
-    <div className="pipeline-scope space-y-3">
-      <Link
-        to="/projects"
-        className="text-xs inline-flex items-center gap-1 hover:opacity-80"
-        style={{ color: "var(--pipeline-slate)" }}
-      >
-        <ArrowLeft className="h-3 w-3" /> Back to projects
-      </Link>
-
-      <WorkspaceHeader project={project} tasks={tasks} actualCost={actualCost} />
-
-      <div className="ws-tabbar">
-        {TABS.map(([v, label]) => (
-          <button key={v} onClick={() => setView(v)} className={`ws-tabbtn ${view === v ? "active" : ""}`}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <div>
-        {view === "overview" && (
-          <OverviewTab project={project} tasks={tasks} milestones={milestonesQ.data ?? []} actualCost={actualCost} />
-        )}
-        {view === "tasks" &&
-          (tasksQ.isLoading ? (
-            <div className="py-12 flex justify-center">
-              <Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--pipeline-ink)" }} />
-            </div>
-          ) : (
-            <TasksTab
-              tasks={tasks}
-              profileMap={profileMap}
-              onTaskClick={(t) => setSelectedTaskId(t.id)}
-              onStatusChange={handleStatusChange}
-              newTaskAction={<NewTaskDialog projectId={projectId} />}
-            />
-          ))}
-        {view === "gantt" && <GanttTab project={project} tasks={tasks} milestones={milestonesQ.data ?? []} />}
-        {view === "team" && <TeamTab projectId={projectId} />}
-        {view === "financials" && <FinancialsTab project={project} projectId={projectId} />}
-        {view === "calendar" && <CalendarTab tasks={tasks} milestones={milestonesQ.data ?? []} />}
-        {view === "comms" && (
-          <div className="ws-panel">
-            <h3>Communications Log</h3>
-            <ActivityPane
-              activities={activitiesQ.data ?? []}
-              isLoading={activitiesQ.isLoading}
-              isAdding={logActivity.isPending}
-              onAdd={(type, summary) =>
-                logActivity.mutate(
-                  { type, summary },
-                  { onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to log") },
-                )
-              }
-            />
-          </div>
-        )}
-        {view === "raid" && <RaidTab projectId={projectId} />}
-        {view === "documents" && (
-          <div className="ws-panel">
-            <AttachmentsPanel resourceType="project" resourceId={projectId} canManage={canManageDocuments} />
-          </div>
-        )}
-      </div>
-
-      <TaskDetailDialog
-        task={selectedTask}
-        onClose={() => setSelectedTaskId(null)}
-        canManageDocuments={canManageDocuments}
-        projectTasks={tasks}
+    <>
+      <ProjectWorkspace
+        project={project}
+        view={view}
+        onViewChange={(v) =>
+          navigate({
+            search: (prev: z.infer<typeof searchSchema>) => ({ ...prev, view: v }),
+            replace: true,
+          })
+        }
+        canEditDepartmentProject={access.canEdit}
+        back={isCompany ? <CompanyBackLink /> : <ProjectBackLink back={back} />}
+        departmentActions={departmentActions}
       />
-    </div>
+      {editing && <EditProjectDialog project={project} onClose={() => setEditing(false)} />}
+    </>
   );
 }
 
-function NewTaskDialog({ projectId }: { projectId: string }) {
-  const profilesQ = useProfilesLite();
+function CompanyBackLink() {
+  return (
+    <ProjectBackLink
+      back={{
+        to: "/projects/company",
+        href: "/projects/company",
+        search: {},
+        label: "company projects",
+      }}
+    />
+  );
+}
+
+type NewTaskErrors = Partial<Record<"projectId" | "title" | "dueDate", string>>;
+
+// Takes a fixed `projectId` (a project's Tasks tab) or a `departmentId` (department task board).
+export function NewTaskDialog({
+  projectId: fixedProjectId,
+  departmentId,
+}: {
+  projectId?: string;
+  departmentId?: string;
+}) {
+  const departmentProjectsQ = useProjects({
+    departmentId,
+    enabled: !!departmentId && !fixedProjectId,
+  });
   const createTask = useCreateTask();
   const [open, setOpen] = useState(false);
+  const [projectId, setProjectId] = useState(fixedProjectId ?? "");
   const [title, setTitle] = useState("");
-  const [phase, setPhase] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("medium");
   const [assigneeId, setAssigneeId] = useState("");
-  const [estimatedHours, setEstimatedHours] = useState("");
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [showMore, setShowMore] = useState(false);
+  const [errors, setErrors] = useState<NewTaskErrors>({});
+
+  const dirty =
+    open &&
+    (!!title.trim() ||
+      (!fixedProjectId && !!projectId) ||
+      !!assigneeId ||
+      !!startDate ||
+      !!dueDate ||
+      priority !== "medium");
+  const { guardClose } = useUnsavedChanges(dirty);
+
+  const close = () => {
+    setOpen(false);
+    setProjectId(fixedProjectId ?? "");
+    setTitle("");
+    setPriority("medium");
+    setAssigneeId("");
+    setStartDate("");
+    setDueDate("");
+    setShowMore(false);
+    setErrors({});
+  };
 
   const submit = () => {
-    if (!title.trim()) {
-      toast.error("Title is required");
-      return;
-    }
+    const found: NewTaskErrors = {};
+    if (!projectId) found.projectId = "Choose the project this task belongs to.";
+    if (!title.trim()) found.title = "Say what needs doing, e.g. “Send offer letters”.";
+    if (startDate && dueDate && dueDate < startDate)
+      found.dueDate = "The due date can't be before the start date.";
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
     createTask.mutate(
       {
         projectId,
         title: title.trim(),
-        phase: phase.trim() || undefined,
         priority,
         assigneeId: assigneeId || undefined,
-        estimatedHours: estimatedHours ? Number(estimatedHours) : undefined,
         startDate: startDate || undefined,
         dueDate: dueDate || undefined,
       },
       {
         onSuccess: () => {
           toast.success("Task created");
-          setOpen(false);
-          setTitle("");
-          setPhase("");
-          setPriority("medium");
-          setAssigneeId("");
-          setEstimatedHours("");
-          setStartDate("");
-          setDueDate("");
+          close();
         },
         onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to create"),
       },
     );
   };
 
+  const projects = departmentProjectsQ.data ?? [];
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : guardClose(close))}>
       <DialogTrigger asChild>
-        <Button size="sm" style={{ background: "var(--pipeline-ink)" }}>
+        <Button size="sm">
           <Plus className="h-4 w-4 mr-1" /> New task
         </Button>
       </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>New task</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label>Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <form
+          noValidate
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>New task</DialogTitle>
+            <RequiredNote />
+          </DialogHeader>
+          <div className="space-y-3">
+            {!fixedProjectId && (
+              <FormField id="new-task-project" label="Project" required error={errors.projectId}>
+                {departmentProjectsQ.isError ? (
+                  <LoadError
+                    what="projects"
+                    error={departmentProjectsQ.error}
+                    onRetry={() => departmentProjectsQ.refetch()}
+                  />
+                ) : (
+                  <Select value={projectId} onValueChange={setProjectId}>
+                    <SelectTrigger id="new-task-project" aria-invalid={!!errors.projectId}>
+                      <SelectValue
+                        placeholder={
+                          departmentProjectsQ.isLoading
+                            ? "Loading projects…"
+                            : projects.length === 0
+                              ? "No projects yet — create a project first"
+                              : "Choose a project"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FormField>
+            )}
+            <FormField id="new-task-title" label="Title" required error={errors.title}>
+              <Input
+                id="new-task-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                autoFocus
+                aria-invalid={!!errors.title}
+              />
+            </FormField>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <FormField id="new-task-assignee" label="Assign to">
+                <StaffSelect id="new-task-assignee" value={assigneeId} onChange={setAssigneeId} />
+              </FormField>
+              <FormField id="new-task-due" label="Due date" error={errors.dueDate}>
+                <Input
+                  id="new-task-due"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  aria-invalid={!!errors.dueDate}
+                />
+              </FormField>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowMore((v) => !v)}
+              className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+              aria-expanded={showMore}
+            >
+              <ChevronDown
+                className={cn("h-3.5 w-3.5 transition-transform", showMore && "rotate-180")}
+              />
+              More details (priority, start date)
+            </button>
+            {showMore && (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <FormField id="new-task-priority" label="Priority">
+                  <Select value={priority} onValueChange={(v) => setPriority(v as TaskPriority)}>
+                    <SelectTrigger id="new-task-priority">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(TASK_PRIORITY_LABELS).map(([v, label]) => (
+                        <SelectItem key={v} value={v}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField id="new-task-start" label="Start date">
+                  <Input
+                    id="new-task-start"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </FormField>
+              </div>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Phase</Label>
-              <Input value={phase} onChange={(e) => setPhase(e.target.value)} placeholder="e.g. Discovery" />
-            </div>
-            <div>
-              <Label>Est. hours</Label>
-              <Input type="number" value={estimatedHours} onChange={(e) => setEstimatedHours(e.target.value)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label>Priority</Label>
-              <Select value={priority} onValueChange={(v) => setPriority(v as TaskPriority)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(TASK_PRIORITY_LABELS).map(([v, label]) => (
-                    <SelectItem key={v} value={v}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Start date</Label>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-            </div>
-            <div>
-              <Label>Due date</Label>
-              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <Label>Assignee</Label>
-            <Select value={assigneeId} onValueChange={setAssigneeId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Unassigned" />
-              </SelectTrigger>
-              <SelectContent>
-                {(profilesQ.data ?? []).map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.full_name ?? p.email}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={submit} disabled={createTask.isPending} style={{ background: "var(--pipeline-ink)" }}>
-            {createTask.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Create task
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => guardClose(close)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createTask.isPending}>
+              {createTask.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Create task
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

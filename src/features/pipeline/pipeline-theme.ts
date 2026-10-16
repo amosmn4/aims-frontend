@@ -1,14 +1,3 @@
-// Color/type tokens lifted directly from the AMSOL Pipeline prototype (amsol_pipeline.html)
-// so the three boards, spine and cards read as one visual system rather than three
-// differently-styled screens bolted together. Department colors are re-mapped onto AIMS's
-// actual 5 departments (kept as-is per the reconciliation decision — no "Compliance & Legal"
-// department exists here) instead of the prototype's own 6-department demo taxonomy.
-
-export const PIPELINE_INK = "#16233F";
-export const PIPELINE_INK_2 = "#1F3157";
-export const PIPELINE_PAPER = "#F1F2EC";
-export const PIPELINE_PAPER_2 = "#FFFFFF";
-export const PIPELINE_LINE = "#DBDED2";
 export const PIPELINE_LINE_SOFT = "#E8E9E2";
 export const PIPELINE_SLATE = "#5B6470";
 export const PIPELINE_SLATE_LIGHT = "#8B93A0";
@@ -29,7 +18,7 @@ export const DEPT_COLORS: Record<string, { text: string; bg: string }> = {
   tender: { text: "#8C5F1D", bg: PIPELINE_GOLD_SOFT },
   hr: { text: PIPELINE_TEAL, bg: PIPELINE_TEAL_SOFT },
   finance: { text: PIPELINE_BLUE, bg: PIPELINE_BLUE_SOFT },
-  marketing_ops: { text: PIPELINE_PURPLE, bg: PIPELINE_PURPLE_SOFT },
+  marketing: { text: PIPELINE_PURPLE, bg: PIPELINE_PURPLE_SOFT },
   it: { text: "#2E7A6B", bg: "#DBEFE9" },
 };
 export const DEPT_COLOR_FALLBACK = { text: PIPELINE_SLATE, bg: PIPELINE_LINE_SOFT };
@@ -48,10 +37,10 @@ export const TENDER_PIPELINE_STAGES: PipelineStageDef[] = [
   { key: "identified", label: "Identified", color: PIPELINE_SLATE_LIGHT },
   { key: "applying", label: "Preparing Application", color: PIPELINE_GOLD },
   { key: "submitted", label: "Submitted", color: PIPELINE_BLUE },
-  { key: "evaluation", label: "Under Evaluation", color: PIPELINE_PURPLE },
   { key: "won", label: "Awarded", color: PIPELINE_TEAL },
   { key: "lost", label: "Not Awarded", color: PIPELINE_CORAL },
   { key: "withdrawn", label: "Withdrawn", color: PIPELINE_SLATE },
+  { key: "cancelled", label: "Cancelled", color: PIPELINE_PURPLE },
 ];
 
 export const ENGAGEMENT_PIPELINE_STAGES: PipelineStageDef[] = [
@@ -72,22 +61,6 @@ export const PROJECT_PIPELINE_STAGES: PipelineStageDef[] = [
   { key: "payment", label: "Payment Collection", color: PIPELINE_TEAL },
   { key: "closed", label: "Closed", color: PIPELINE_SLATE },
 ];
-
-export const ACTIVITY_ICON: Record<string, string> = {
-  meeting: "\u{1F4C5}",
-  email: "✉️",
-  note: "\u{1F4DD}",
-  call: "\u{1F4DE}",
-  visit: "\u{1F4CD}",
-};
-
-export const ACTIVITY_COLOR: Record<string, string> = {
-  meeting: PIPELINE_BLUE_SOFT,
-  email: PIPELINE_TEAL_SOFT,
-  note: PIPELINE_PAPER,
-  call: PIPELINE_PURPLE_SOFT,
-  visit: PIPELINE_GOLD_SOFT,
-};
 
 export function initials(name: string | null | undefined): string {
   if (!name || name === "—") return "—";

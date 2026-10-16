@@ -17,6 +17,9 @@ jobs:
           node-version: "22"
           cache: "npm"
 
+      # Same npm major as local dev, so the lockfile it writes is read the same way here.
+      - run: npm install -g npm@11
+
       - run: npm ci
 
       - name: Typecheck

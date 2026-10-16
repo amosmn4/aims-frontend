@@ -1,9 +1,10 @@
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
-import { Briefcase, Users, FileText } from "lucide-react";
+import { Briefcase, Users, FileText, FolderArchive } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/_authenticated/clients")({
   head: () => ({
-    meta: [{ title: "Clients & Contracts — AIMS" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Clients & contracts — AIMS" }, { name: "robots", content: "noindex" }],
   }),
   component: ClientsLayout,
 });
@@ -22,6 +23,7 @@ function Tab({
   return (
     <Link
       to={to}
+      aria-current={active ? "page" : undefined}
       className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md border transition-colors ${
         active
           ? "bg-primary text-primary-foreground border-primary"
@@ -37,22 +39,30 @@ function ClientsLayout() {
   const { pathname } = useLocation();
   const onClients = pathname === "/clients" || pathname.startsWith("/clients/list");
   const onContracts = pathname.startsWith("/clients/contracts");
+  // A contract record has its own title and breadcrumb.
+  const onRecord = /^\/clients\/contracts\/[^/]+\/?$/.test(pathname);
+  const { isAdminOrCeo } = useAuth();
+
+  if (onRecord) return <Outlet />;
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h1 className="text-lg font-semibold flex items-center gap-2">
-            <Briefcase className="h-4 w-4 text-primary" /> Clients & Contracts
+            <Briefcase className="h-4 w-4 text-primary" aria-hidden="true" /> Clients & contracts
           </h1>
           <p className="text-xs text-muted-foreground">
-            Central directory of clients, contacts and contracts. Manage from here or from any
-            department view.
+            Every client, their contacts and their contracts, across all departments.
           </p>
         </div>
-        <div className="flex gap-2">
+        <nav aria-label="Clients and contracts pages" className="flex gap-2">
           <Tab to="/clients" label="Clients" icon={Users} active={onClients && !onContracts} />
           <Tab to="/clients/contracts" label="Contracts" icon={FileText} active={onContracts} />
-        </div>
+          {isAdminOrCeo && (
+            <Tab to="/documents" label="Documents" icon={FolderArchive} active={false} />
+          )}
+        </nav>
       </div>
       <Outlet />
     </div>
