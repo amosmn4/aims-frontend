@@ -313,7 +313,11 @@ function MeterDetailPage() {
               <WithTerm term="units">Lifetime units sold</WithTerm>
             )
           }
-          value={`${d.totals.units_sold.toLocaleString()} m³`}
+          value={
+            d.totals.units_sold === null
+              ? "Not measured"
+              : `${d.totals.units_sold.toLocaleString()} m³`
+          }
         />
         {isReadingMeter ? (
           <StatCard label="Readings logged" value={d.totals.transaction_count.toLocaleString()} />
@@ -415,7 +419,7 @@ function MeterDetailPage() {
           {isReadingMeter
             ? d.totals.transaction_count === 0
               ? "No readings logged yet for this meter."
-              : `${d.totals.transaction_count} reading${d.totals.transaction_count === 1 ? "" : "s"} logged, totalling ${d.totals.units_sold.toLocaleString()} m³ over that time. Each figure below is the change since the previous reading, not the raw dial value.`
+              : `${d.totals.transaction_count} reading${d.totals.transaction_count === 1 ? "" : "s"} logged. ${d.totals.units_sold === null ? "Usage is not measured across missing readings or counter resets." : `Recorded volume: ${d.totals.units_sold.toLocaleString()} m³.`} Each figure below is the change since the previous reading.`
             : d.totals.transaction_count === 0
               ? "No purchases recorded yet for this meter."
               : `Averaging ${avgPerVend.toLocaleString(undefined, { style: "currency", currency: "KES" })} per purchase across ${d.totals.transaction_count} purchase${d.totals.transaction_count === 1 ? "" : "s"}. ${
@@ -550,6 +554,7 @@ function MeterReadingCharts({ meterId }: { meterId: string }) {
 
   const buckets = new Map<string, { dial: number; at: number; used: number }>();
   for (const r of readingsQ.data ?? []) {
+    if (r.value === null) continue;
     const key = periodKeyOf(r.reading_date, granularity);
     const bucket = buckets.get(key) ?? { dial: r.value, at: 0, used: 0 };
     const at = new Date(r.reading_date).getTime();
@@ -732,7 +737,7 @@ function MeterReadingLog({
                     {formatDateTime(r.reading_date)}
                   </td>
                   <td className="px-4 py-2 text-xs text-right tabular-nums">
-                    {r.value.toLocaleString()}
+                    {r.value === null ? "Not captured" : r.value.toLocaleString()}
                   </td>
                   <td className="px-4 py-2 text-xs text-right tabular-nums">
                     {r.delta === null ? (
@@ -745,7 +750,7 @@ function MeterReadingLog({
                   {canManage && (
                     <td className="px-2 py-1">
                       <RowActions
-                        label={`reading of ${r.value.toLocaleString()} on ${formatDateTime(r.reading_date)}`}
+                        label={`reading of ${r.value === null ? "uncaptured balance" : r.value.toLocaleString()} on ${formatDateTime(r.reading_date)}`}
                         onEdit={() => onEdit(r)}
                         onDelete={() => handleDelete(r)}
                       />

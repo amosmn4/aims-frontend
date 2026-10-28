@@ -21,6 +21,7 @@ import { usePagination } from "@/hooks/use-pagination";
 import { PaginationBar } from "@/components/pagination-bar";
 import { formatDate, formatDateTime } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
+import { WaterAiImport } from "@/features/water/water-ai-import";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +63,7 @@ function formatPeriod(start: string | null, end: string | null): string {
 }
 
 function WaterUploadPage() {
+  const [mode, setMode] = useState<"ai" | "payments">("ai");
   const canManage = useCanManageWater();
   const fileInput = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
@@ -160,8 +162,30 @@ function WaterUploadPage() {
     : 0;
   const dates = parsed?.rows.map((r) => r.recordedAt).sort() ?? [];
 
+  const modes = (
+    <div className="flex flex-wrap gap-2" role="group" aria-label="Import method">
+      <Button variant={mode === "ai" ? "default" : "outline"} onClick={() => setMode("ai")}>
+        AI file import
+      </Button>
+      <Button
+        variant={mode === "payments" ? "default" : "outline"}
+        onClick={() => setMode("payments")}
+      >
+        Standard payment import
+      </Button>
+    </div>
+  );
+  if (mode === "ai")
+    return (
+      <div className="space-y-4">
+        {modes}
+        <WaterAiImport />
+      </div>
+    );
+
   return (
     <div className="space-y-4">
+      {modes}
       <PageHeader
         title="Upload usage file"
         description="Add meter payments from an Amsol or mPaya export so usage and revenue figures stay up to date."

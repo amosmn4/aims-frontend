@@ -143,7 +143,7 @@ export interface WaterMeterReadingRow {
   zone_name: string | null;
   meter_type: WaterMeterType;
   reading_date: string;
-  value: number;
+  value: number | null;
   notes: string | null;
   created_at: string;
 }
@@ -1015,7 +1015,7 @@ type BackendReading = {
     zone?: { id: string; name: string } | null;
   };
   readingDate: string;
-  value: number | string;
+  value: number | string | null;
   notes: string | null;
   createdAt: string;
 };
@@ -1029,7 +1029,7 @@ function mapReading(r: BackendReading): WaterMeterReadingRow {
     zone_name: r.meter.zone?.name ?? null,
     meter_type: r.meter.meterType,
     reading_date: r.readingDate,
-    value: Number(r.value),
+    value: r.value == null ? null : Number(r.value),
     cumulative_usage: r.cumulativeUsage == null ? null : Number(r.cumulativeUsage),
     notes: r.notes,
     created_at: r.createdAt,
@@ -1109,9 +1109,11 @@ export function useLogWaterReading() {
     mutationFn: (input: {
       meterId: string;
       readingDate: string;
-      value: number;
+      value: number | null;
       cumulativeUsage?: number | null;
       notes?: string;
+      reviewToken?: string;
+      reviewReason?: string;
     }) =>
       apiJson("/water/readings", {
         method: "POST",
@@ -1133,8 +1135,10 @@ export function useUpdateWaterReading() {
       id: string;
       meterId?: string;
       readingDate?: string;
-      value?: number;
+      value?: number | null;
       cumulativeUsage?: number | null;
+      reviewToken?: string;
+      reviewReason?: string;
       // null clears the notes.
       notes?: string | null;
     }) =>
@@ -1206,7 +1210,7 @@ export interface WaterBalanceReadingRow {
   cumulative_usage: number | null;
   id: string;
   reading_date: string;
-  balance: number;
+  balance: number | null;
   notes: string | null;
   /** Null on the first reading: it is the starting balance. */
   period: WaterBalancePeriod | null;
@@ -1255,7 +1259,7 @@ export function useWaterBalancePeriods(meterId: string | undefined, enabled = tr
         {
           id: string;
           readingDate: string;
-          balance: number;
+          balance: number | null;
           cumulativeUsage?: number | null;
           notes: string | null;
           period: BackendBalancePeriod | null;
@@ -1806,7 +1810,7 @@ export interface WaterReadingWithDeltaRow {
   meter_type: WaterMeterType;
   zone_name: string | null;
   reading_date: string;
-  value: number;
+  value: number | null;
   delta: number | null;
   notes: string | null;
 }
@@ -1815,7 +1819,7 @@ type BackendReadingWithDelta = {
   id: string;
   meterId: string;
   readingDate: string;
-  value: number | string;
+  value: number | string | null;
   notes: string | null;
   delta: number | null;
   meter: {
@@ -1848,7 +1852,7 @@ export function useWaterReadingsWithDelta(filters: {
         meter_type: r.meter.meterType,
         zone_name: r.meter.zone?.name ?? null,
         reading_date: r.readingDate,
-        value: Number(r.value),
+        value: r.value == null ? null : Number(r.value),
         delta: r.delta,
         notes: r.notes,
       }));
@@ -1921,7 +1925,7 @@ type BackendMeterDetail = {
     replacedByMeter: { id: string; meterNumber: string; vendingSystem: WaterVendingSystem } | null;
   };
   totals: {
-    unitsSold: number;
+    unitsSold: number | null;
     revenue: number;
     transactionCount: number;
     lastVendAt: string | null;
@@ -1962,7 +1966,7 @@ export interface WaterMeterDetail {
     vending_system: WaterVendingSystem;
   } | null;
   totals: {
-    units_sold: number;
+    units_sold: number | null;
     revenue: number;
     transaction_count: number;
     last_vend_at: string | null;

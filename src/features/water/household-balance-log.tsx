@@ -37,7 +37,8 @@ export function BalanceFlagBadge({ flag }: { flag: WaterBalanceFlag }) {
   );
 }
 
-const units = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+const units = (n: number | null) =>
+  n === null ? "Not captured" : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 /** Each captured usage counter and prepaid balance, with usage between captures. */
 export function HouseholdBalanceLog({

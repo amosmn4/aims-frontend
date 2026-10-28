@@ -126,6 +126,7 @@ function WaterReadingsPage() {
   const latest = new Map<string, Map<string, number>>();
   for (const r of chartReadings) {
     const bucket = periodKeyOf(r.reading_date, granularity);
+    if (r.value === null) continue;
     const perMeter = latest.get(bucket) ?? new Map<string, number>();
     const seenAt = perMeter.get(`${r.meter_id}:at`);
     const at = new Date(r.reading_date).getTime();
@@ -366,7 +367,7 @@ function WaterReadingsPage() {
                       </TableCell>
                       <TableCell className="text-sm">{r.zone_name ?? "—"}</TableCell>
                       <TableCell className="text-right text-xs tabular-nums">
-                        {r.value.toLocaleString()}
+                        {r.value === null ? "Not captured" : r.value.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {r.notes ?? "—"}

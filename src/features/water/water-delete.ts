@@ -84,12 +84,12 @@ export function confirmDeleteMeter(meter: {
 
 export function confirmDeleteReading(reading: {
   meter_number: string;
-  value: number;
+  value: number | null;
   reading_date: string;
 }): Promise<boolean> {
   return confirmDialog({
     title: "Delete this reading?",
-    description: `The reading of ${reading.value.toLocaleString()} on meter ${reading.meter_number}, taken ${formatDateTime(reading.reading_date)}, will be permanently deleted and usage figures recalculated. This can't be undone.`,
+    description: `The ${reading.value === null ? "lifetime usage capture" : `reading of ${reading.value.toLocaleString()}`} on meter ${reading.meter_number}, taken ${formatDateTime(reading.reading_date)}, will be permanently deleted and usage figures recalculated. This can't be undone.`,
     confirmLabel: "Delete reading",
     destructive: true,
   });

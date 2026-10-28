@@ -1105,11 +1105,11 @@ function MeterReadingComparison() {
                       {r.zone_name ?? "—"}
                     </TableCell>
                     <TableCell className="text-right text-xs font-mono tabular-nums">
-                      {fmt(r.value)}
+                      {r.value === null ? "Not captured" : fmt(r.value)}
                     </TableCell>
                     <TableCell className="text-right text-xs font-mono tabular-nums">
                       {r.delta === null ? (
-                        <span className="text-muted-foreground">First reading</span>
+                        <span className="text-muted-foreground">Not measured</span>
                       ) : (
                         `+${fmt(r.delta)}`
                       )}

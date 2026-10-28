@@ -50,7 +50,8 @@ export const Route = createFileRoute("/_authenticated/water/balances")({
 });
 
 const FLAG_WINDOWS = [1, 3, 6] as const;
-const units = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+const units = (n: number | null) =>
+  n === null ? "Not captured" : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 function HouseholdBalancesPage() {
   const canManage = useCanManageWater();

@@ -15,6 +15,7 @@ import { FormField, RequiredNote } from "@/components/form-field";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useReadingReview, type ReadingReview } from "./use-reading-review";
 import {
   Select,
   SelectContent,
@@ -37,7 +38,7 @@ export interface ReadingFormValue {
   meter_number: string;
   meter_type?: WaterMeterType;
   reading_date: string;
-  value: number;
+  value: number | null;
   cumulative_usage?: number | null;
   notes: string | null;
 }
@@ -107,6 +108,10 @@ function ReadingForm({
   const [addingMeter, setAddingMeter] = useState(false);
   const logReading = useLogWaterReading();
   const updateReading = useUpdateWaterReading();
+  const reviewReading = useReadingReview();
+  const [review, setReview] = useState<ReadingReview | null>(null);
+  const [reviewReason, setReviewReason] = useState("");
+  const [confirmAnother, setConfirmAnother] = useState(false);
   const initialMeterId = value?.meter_id ?? fixedMeterId ?? "";
   const [initialDate] = useState(() =>
     toLocalDateTimeInputValue(value?.reading_date ?? new Date()),
@@ -114,18 +119,23 @@ function ReadingForm({
   const [meterId, setMeterId] = useState(initialMeterId);
   const [meterNumber, setMeterNumber] = useState(value?.meter_number ?? "");
   const [readingDate, setReadingDate] = useState(initialDate);
-  const [reading, setReading] = useState(value ? String(value.value) : "");
+  const [reading, setReading] = useState(value?.value == null ? "" : String(value.value));
   const [cumulativeUsage, setCumulativeUsage] = useState(
     value?.cumulative_usage == null ? "" : String(value.cumulative_usage),
   );
   const [notes, setNotes] = useState(value?.notes ?? "");
   const [errors, setErrors] = useState<ReadingErrors>({});
-  const isPending = logReading.isPending || updateReading.isPending;
+  const isPending = logReading.isPending || updateReading.isPending || reviewReading.isPending;
+
+  useEffect(() => {
+    setReview(null);
+    setReviewReason("");
+  }, [meterId, meterNumber, readingDate, reading, cumulativeUsage]);
 
   const dirty =
     meterId !== initialMeterId ||
     readingDate !== initialDate ||
-    reading !== (value ? String(value.value) : "") ||
+    reading !== (value?.value == null ? "" : String(value.value)) ||
     cumulativeUsage !== (value?.cumulative_usage == null ? "" : String(value.cumulative_usage)) ||
     notes !== (value?.notes ?? "");
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
@@ -146,7 +156,7 @@ function ReadingForm({
   const clearError = (key: keyof ReadingErrors) =>
     setErrors((e) => (e[key] ? { ...e, [key]: undefined } : e));
 
-  const submit = (addAnother: boolean) => {
+  const submit = async (addAnother: boolean, confirmed = false) => {
     const found: ReadingErrors = {};
     const chosenMeterId = household && !fixedMeterId && !value ? typedMeter?.id : meterId;
     if (!chosenMeterId) {
@@ -158,16 +168,15 @@ function ReadingForm({
             : "Choose the meter this reading was taken from";
     }
     if (!readingDate) found.readingDate = "Enter when the reading was taken";
-    const num = Number(reading);
-    if (!reading.trim())
+    const num = reading.trim() ? Number(reading) : null;
+    if (!reading.trim() && (!household || !cumulativeUsage.trim()))
       found.reading = household
         ? "Enter the balance shown on the meter"
         : "Enter the number shown on the meter's dial";
-    else if (!Number.isFinite(num) || num < 0) found.reading = "Enter a number of 0 or more";
+    else if (num !== null && (!Number.isFinite(num) || num < 0))
+      found.reading = "Enter a number of 0 or more";
     const cumulative = cumulativeUsage.trim() ? Number(cumulativeUsage) : null;
-    if (household && (!value || value.cumulative_usage != null) && cumulative === null)
-      found.cumulativeUsage = "Enter the lifetime units used shown on the meter";
-    else if (
+    if (
       household &&
       cumulative !== null &&
       (!Number.isFinite(cumulative) ||
@@ -178,6 +187,29 @@ function ReadingForm({
       found.cumulativeUsage = "Enter a nonnegative reading with at most two decimal places";
     setErrors(found);
     if (Object.values(found).some(Boolean) || !chosenMeterId) return;
+
+    let checked: ReadingReview;
+    try {
+      checked = await reviewReading.mutateAsync({
+        meterId: chosenMeterId,
+        readingDate,
+        value: num,
+        ...(household && { cumulativeUsage: cumulative }),
+        ...(value && { excludeId: value.id }),
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not check meter history");
+      return;
+    }
+    if (checked.warnings.length && (!confirmed || review?.reviewToken !== checked.reviewToken)) {
+      setReview(checked);
+      setConfirmAnother(addAnother);
+      return;
+    }
+    if (checked.warnings.length && reviewReason.trim().length < 5) return;
+    const confirmation = checked.warnings.length
+      ? { reviewToken: checked.reviewToken, reviewReason: reviewReason.trim() }
+      : {};
 
     const onError = (err: unknown) =>
       toast.error(err instanceof Error ? err.message : "Couldn't save reading");
@@ -192,6 +224,7 @@ function ReadingForm({
           value: num,
           ...(household && { cumulativeUsage: cumulative }),
           notes: notes.trim() || null,
+          ...confirmation,
         },
         {
           onSuccess: () => {
@@ -210,6 +243,7 @@ function ReadingForm({
         value: num,
         ...(household && { cumulativeUsage: cumulative }),
         notes: notes.trim() || undefined,
+        ...confirmation,
       },
       {
         onSuccess: () => {
@@ -252,12 +286,12 @@ function ReadingForm({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             {household
-              ? "Capture the lifetime units used and the prepaid units still remaining on the same meter at the same time."
+              ? "Capture the lifetime units used, the prepaid units remaining, or both. Missing figures stay uncaptured."
               : "Enter the number on the dial of a main or bulk meter."}
           </DialogDescription>
         </DialogHeader>
         <RequiredNote />
-        <div className="space-y-3">
+        <fieldset className="space-y-3" disabled={isPending}>
           {household && !fixedMeterId && !value ? (
             <FormField
               id="reading-meter"
@@ -378,7 +412,7 @@ function ReadingForm({
             <FormField
               id="reading-value"
               label={household ? "Remaining prepaid units (m³)" : "Reading value (m³)"}
-              required
+              required={!household}
               error={errors.reading}
               hint={
                 household
@@ -406,7 +440,6 @@ function ReadingForm({
             <FormField
               id="reading-cumulative"
               label="Cumulative usage (m³)"
-              required={!value || value.cumulative_usage != null}
               error={errors.cumulativeUsage}
               hint={
                 value && value.cumulative_usage == null
@@ -440,7 +473,38 @@ function ReadingForm({
               }
             />
           </FormField>
-        </div>
+        </fieldset>
+        {review && review.warnings.length > 0 && (
+          <div
+            role="alert"
+            className="space-y-3 rounded-lg border border-destructive bg-destructive/5 p-4"
+          >
+            <p className="font-semibold text-destructive">Check this reading before recording</p>
+            {review.warnings.map((warning) => (
+              <p key={warning.code} className="text-sm text-destructive">
+                {warning.message}
+              </p>
+            ))}
+            <FormField id="reading-review-reason" label="Why is this reading correct?" required>
+              <Input
+                id="reading-review-reason"
+                value={reviewReason}
+                maxLength={300}
+                disabled={isPending}
+                onChange={(event) => setReviewReason(event.target.value)}
+                placeholder="Explain what you checked, including any reset or rollover"
+              />
+            </FormField>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isPending || reviewReason.trim().length < 5}
+              onClick={() => submit(confirmAnother, true)}
+            >
+              I checked this reading, record anyway
+            </Button>
+          </div>
+        )}
         <DialogFooter className="gap-2">
           <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
             Cancel
