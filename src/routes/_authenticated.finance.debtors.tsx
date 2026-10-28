@@ -1,6 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Loader2, MessageSquarePlus, History } from "lucide-react";
+import { FileText, Loader2, MessageSquare, MessageSquarePlus, Plus } from "lucide-react";
+import { PageHeader } from "@/components/app-shell";
+import { LoadError } from "@/components/load-error";
+import { ViewOnlyBanner } from "@/components/view-only-banner";
 import {
   Table,
   TableBody,
@@ -11,17 +14,6 @@ import {
 } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -29,33 +21,44 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { toast } from "sonner";
+import { formatDate } from "@/lib/format-date";
 import {
   useInvoices,
   usePayments,
   useClients,
-  useFollowUps,
-  useCreateFollowUp,
   paymentsByInvoice,
-  type FollowUpType,
 } from "@/features/finance/use-finance-data";
 import {
-  computeAging,
   daysBetween,
   formatCurrency,
   invoiceOutstanding,
+  type InvoiceRow,
 } from "@/features/finance/finance";
+import {
+  MoneyTotal,
+  totalsByCurrency,
+  useCompanyCurrency,
+  useFinanceAccess,
+} from "@/features/finance/money";
+import { InvoiceFollowUpsDialog } from "@/features/finance/invoice-follow-ups-dialog";
 
-const FOLLOW_UP_LABELS: Record<FollowUpType, string> = {
-  reminder_sent: "Reminder sent",
-  promise_to_pay: "Promise to pay",
-  escalated: "Escalated",
+const BUCKETS = ["Current", "1-30 days", "31-60 days", "61-90 days", "90+ days"] as const;
+type Bucket = (typeof BUCKETS)[number];
+
+const BUCKET_LABELS: Record<Bucket, string> = {
+  Current: "Not yet due",
+  "1-30 days": "1–30 days late",
+  "31-60 days": "31–60 days late",
+  "61-90 days": "61–90 days late",
+  "90+ days": "Over 90 days late",
 };
 
-const FOLLOW_UP_STYLES: Record<FollowUpType, string> = {
-  reminder_sent: "bg-primary/10 text-primary",
-  promise_to_pay: "bg-warning/15 text-warning",
-  escalated: "bg-destructive/15 text-destructive",
+const BUCKET_TONE: Record<Bucket, string> = {
+  Current: "text-success",
+  "1-30 days": "text-primary",
+  "31-60 days": "text-warning",
+  "61-90 days": "text-destructive",
+  "90+ days": "text-destructive",
 };
 
 export const Route = createFileRoute("/_authenticated/finance/debtors")({
@@ -63,14 +66,28 @@ export const Route = createFileRoute("/_authenticated/finance/debtors")({
   component: DebtorsPage,
 });
 
+type OpenRow = { inv: InvoiceRow; out: number; days: number; bucket: Bucket };
+
+function bucketFor(days: number): Bucket {
+  if (days <= 0) return "Current";
+  if (days <= 30) return "1-30 days";
+  if (days <= 60) return "31-60 days";
+  if (days <= 90) return "61-90 days";
+  return "90+ days";
+}
+
 function DebtorsPage() {
   const invoicesQ = useInvoices();
   const paymentsQ = usePayments();
   const clientsQ = useClients();
+  const companyCurrency = useCompanyCurrency();
+  const { canRaiseInvoices } = useFinanceAccess();
   const [clientFilter, setClientFilter] = useState<string>("all");
   const [bucketFilter, setBucketFilter] = useState<string>("all");
+  const [followUpRow, setFollowUpRow] = useState<OpenRow | null>(null);
 
   const loading = invoicesQ.isLoading || paymentsQ.isLoading || clientsQ.isLoading;
+  const failed = [invoicesQ, paymentsQ, clientsQ].find((q) => q.isError);
 
   const clients = useMemo(() => clientsQ.data ?? [], [clientsQ.data]);
   const invoices = useMemo(() => invoicesQ.data ?? [], [invoicesQ.data]);
@@ -78,377 +95,336 @@ function DebtorsPage() {
   const paidMap = useMemo(() => paymentsByInvoice(payments), [payments]);
   const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
 
-  const aging = useMemo(() => computeAging(invoices, paidMap), [invoices, paidMap]);
-  const totalOutstanding = aging.reduce((s, b) => s + b.amount, 0);
-
-  const openInvoices = useMemo(() => {
+  const openInvoices = useMemo<OpenRow[]>(() => {
     const today = new Date();
     return invoices
       .filter((i) => i.status !== "paid" && i.status !== "void" && i.status !== "draft")
-      .map((i) => {
-        const paid = paidMap.get(i.id) ?? 0;
-        const out = invoiceOutstanding(i, paid);
-        const days = daysBetween(today, new Date(i.due_date));
-        const bucket =
-          days <= 0
-            ? "Current"
-            : days <= 30
-              ? "1-30 days"
-              : days <= 60
-                ? "31-60 days"
-                : days <= 90
-                  ? "61-90 days"
-                  : "90+ days";
-        return { inv: i, paid, out, days, bucket };
+      .map((inv) => {
+        const out = invoiceOutstanding(inv, paidMap.get(inv.id) ?? 0);
+        const days = daysBetween(today, new Date(inv.due_date));
+        return { inv, out, days, bucket: bucketFor(days) };
       })
       .filter((r) => r.out > 0.01);
   }, [invoices, paidMap]);
 
-  const filtered = openInvoices.filter((r) => {
-    if (clientFilter !== "all" && r.inv.client_id !== clientFilter) return false;
-    if (bucketFilter !== "all" && r.bucket !== bucketFilter) return false;
-    return true;
+  const bucketTiles = BUCKETS.map((b) => {
+    const rows = openInvoices.filter((r) => r.bucket === b);
+    return {
+      bucket: b,
+      count: rows.length,
+      totals: totalsByCurrency(
+        rows,
+        (r) => r.inv.currency_code,
+        (r) => r.out,
+      ),
+    };
   });
+  const grandTotals = totalsByCurrency(
+    openInvoices,
+    (r) => r.inv.currency_code,
+    (r) => r.out,
+  );
 
-  // By-client rollup
+  // One row per client and currency, so amounts in different currencies stay apart.
   const byClient = useMemo(() => {
     const m = new Map<
       string,
       {
+        key: string;
         name: string;
-        current: number;
-        d30: number;
-        d60: number;
-        d90: number;
-        d90plus: number;
+        currency: string;
+        amounts: Record<Bucket, number>;
         total: number;
       }
     >();
     for (const r of openInvoices) {
-      const c = clientMap.get(r.inv.client_id);
-      const cur = m.get(r.inv.client_id) ?? {
-        name: c?.name ?? "Unknown",
-        current: 0,
-        d30: 0,
-        d60: 0,
-        d90: 0,
-        d90plus: 0,
+      const key = `${r.inv.client_id}:${r.inv.currency_code}`;
+      const cur = m.get(key) ?? {
+        key,
+        name: clientMap.get(r.inv.client_id)?.name ?? "Unknown client",
+        currency: r.inv.currency_code,
+        amounts: { Current: 0, "1-30 days": 0, "31-60 days": 0, "61-90 days": 0, "90+ days": 0 },
         total: 0,
       };
-      if (r.days <= 0) cur.current += r.out;
-      else if (r.days <= 30) cur.d30 += r.out;
-      else if (r.days <= 60) cur.d60 += r.out;
-      else if (r.days <= 90) cur.d90 += r.out;
-      else cur.d90plus += r.out;
+      cur.amounts[r.bucket] += r.out;
       cur.total += r.out;
-      m.set(r.inv.client_id, cur);
+      m.set(key, cur);
     }
-    return Array.from(m.values()).sort((a, b) => b.total - a.total);
-  }, [openInvoices, clientMap]);
+    return Array.from(m.values()).sort((a, b) =>
+      a.currency === b.currency
+        ? b.total - a.total
+        : a.currency === companyCurrency
+          ? -1
+          : b.currency === companyCurrency
+            ? 1
+            : a.currency.localeCompare(b.currency),
+    );
+  }, [openInvoices, clientMap, companyCurrency]);
+
+  const isFiltered = clientFilter !== "all" || bucketFilter !== "all";
+  const clearFilters = () => {
+    setClientFilter("all");
+    setBucketFilter("all");
+  };
+  const filtered = openInvoices
+    .filter((r) => clientFilter === "all" || r.inv.client_id === clientFilter)
+    .filter((r) => bucketFilter === "all" || r.bucket === bucketFilter)
+    .sort((a, b) => b.days - a.days);
+  const debtorClients = clients.filter((c) => openInvoices.some((r) => r.inv.client_id === c.id));
+
+  const header = (
+    <PageHeader
+      title="Debtors"
+      description="Clients who still owe money on sent invoices, grouped by how late payment is. Log each chase so everyone sees the latest."
+      actions={
+        <Button variant="outline" asChild>
+          <Link to="/finance/invoices" search={{ status: "overdue" }}>
+            <FileText className="mr-1 h-4 w-4" /> See overdue invoices
+          </Link>
+        </Button>
+      }
+    />
+  );
 
   if (loading) {
     return (
-      <div className="py-12 flex justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      <div>
+        {header}
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" aria-label="Loading debtors" />
+        </div>
       </div>
     );
   }
 
+  if (failed) {
+    return (
+      <div>
+        {header}
+        <LoadError
+          what="debtors"
+          error={failed.error}
+          onRetry={() => {
+            void invoicesQ.refetch();
+            void paymentsQ.refetch();
+            void clientsQ.refetch();
+          }}
+        />
+      </div>
+    );
+  }
+
+  const followUpInvoice = followUpRow?.inv;
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-        {aging.map((b) => {
-          const pct = totalOutstanding > 0 ? (b.amount / totalOutstanding) * 100 : 0;
-          const tone =
-            b.label === "Current"
-              ? "text-success"
-              : b.label === "1-30 days"
-                ? "text-primary"
-                : b.label === "31-60 days"
-                  ? "text-warning"
-                  : "text-destructive";
-          return (
-            <div key={b.label} className="rounded-lg border bg-card p-4">
-              <div className={`text-xs uppercase tracking-wider font-semibold ${tone}`}>
-                {b.label}
+      {header}
+      {!canRaiseInvoices && <ViewOnlyBanner area="Debtors" action="log follow-ups" />}
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {bucketTiles.map((t) => (
+          <div key={t.bucket} className="rounded-lg border bg-card p-4">
+            <div
+              className={`text-xs font-semibold ${t.count ? BUCKET_TONE[t.bucket] : "text-muted-foreground"}`}
+            >
+              {BUCKET_LABELS[t.bucket]}
+            </div>
+            <MoneyTotal
+              totals={t.totals}
+              companyCurrency={companyCurrency}
+              className="mt-2 text-lg font-semibold tabular-nums"
+            />
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              {t.count} invoice{t.count === 1 ? "" : "s"}
+            </div>
+          </div>
+        ))}
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+          <div className="text-xs font-semibold text-primary">Total owed</div>
+          <MoneyTotal
+            totals={grandTotals}
+            companyCurrency={companyCurrency}
+            className="mt-2 text-lg font-semibold tabular-nums"
+          />
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {openInvoices.length} unpaid invoice{openInvoices.length === 1 ? "" : "s"}
+          </div>
+        </div>
+      </div>
+
+      {openInvoices.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-lg border bg-card py-12 text-sm text-muted-foreground">
+          <span>
+            {invoices.length === 0 ? "No invoices yet" : "Nobody owes you money right now"}
+          </span>
+          {invoices.length === 0 && canRaiseInvoices && (
+            <Button size="sm" asChild>
+              <Link to="/finance/invoices" search={{ new: 1 }}>
+                <Plus className="mr-1 h-4 w-4" /> New invoice
+              </Link>
+            </Button>
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="rounded-lg border bg-card p-4 sm:p-6">
+            <h2 className="mb-4 font-semibold">Owed by client</h2>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Client</TableHead>
+                    {BUCKETS.map((b) => (
+                      <TableHead key={b} className="whitespace-nowrap text-right">
+                        {BUCKET_LABELS[b]}
+                      </TableHead>
+                    ))}
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {byClient.map((r) => (
+                    <TableRow key={r.key}>
+                      <TableCell className="font-medium">{r.name}</TableCell>
+                      {BUCKETS.map((b) => (
+                        <TableCell
+                          key={b}
+                          className={`whitespace-nowrap text-right tabular-nums ${
+                            r.amounts[b] > 0 && b !== "Current" && b !== "1-30 days"
+                              ? BUCKET_TONE[b]
+                              : ""
+                          }`}
+                        >
+                          {r.amounts[b] > 0 ? formatCurrency(r.amounts[b], r.currency) : "—"}
+                        </TableCell>
+                      ))}
+                      <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
+                        {formatCurrency(r.total, r.currency)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-card p-4 sm:p-6">
+            <div className="mb-4 flex flex-wrap items-end gap-3">
+              <h2 className="mr-auto font-semibold">Unpaid invoices</h2>
+              <div className="w-full sm:w-56">
+                <Label htmlFor="debtor-client-filter" className="text-xs">
+                  Client
+                </Label>
+                <Select value={clientFilter} onValueChange={setClientFilter}>
+                  <SelectTrigger id="debtor-client-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All clients</SelectItem>
+                    {debtorClients.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="mt-2 text-lg font-semibold tabular-nums">
-                {formatCurrency(b.amount)}
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                {b.count} inv · {pct.toFixed(0)}%
+              <div className="w-full sm:w-48">
+                <Label htmlFor="debtor-bucket-filter" className="text-xs">
+                  How late
+                </Label>
+                <Select value={bucketFilter} onValueChange={setBucketFilter}>
+                  <SelectTrigger id="debtor-bucket-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Any</SelectItem>
+                    {BUCKETS.map((b) => (
+                      <SelectItem key={b} value={b}>
+                        {BUCKET_LABELS[b]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          );
-        })}
-        <div className="rounded-lg border bg-primary/5 border-primary/20 p-4">
-          <div className="text-xs uppercase tracking-wider font-semibold text-primary">Total</div>
-          <div className="mt-2 text-lg font-semibold tabular-nums">
-            {formatCurrency(totalOutstanding)}
+            {filtered.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-6 text-sm text-muted-foreground">
+                <span>No matches</span>
+                {isFiltered && (
+                  <Button size="sm" variant="outline" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Invoice #</TableHead>
+                      <TableHead>Client</TableHead>
+                      <TableHead>Due</TableHead>
+                      <TableHead className="text-right">Days late</TableHead>
+                      <TableHead className="text-right">Still owed</TableHead>
+                      <TableHead className="text-right">Follow-ups</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((r) => (
+                      <TableRow key={r.inv.id}>
+                        <TableCell className="font-mono text-xs">{r.inv.invoice_number}</TableCell>
+                        <TableCell>{clientMap.get(r.inv.client_id)?.name ?? "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap text-xs">
+                          {formatDate(r.inv.due_date)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {r.days > 0 ? r.days : "Not yet due"}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
+                          {formatCurrency(r.out, r.inv.currency_code)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setFollowUpRow(r)}
+                            aria-label={`${canRaiseInvoices ? "Log follow-up" : "View follow-ups"} on invoice ${r.inv.invoice_number}`}
+                          >
+                            {canRaiseInvoices ? (
+                              <>
+                                <MessageSquarePlus className="mr-1 h-4 w-4" /> Log follow-up
+                              </>
+                            ) : (
+                              <>
+                                <MessageSquare className="mr-1 h-4 w-4" /> View follow-ups
+                              </>
+                            )}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </div>
-          <div className="text-xs text-muted-foreground mt-0.5">
-            {openInvoices.length} open invoices
-          </div>
-        </div>
-      </div>
+        </>
+      )}
 
-      <div className="rounded-lg border bg-card p-6">
-        <h2 className="font-semibold mb-4">Outstanding by client</h2>
-        {byClient.length === 0 ? (
-          <div className="text-sm text-muted-foreground py-6 text-center">
-            No outstanding debtors.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Client</TableHead>
-                  <TableHead className="text-right">Current</TableHead>
-                  <TableHead className="text-right">1-30</TableHead>
-                  <TableHead className="text-right">31-60</TableHead>
-                  <TableHead className="text-right">61-90</TableHead>
-                  <TableHead className="text-right">90+</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {byClient.map((r) => (
-                  <TableRow key={r.name}>
-                    <TableCell className="font-medium">{r.name}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatCurrency(r.current)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatCurrency(r.d30)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-warning">
-                      {formatCurrency(r.d60)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-destructive">
-                      {formatCurrency(r.d90)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-destructive font-semibold">
-                      {formatCurrency(r.d90plus)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">
-                      {formatCurrency(r.total)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-lg border bg-card p-6">
-        <div className="flex flex-wrap items-end gap-3 mb-4">
-          <h2 className="font-semibold mr-auto">Open invoices</h2>
-          <div className="w-56">
-            <Label className="text-xs">Client</Label>
-            <Select value={clientFilter} onValueChange={setClientFilter}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All clients</SelectItem>
-                {clients.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="w-40">
-            <Label className="text-xs">Bucket</Label>
-            <Select value={bucketFilter} onValueChange={setBucketFilter}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="Current">Current</SelectItem>
-                <SelectItem value="1-30 days">1-30 days</SelectItem>
-                <SelectItem value="31-60 days">31-60 days</SelectItem>
-                <SelectItem value="61-90 days">61-90 days</SelectItem>
-                <SelectItem value="90+ days">90+ days</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        {filtered.length === 0 ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">No open invoices.</div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Invoice #</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead className="text-right">Days overdue</TableHead>
-                <TableHead>Bucket</TableHead>
-                <TableHead className="text-right">Outstanding</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered
-                .sort((a, b) => b.days - a.days)
-                .map((r) => (
-                  <TableRow key={r.inv.id}>
-                    <TableCell className="font-mono text-xs">{r.inv.invoice_number}</TableCell>
-                    <TableCell>{clientMap.get(r.inv.client_id)?.name ?? "—"}</TableCell>
-                    <TableCell className="text-xs">{r.inv.due_date}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {r.days > 0 ? r.days : 0}
-                    </TableCell>
-                    <TableCell>{r.bucket}</TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatCurrency(r.out, r.inv.currency_code)}
-                    </TableCell>
-                    <TableCell>
-                      <FollowUpDialog invoiceId={r.inv.id} invoiceNumber={r.inv.invoice_number} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-            </TableBody>
-          </Table>
-        )}
-      </div>
+      {followUpRow && followUpInvoice && (
+        <InvoiceFollowUpsDialog
+          key={followUpInvoice.id}
+          invoiceId={followUpInvoice.id}
+          invoiceNumber={followUpInvoice.invoice_number}
+          summary={`${clientMap.get(followUpInvoice.client_id)?.name ?? "The client"} still owes ${formatCurrency(
+            followUpRow.out,
+            followUpInvoice.currency_code,
+          )} · due ${formatDate(followUpInvoice.due_date)}`}
+          canPost={canRaiseInvoices}
+          onClose={() => setFollowUpRow(null)}
+        />
+      )}
     </div>
-  );
-}
-
-function FollowUpDialog({
-  invoiceId,
-  invoiceNumber,
-}: {
-  invoiceId: string;
-  invoiceNumber: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const followUpsQ = useFollowUps(open ? invoiceId : undefined);
-  const createFollowUp = useCreateFollowUp();
-
-  const [type, setType] = useState<FollowUpType>("reminder_sent");
-  const [channel, setChannel] = useState("");
-  const [promisedDate, setPromisedDate] = useState("");
-  const [notes, setNotes] = useState("");
-
-  const handleLog = async () => {
-    try {
-      await createFollowUp.mutateAsync({
-        invoiceId,
-        type,
-        channel: type === "reminder_sent" ? channel || undefined : undefined,
-        promisedDate: type === "promise_to_pay" ? promisedDate || undefined : undefined,
-        notes: notes || undefined,
-      });
-      toast.success("Follow-up logged");
-      setChannel("");
-      setPromisedDate("");
-      setNotes("");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to log follow-up");
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" variant="ghost">
-          <MessageSquarePlus className="h-4 w-4 mr-1" /> Follow-up
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Collection follow-up · {invoiceNumber}</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-3">
-          <div>
-            <Label className="text-xs">Type</Label>
-            <Select value={type} onValueChange={(v) => setType(v as FollowUpType)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.entries(FOLLOW_UP_LABELS) as [FollowUpType, string][]).map(([k, v]) => (
-                  <SelectItem key={k} value={k}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {type === "reminder_sent" && (
-            <div>
-              <Label className="text-xs">Channel</Label>
-              <Input
-                value={channel}
-                onChange={(e) => setChannel(e.target.value)}
-                placeholder="Email / Phone / In-person"
-              />
-            </div>
-          )}
-          {type === "promise_to_pay" && (
-            <div>
-              <Label className="text-xs">Promised date</Label>
-              <Input
-                type="date"
-                value={promisedDate}
-                onChange={(e) => setPromisedDate(e.target.value)}
-              />
-            </div>
-          )}
-          <div>
-            <Label className="text-xs">Notes</Label>
-            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-          <Button
-            size="sm"
-            onClick={handleLog}
-            disabled={createFollowUp.isPending}
-            className="w-full"
-          >
-            {createFollowUp.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Log follow-up
-          </Button>
-        </div>
-
-        <div className="border-t pt-3">
-          <div className="text-xs font-semibold flex items-center gap-1 mb-2">
-            <History className="h-3.5 w-3.5" /> History
-          </div>
-          {followUpsQ.isLoading ? (
-            <div className="flex justify-center py-4">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            </div>
-          ) : (followUpsQ.data ?? []).length === 0 ? (
-            <div className="text-xs text-muted-foreground py-2">No follow-ups logged yet.</div>
-          ) : (
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {(followUpsQ.data ?? []).map((f) => (
-                <div key={f.id} className="text-xs flex items-start gap-2">
-                  <Badge className={FOLLOW_UP_STYLES[f.type]} variant="secondary">
-                    {FOLLOW_UP_LABELS[f.type]}
-                  </Badge>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-muted-foreground">
-                      {new Date(f.created_at).toLocaleString()}
-                      {f.channel && <> · {f.channel}</>}
-                      {f.promised_date && <> · Promised {f.promised_date}</>}
-                    </div>
-                    {f.notes && <div className="mt-0.5">{f.notes}</div>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }

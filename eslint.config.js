@@ -33,8 +33,22 @@ export default tseslint.config(
         },
       ],
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
-      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: "Render stored HTML with <SafeHtml> from @/components/safe-html instead.",
+        },
+      ],
     },
+  },
+  {
+    files: ["src/components/safe-html.tsx"],
+    rules: { "no-restricted-syntax": "off" },
   },
   eslintPluginPrettier,
 );

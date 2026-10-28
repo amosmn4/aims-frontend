@@ -7,13 +7,13 @@ import { BarChart3, Wallet, Users, Cpu, Megaphone, FileText, ShieldCheck } from 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "AIMS — Amsol Integrated Management System" },
+      { title: "AIMS — AMSOL Management System" },
       {
         name: "description",
         content:
           "AIMS is Amsol's internal platform for documentation, project management, reporting and executive analytics across Finance, HR, IT, Marketing & Operations and Tender.",
       },
-      { property: "og:title", content: "AIMS — Amsol Integrated Management System" },
+      { property: "og:title", content: "AIMS — AMSOL Management System" },
       {
         property: "og:description",
         content:
@@ -44,7 +44,7 @@ function Landing() {
             <div>
               <div className="font-semibold leading-tight">AIMS</div>
               <div className="text-[0.6875rem] text-white/70 leading-tight">
-                Amsol Integrated Management System
+                AMSOL Management System
               </div>
             </div>
           </div>
