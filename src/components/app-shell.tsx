@@ -35,6 +35,7 @@ import {
 import { useProjects } from "@/features/projects/use-projects";
 import { NotificationBell } from "@/components/notification-bell";
 import { HeaderSearch } from "@/components/header-search";
+import { AssistantLauncher } from "@/features/ai/assistant-panel";
 import { useLedgerAccess } from "@/features/payment-ledger/use-payment-ledger";
 import { ViewAsBanner, ViewAsButton } from "@/components/view-as";
 import { UserMenu } from "@/components/nav/user-menu";
@@ -495,6 +496,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       />
       {!minimalUi && <LiveClock className={tightHeader ? "hidden min-[1700px]:flex" : undefined} />}
       <NotificationBell />
+      <AssistantLauncher />
       <HelpButton />
       {isSystemAdmin && !viewAs && <ViewAsButton />}
       <UserMenu

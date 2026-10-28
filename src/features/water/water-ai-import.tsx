@@ -9,6 +9,7 @@ import { FormField } from "@/components/form-field";
 import { LoadError } from "@/components/load-error";
 import { confirmDialog } from "@/components/confirm-dialog";
 import { apiJson } from "@/lib/api-client";
+import { removeWaterUpload } from "./water-upload-removal";
 import { formatDateTime } from "@/lib/format-date";
 import { useCanManageWater } from "./use-water";
 import {
@@ -109,19 +110,24 @@ export function WaterAiImport() {
   const picker = useRef<HTMLInputElement>(null);
   const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [status, setStatus] = useState("pending");
+  const [status, setStatus] = useState("");
+  const [previewAccepted, setPreviewAccepted] = useState(false);
   const [selected, setSelected] = useState<Record<string, Selection>>({});
   const [busy, setBusy] = useState(false);
   const imports = useWaterImports();
   const detail = useWaterImport(selectedBatch, page, status);
   const upload = useUploadWaterImport();
-  const confirm = useConfirmWaterImport(selectedBatch);
+  const confirm = useConfirmWaterImport(selectedBatch, detail.data?.previewToken);
   const client = useQueryClient();
 
   useEffect(() => {
     setPage(1);
     setSelected({});
   }, [selectedBatch, status]);
+  useEffect(() => {
+    setPreviewAccepted(false);
+    setSelected({});
+  }, [selectedBatch, detail.data?.previewToken]);
   const handleFile = async (file?: File) => {
     if (!file || !canManage) return;
     if (file.size > 25 * 1024 * 1024)
@@ -129,7 +135,7 @@ export function WaterAiImport() {
     try {
       const batch = await upload.mutateAsync(file);
       setSelectedBatch(batch.id);
-      setStatus("pending");
+      setStatus("");
       toast.success("File uploaded. Extraction is running; records will be saved after review.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Upload failed");
@@ -138,6 +144,7 @@ export function WaterAiImport() {
     }
   };
   const confirmSelected = async () => {
+    if (!previewAccepted || !detail.data?.previewToken) return;
     const entries = Object.entries(selected);
     if (!entries.length) return;
     setBusy(true);
@@ -171,7 +178,7 @@ export function WaterAiImport() {
     }
   };
   const recordReady = async () => {
-    if (!selectedBatch) return;
+    if (!selectedBatch || !previewAccepted || !detail.data?.previewToken) return;
     const approved = await confirmDialog({
       title: "Record all rows without warnings?",
       description:
@@ -183,7 +190,7 @@ export function WaterAiImport() {
     try {
       await apiJson("/water/imports/" + selectedBatch + "/confirm-ready", {
         method: "POST",
-        body: JSON.stringify({ approved: true }),
+        body: JSON.stringify({ approved: true, previewToken: detail.data.previewToken }),
       });
       setSelected({});
       await client.invalidateQueries({ queryKey: ["water"] });
@@ -208,6 +215,26 @@ export function WaterAiImport() {
   const chooseBatch = (id: string) => {
     setSelectedBatch(id || null);
     setSelected({});
+  };
+  const deleteBatch = async () => {
+    if (!selectedBatch) return;
+    setBusy(true);
+    try {
+      const result = await removeWaterUpload("ai", selectedBatch);
+      if (result) {
+        setSelectedBatch(null);
+        await client.invalidateQueries({ queryKey: ["water"] });
+        toast.success(
+          result.sourceFilePendingRemoval
+            ? "Upload records removed. Source file cleanup is queued for retry."
+            : "Upload and the records it created have been removed.",
+        );
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove this upload.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -300,6 +327,11 @@ export function WaterAiImport() {
             >
               Download original
             </Button>
+            {canManage && (
+              <Button variant="destructive" disabled={busy} onClick={deleteBatch}>
+                Delete upload and its records
+              </Button>
+            )}
           </div>
           {inProgress && (
             <div role="status" className="rounded-lg border p-4">
@@ -351,6 +383,30 @@ export function WaterAiImport() {
           )}
           {["review", "completed"].includes(batch.status) && (
             <>
+              <div className="space-y-2 rounded-lg border p-4">
+                <h2 className="font-semibold">Full extraction preview</h2>
+                <p className="text-sm text-muted-foreground">
+                  All {batch.totalRows.toLocaleString()} extracted records are available below,
+                  including clean rows and warnings. Source values and proposed destinations are
+                  visible before recording. Use the page controls to inspect the complete file.
+                </p>
+                {batch.status === "review" && canManage && (
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      aria-label="I reviewed the complete extraction preview"
+                      checked={previewAccepted}
+                      onChange={(event) => setPreviewAccepted(event.target.checked)}
+                      className="mt-1"
+                      disabled={busy || !batch.previewToken}
+                    />
+                    <span>
+                      I reviewed the complete extraction preview, including rows without warnings.
+                      Record only the rows I confirm below.
+                    </span>
+                  </label>
+                )}
+              </div>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(batch.counts).map(([label, count]) => (
                   <Badge key={label} variant="secondary">
@@ -360,7 +416,10 @@ export function WaterAiImport() {
               </div>
               {batch.status === "review" && canManage && (
                 <div className="flex flex-wrap items-center gap-3 rounded-lg border p-4">
-                  <Button disabled={busy} onClick={recordReady}>
+                  <Button
+                    disabled={busy || !previewAccepted || !batch.previewToken}
+                    onClick={recordReady}
+                  >
                     Record all rows without warnings
                   </Button>
                   <p className="text-sm text-muted-foreground">
@@ -402,7 +461,13 @@ export function WaterAiImport() {
                   Select this page without warnings
                 </Button>
                 <Button
-                  disabled={busy || !canManage || !Object.keys(selected).length}
+                  disabled={
+                    busy ||
+                    !canManage ||
+                    !previewAccepted ||
+                    !batch.previewToken ||
+                    !Object.keys(selected).length
+                  }
                   onClick={confirmSelected}
                 >
                   {busy
@@ -503,9 +568,9 @@ function ImportRowCard({
       toast.error(error instanceof Error ? error.message : "Could not save correction");
     }
   };
-  const summary = KIND_FIELDS[row.data.kind]
-    .filter((key) => row.data[key] !== null && row.data[key] !== "")
-    .map((key) => `${FIELDS[key].label}: ${row.data[key]}`)
+  const summary = Object.keys(row.data)
+    .filter((key) => key !== "kind" && row.data[key] !== null && row.data[key] !== "")
+    .map((key) => `${FIELDS[key]?.label ?? key}: ${row.data[key]}`)
     .join(" · ");
   return (
     <section
@@ -589,12 +654,46 @@ function ImportRowCard({
           )}
         </div>
       )}
+      {!!assessment?.suggestions?.length && row.status === "pending" && (
+        <div className="space-y-3 rounded-md border bg-secondary/20 p-3">
+          <p className="text-sm font-semibold">Suggested corrections and closest records</p>
+          {assessment.suggestions.map((suggestion, index) => (
+            <div key={index} className="space-y-1">
+              <p className="text-sm font-medium">{suggestion.label}</p>
+              <p className="text-xs text-muted-foreground">{suggestion.explanation}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={disabled || update.isPending}
+                onClick={async () => {
+                  try {
+                    await update.mutateAsync({
+                      id: row.id,
+                      data: { ...row.data, ...suggestion.patch },
+                    });
+                    onSelect();
+                    toast.success(
+                      "Suggestion applied to the preview. Review the updated assessment before recording.",
+                    );
+                  } catch (error) {
+                    toast.error(
+                      error instanceof Error ? error.message : "Could not apply the suggestion.",
+                    );
+                  }
+                }}
+              >
+                Use suggestion {index + 1}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
       {invalidSelection && (
         <p className="text-sm text-destructive">
           The assessment changed. Check this row and select it again.
         </p>
       )}
-      <details className="text-sm">
+      <details open className="text-sm">
         <summary className="cursor-pointer font-medium">View source values</summary>
         <dl className="mt-2 grid gap-2 sm:grid-cols-2">
           {Object.entries(row.raw).map(([key, value]) => (

@@ -2,6 +2,11 @@ import { useMutation } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
 
 export interface ReadingReview {
+  suggestions?: {
+    label: string;
+    explanation: string;
+    patch: Record<string, string | number | null>;
+  }[];
   warnings: { code: string; severity: "warning" | "danger"; message: string }[];
   reviewToken: string;
   meter: { id: string; meterNumber: string; meterType: string };

@@ -13,7 +13,7 @@ import {
 import { MAX_UPLOAD_ROWS, parseUsageFile, type ParsedUsageFile } from "@/features/water/usage-file";
 import { ListEmpty, ListNoMatches, WithTerm } from "@/features/water/water-ui";
 import { RowActions } from "@/components/row-actions";
-import { confirmDeleteUpload, deleteErrorToast } from "@/features/water/water-delete";
+import { deleteErrorToast } from "@/features/water/water-delete";
 import { PageHeader } from "@/components/app-shell";
 import { LoadError } from "@/components/load-error";
 import { ViewOnlyBanner } from "@/components/view-only-banner";
@@ -510,10 +510,13 @@ function UploadHistory({ canManage, onUpload }: { canManage: boolean; onUpload: 
   };
 
   const handleDelete = async (u: WaterUsageUploadRow) => {
-    if (!(await confirmDeleteUpload(u))) return;
     deleteUpload.mutate(u.id, {
-      onSuccess: (res) =>
-        toast.success(`Upload deleted — ${plural(res.recordsDeleted, "usage record")} removed`),
+      onSuccess: (res) => {
+        if (res)
+          toast.success(
+            `Upload removed with ${plural(res.counts.purchase ?? 0, "payment")}, ${plural(res.counts.meter ?? 0, "meter")} and ${plural(res.counts.customer ?? 0, "customer")} it created.`,
+          );
+      },
       onError: deleteErrorToast,
     });
   };

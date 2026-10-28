@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { AssistantPanel } from "@/features/ai/assistant-panel";
 import { useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowUpRight, Loader2 } from "lucide-react";
 import {
@@ -211,6 +212,17 @@ function WaterReportsPage() {
         }
       />
       <TermsHint terms={["nrw", "main", "bulk", "household", "m3"]} />
+      <details className="rounded-lg border bg-card p-4">
+        <summary className="cursor-pointer font-medium">Explain these figures with AI</summary>
+        <div className="mt-4">
+          <AssistantPanel
+            key={month}
+            context={`water-report:${month || currentMonth()}`}
+            title="Understand the water report"
+            suggestedQuestion="Explain this water report clearly using the records for the selected month. Show payments, expenses, captured readings, unusual changes, missing measurements and differences between purchases and actual consumption. State the period and evidence."
+          />
+        </div>
+      </details>
 
       {summaryQ.isLoading ? (
         <div className="py-12 flex justify-center">

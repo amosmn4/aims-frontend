@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
+import type { AiEvidence } from "@/features/ai/assistant-panel";
+import { plainAiText } from "@/features/ai/plain-ai-text";
 
 /* ---------- Status ---------- */
 
@@ -49,9 +51,9 @@ function mapInsight(raw: BackendInsight): WaterAiInsight {
   return {
     id: raw.id,
     month: raw.month,
-    summary: raw.summary,
+    summary: plainAiText(raw.summary),
     anomalies: raw.anomalies ?? [],
-    reasons: raw.reasons ?? [],
+    reasons: (raw.reasons ?? []).map(plainAiText),
     provider: raw.provider,
     generated_at: raw.createdAt,
   };
@@ -85,6 +87,7 @@ export function useGenerateWaterAiInsight() {
 /* ---------- Chat ---------- */
 
 export interface WaterAiChatMessage {
+  evidence?: AiEvidence | null;
   id: string;
   role: "user" | "assistant";
   content: string;
@@ -92,6 +95,7 @@ export interface WaterAiChatMessage {
 }
 
 type BackendChatMessage = {
+  evidence?: AiEvidence | null;
   id: string;
   role: "user" | "assistant";
   content: string;
@@ -99,7 +103,13 @@ type BackendChatMessage = {
 };
 
 function mapChatMessage(raw: BackendChatMessage): WaterAiChatMessage {
-  return { id: raw.id, role: raw.role, content: raw.content, created_at: raw.createdAt };
+  return {
+    id: raw.id,
+    role: raw.role,
+    content: raw.role === "assistant" ? plainAiText(raw.content) : raw.content,
+    evidence: raw.evidence,
+    created_at: raw.createdAt,
+  };
 }
 
 export function useWaterAiChatHistory() {

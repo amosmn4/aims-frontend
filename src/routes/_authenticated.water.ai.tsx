@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { AiSources } from "@/features/ai/assistant-panel";
 
 export const Route = createFileRoute("/_authenticated/water/ai")({
   head: () => ({ meta: [{ title: "Water Project — AI Insights — AIMS" }] }),
@@ -60,7 +61,7 @@ const SEVERITY_LABELS: Record<WaterAiSeverity, string> = {
 };
 
 const PAGE_DESCRIPTION =
-  "Plain-language summaries of this month's water figures, unusual changes, and an assistant you can ask about the network.";
+  "Monthly water insights and an assistant that can query accessible AIMS records across all stored dates.";
 
 function WaterAiPage() {
   const statusQ = useWaterAiStatus();
@@ -364,7 +365,7 @@ function ChatPanel() {
               submit(draft);
             }
           }}
-          placeholder="Ask a question about the water network…"
+          placeholder="Ask about any accessible records or date range"
           aria-label="Message to the water assistant"
           rows={1}
           className="min-h-9 max-h-32 resize-none text-sm"
@@ -403,6 +404,7 @@ function ChatBubble({ message }: { message: WaterAiChatMessage }) {
         )}
       >
         {message.content}
+        {!isUser && <AiSources evidence={message.evidence} />}
       </div>
     </div>
   );

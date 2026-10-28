@@ -94,15 +94,3 @@ export function confirmDeleteReading(reading: {
     destructive: true,
   });
 }
-
-export function confirmDeleteUpload(upload: {
-  file_name: string;
-  record_count: number;
-}): Promise<boolean> {
-  return confirmDialog({
-    title: `Delete upload "${upload.file_name}"?`,
-    description: `This permanently removes the ${plural(upload.record_count, "usage record")} imported from this file and recalculates analytics. Meters and customers it registered stay in the registry. To correct a file, delete it and upload the fixed version. This can't be undone.`,
-    confirmLabel: "Delete upload",
-    destructive: true,
-  });
-}

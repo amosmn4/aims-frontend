@@ -485,6 +485,31 @@ function ReadingForm({
                 {warning.message}
               </p>
             ))}
+
+            {!!review.suggestions?.length && (
+              <div className="space-y-2">
+                {review.suggestions.map((suggestion, index) => (
+                  <div key={index}>
+                    <p className="text-sm">{suggestion.label}</p>
+                    <p className="text-xs text-muted-foreground">{suggestion.explanation}</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isPending}
+                      onClick={() => {
+                        if (typeof suggestion.patch.dialReading === "number")
+                          setReading(String(suggestion.patch.dialReading));
+                        if (typeof suggestion.patch.cumulativeUsage === "number")
+                          setCumulativeUsage(String(suggestion.patch.cumulativeUsage));
+                      }}
+                    >
+                      Use suggested reading {index + 1}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
             <FormField id="reading-review-reason" label="Why is this reading correct?" required>
               <Input
                 id="reading-review-reason"

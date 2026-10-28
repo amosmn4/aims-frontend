@@ -8,6 +8,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import { apiJson } from "@/lib/api-client";
+import { removeWaterUpload } from "./water-upload-removal";
 import { useAuth } from "@/lib/auth";
 import type { PaginatedResponse } from "@/hooks/use-pagination";
 import type { WaterExpenseTotals } from "./water-expense-types";
@@ -1399,10 +1400,7 @@ export function useWaterUploads(
 export function useDeleteWaterUpload() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      apiJson<{ id: string; recordsDeleted: number }>(`/water/usage-uploads/${id}`, {
-        method: "DELETE",
-      }),
+    mutationFn: (id: string) => removeWaterUpload("standard", id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["water"] }),
   });
 }

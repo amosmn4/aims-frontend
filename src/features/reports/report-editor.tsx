@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiJson } from "@/lib/api-client";
+import { AssistantPanel } from "@/features/ai/assistant-panel";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -480,6 +481,20 @@ export function ReportEditor({
           </Button>
         </div>
       )}
+
+      <details className="rounded-lg border bg-card p-4">
+        <summary className="cursor-pointer font-medium">
+          AI report explanation and questions
+        </summary>
+        <div className="mt-4">
+          <AssistantPanel
+            key={report.id}
+            context={`report:${report.id}`}
+            title="Understand this report"
+            suggestedQuestion="Explain this report clearly. Check the underlying records for its period, show the main changes, identify gaps or contradictions, and distinguish recorded facts from likely explanations."
+          />
+        </div>
+      </details>
 
       {report.canReview && !viewAs && (
         <section

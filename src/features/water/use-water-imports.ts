@@ -5,6 +5,13 @@ export type ImportKind =
   "reading" | "purchase" | "usage" | "meter" | "customer" | "unresolved" | "ignored";
 export type ImportData = { kind: ImportKind; [field: string]: string | number | null };
 export interface ImportAssessment {
+  suggestions?: {
+    label: string;
+    explanation: string;
+    confidence: string;
+    patch: Record<string, string | number | null>;
+    recordId?: string;
+  }[];
   status: "ready" | "warning" | "blocked" | "duplicate" | "ignored";
   issues: string[];
   warnings: { code: string; severity: "warning" | "danger"; message: string }[];
@@ -26,6 +33,7 @@ export interface ImportRow {
   assessment?: ImportAssessment;
 }
 export interface ImportBatch {
+  previewVersion: number;
   id: string;
   fileName: string;
   status: "queued" | "processing" | "recording" | "review" | "completed" | "failed";
@@ -37,6 +45,7 @@ export interface ImportBatch {
   summary?: Record<string, unknown>;
 }
 export interface ImportDetail extends ImportBatch {
+  previewToken: string | null;
   rows: ImportRow[];
   total: number;
   page: number;
@@ -96,13 +105,13 @@ export function useUpdateWaterImportRow(batchId: string) {
   });
 }
 
-export function useConfirmWaterImport(batchId: string | null) {
+export function useConfirmWaterImport(batchId: string | null, previewToken?: string | null) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (rows: { id: string; reviewToken: string; reviewReason?: string }[]) =>
       apiJson<{ processed: number; pending: number; counts: Record<string, number> }>(
         `/water/imports/${batchId}/confirm`,
-        { method: "POST", body: JSON.stringify({ rows }) },
+        { method: "POST", body: JSON.stringify({ rows, previewToken }) },
       ),
     onSuccess: () => client.invalidateQueries({ queryKey: ["water"] }),
   });
