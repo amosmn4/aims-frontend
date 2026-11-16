@@ -15,7 +15,6 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
-  Palette,
   Gavel,
   Inbox,
   Store,
@@ -61,13 +60,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { businesses, tenders, clientRequests, people, deptName, settings, storageError } =
     useWorkspace();
   const access = useBusinessAccess();
-  const [palette, setPalette] = useState<"brand" | "green">(() => {
-    try {
-      return localStorage.getItem("amsol-palette") === "green" ? "green" : "brand";
-    } catch {
-      return "brand";
-    }
-  });
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const visible = (account?.role === "system_admin" ? systemAdminNav : nav).filter(
@@ -93,7 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     (pathname.startsWith("/departments") && !canViewDepartments(mode)) ||
     (pathname === "/admin" && mode !== "ceo");
   return (
-    <div data-palette={palette} className="flex min-h-screen bg-background text-foreground">
+    <div className="flex min-h-screen bg-background text-foreground">
       {mobileOpen && (
         <button
           aria-label="Close navigation"
@@ -209,39 +201,25 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
       <div className="min-w-0 flex-1">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-card px-5 py-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            aria-label="Open navigation"
-            onClick={() => setMobileOpen(true)}
-          >
-            <PanelLeftOpen />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hidden md:inline-flex"
-            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-            onClick={() => setCollapsed(!collapsed)}
-          >
-            {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-          </Button>
           <div className="flex items-center gap-2">
-            <Palette className="h-4 w-4 text-muted-foreground" />
-            <select
-              aria-label="Color theme"
-              className="field-input w-auto py-1.5"
-              value={palette}
-              onChange={(event) => {
-                const value = event.target.value as "brand" | "green";
-                setPalette(value);
-                localStorage.setItem("amsol-palette", value);
-              }}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              aria-label="Open navigation"
+              onClick={() => setMobileOpen(true)}
             >
-              <option value="brand">Amsol blue</option>
-              <option value="green">Forest green</option>
-            </select>
+              <PanelLeftOpen />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden md:inline-flex"
+              aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+              onClick={() => setCollapsed(!collapsed)}
+            >
+              {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+            </Button>
           </div>
         </header>
         <main className="min-w-0 px-5 py-7 lg:px-8">

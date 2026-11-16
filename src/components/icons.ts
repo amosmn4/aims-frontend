@@ -9,7 +9,6 @@ export { default as Users } from "@mui/icons-material/PeopleOutline";
 export { default as Settings } from "@mui/icons-material/SettingsOutlined";
 export { default as PanelLeftClose, default as PanelLeft } from "@mui/icons-material/MenuOpen";
 export { default as PanelLeftOpen } from "@mui/icons-material/Menu";
-export { default as Palette } from "@mui/icons-material/PaletteOutlined";
 export { default as MessageSquare } from "@mui/icons-material/ChatBubbleOutline";
 export { default as Gavel } from "@mui/icons-material/Gavel";
 export { default as Inbox } from "@mui/icons-material/InboxOutlined";
