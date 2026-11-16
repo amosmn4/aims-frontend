@@ -1,0 +1,10 @@
+node_modules
+dist
+.e2e-dist
+.api-e2e-dist
+.npm-cache
+.tanstack
+playwright-report
+test-results
+package-lock.json
+routeTree.gen.ts

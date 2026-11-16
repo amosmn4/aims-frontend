@@ -1,0 +1,196 @@
+.production-module {
+  --radius: 0.5rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.28 0.02 250);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.28 0.02 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.28 0.02 250);
+
+  --primary: oklch(0.44 0.14 245);
+  --primary-foreground: oklch(1 0 0);
+
+  --primary-dark: oklch(0.34 0.12 250);
+
+  --secondary: oklch(0.96 0.005 240);
+  --secondary-foreground: oklch(0.28 0.02 250);
+
+  --muted: oklch(0.96 0.005 240);
+  --muted-foreground: oklch(0.5 0.01 250);
+
+  --accent: oklch(0.7 0.18 55);
+  --accent-foreground: oklch(1 0 0);
+
+  --destructive: oklch(0.6 0.19 25);
+  --destructive-foreground: oklch(1 0 0);
+
+  --success: oklch(0.62 0.16 145);
+  --success-foreground: oklch(1 0 0);
+
+  --warning: oklch(0.7 0.18 55);
+  --warning-foreground: oklch(1 0 0);
+
+  --border: oklch(0.9 0.005 250);
+  --input: oklch(0.9 0.005 250);
+  --ring: oklch(0.44 0.14 245);
+
+  --chart-1: oklch(0.44 0.14 245);
+  --chart-2: oklch(0.7 0.18 55);
+  --chart-3: oklch(0.34 0.12 250);
+  --chart-4: oklch(0.62 0.16 145);
+  --chart-5: oklch(0.5 0.01 250);
+
+  --sidebar: oklch(0.34 0.12 250);
+  --sidebar-foreground: oklch(0.98 0.005 240);
+  --sidebar-primary: oklch(0.7 0.18 55);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.44 0.14 245);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.44 0.14 245 / 0.4);
+  --sidebar-ring: oklch(0.7 0.18 55);
+
+  --chart-zone-1: #2a78d6;
+  --chart-zone-2: #eb6834;
+  --chart-zone-3: #1baf7a;
+  --chart-zone-4: #eda100;
+  --chart-zone-5: #e87ba4;
+  --chart-zone-6: #4a3aa7;
+  --chart-zone-other: #7a7a72;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+@layer base {
+  .production-module,
+  .production-module *,
+  .production-module ::before,
+  .production-module ::after {
+    border-color: var(--border);
+  }
+  .production-module {
+    font-family: var(--font-sans);
+    color: var(--foreground);
+  }
+  .production-module table {
+    color: inherit;
+  }
+  .production-module :is(h1, h2, h3, h4, h5, h6) {
+    letter-spacing: -0.01em;
+  }
+}
+.production-module .blog-content p {
+  margin: 0 0 0.75em;
+}
+.production-module .blog-content h1 {
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 1.15;
+  margin: 1.2em 0 0.5em;
+}
+.production-module .blog-content h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 1.2em 0 0.5em;
+}
+.production-module .blog-content h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1em 0 0.4em;
+}
+.production-module .blog-content h4 {
+  font-size: 1.1em;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 1em 0 0.35em;
+}
+.production-module .blog-content h5 {
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 1em 0 0.35em;
+}
+.production-module .blog-content h6 {
+  font-size: 0.875em;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 1em 0 0.35em;
+}
+.production-module .blog-content > :first-child {
+  margin-top: 0;
+}
+.production-module .blog-content blockquote {
+  position: relative;
+  margin: 1em 0;
+  padding: 0.75em 1em 0.75em 2.75em;
+  border-left: 4px solid var(--primary);
+  background: color-mix(in oklab, var(--muted) 60%, transparent);
+  border-radius: 0 0.5em 0.5em 0;
+  font-style: italic;
+}
+.production-module .blog-content blockquote::before {
+  content: "\201C";
+  position: absolute;
+  left: 0.3em;
+  top: -0.05em;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 3em;
+  line-height: 1;
+  color: var(--primary);
+  font-style: normal;
+}
+.production-module .blog-content blockquote p:last-child {
+  margin-bottom: 0;
+}
+.production-module .blog-content a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.production-module .blog-content ul {
+  list-style: disc;
+  padding-left: 1.5em;
+  margin: 0 0 0.75em;
+}
+.production-module .blog-content ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+  margin: 0 0 0.75em;
+}
+.production-module .blog-content li > p {
+  margin: 0;
+}
+.production-module .blog-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 1em;
+  table-layout: fixed;
+}
+.production-module .blog-content th,
+.production-module .blog-content td {
+  border: 1px solid var(--border);
+  padding: 0.4em 0.6em;
+  vertical-align: top;
+}
+.production-module .blog-content th {
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+  font-weight: 600;
+  text-align: left;
+}
+.production-module .blog-content th > p,
+.production-module .blog-content td > p {
+  margin: 0;
+}
+.production-module .blog-content .selectedCell {
+  background: color-mix(in oklab, var(--primary) 12%, transparent);
+}
+.production-module .blog-content .drop-cap::first-letter {
+  float: left;
+  font-size: 3em;
+  line-height: 0.8;
+  padding-right: 0.1em;
+  font-weight: 600;
+}
