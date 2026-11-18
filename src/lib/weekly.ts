@@ -4,13 +4,19 @@ import { useAccount } from "./account";
 
 export type WeeklyPhase = "plan" | "report";
 export type WeeklyItem = {
+  due?: string | undefined;
+  priority?: "Urgent" | "High" | "Medium" | "Low" | undefined;
+  source?: "project" | "planned" | "ad_hoc" | "contingency" | undefined;
+  business?: string | undefined;
+  subtasks?: { id: string; title: string; done: boolean }[] | undefined;
   id: string;
-  taskId?: string;
+  taskId?: string | undefined;
   title: string;
   detail: string;
   status: "planned" | "completed" | "in_progress" | "pending" | "blocked" | "cancelled";
 };
 export type WeeklySubmission = {
+  leave?: { start: string; end: string; note?: string | null }[];
   summary: string;
   attachments?: string[];
   items: WeeklyItem[];
@@ -77,6 +83,7 @@ export type WeeklyOverview = {
   staff: WeeklyPerson[];
 };
 export type WeeklyDetail = {
+  leave?: { start: string; end: string; note?: string | null }[];
   person: { id: string; name: string; dept: string | null };
   weekStart: string;
   weekEnd: string;
@@ -86,7 +93,18 @@ export type WeeklyDetail = {
   deadlines: Record<WeeklyPhase, string>;
   plan: WeeklyEntry | null;
   report: WeeklyEntry | null;
-  tasks: { id: string; title: string; project: string; due: string; status: string }[];
+  tasks: {
+    id: string;
+    title: string;
+    project: string;
+    due: string;
+    status: string;
+    weekStart?: string | null;
+    priority?: WeeklyItem["priority"];
+    source?: WeeklyItem["source"];
+    business?: string;
+    subtasks?: WeeklyItem["subtasks"];
+  }[];
 };
 export type WeeklyBrief = {
   subject: string;
@@ -163,3 +181,17 @@ export const emptyWeeklySubmission = (): WeeklySubmission => ({
   nextWeek: "",
   noWorkReason: "",
 });
+
+export function leaveDays(rows: { start: string; end: string }[]) {
+  return rows.reduce(
+    (total, row) =>
+      total +
+      Math.round(
+        (new Date(`${row.end}T12:00:00Z`).getTime() -
+          new Date(`${row.start}T12:00:00Z`).getTime()) /
+          86400000,
+      ) +
+      1,
+    0,
+  );
+}

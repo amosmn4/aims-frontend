@@ -1,3 +1,12 @@
+import type { z } from "zod";
+import type {
+  clientSchema,
+  projectSchema,
+  taskSchema,
+  reportSchema,
+  documentSchema,
+  requestSchema,
+} from "./models";
 export type DeptId = string;
 export type Status = "on-track" | "at-risk" | "delayed" | "completed";
 export type Stage = "Planning" | "In progress" | "Review" | "Completed";
@@ -50,7 +59,7 @@ export const people = [
 export type Person = (typeof people)[number];
 export const person = (id: string) => people.find((p) => p.id === id)!;
 
-export type Client = { id: string; name: string; services: string[]; contact: string };
+export type Client = z.infer<typeof clientSchema>;
 export const clients: Client[] = [
   {
     id: "c1",
@@ -74,19 +83,7 @@ export const clients: Client[] = [
 ];
 export const client = (id: string) => clients.find((c) => c.id === id);
 
-export type Project = {
-  id: string;
-  name: string;
-  client?: string | undefined;
-  lead: string;
-  depts: DeptId[];
-  members: string[];
-  status: Status;
-  stage: Stage;
-  progress: number;
-  due: string;
-  summary: string;
-};
+export type Project = z.infer<typeof projectSchema>;
 export const projects: Project[] = [
   {
     id: "pr1",
@@ -180,17 +177,7 @@ export const projects: Project[] = [
 ];
 export const project = (id: string) => projects.find((p) => p.id === id);
 
-export type Task = {
-  id: string;
-  title: string;
-  description?: string | undefined;
-  project: string;
-  assignee: string;
-  due: string;
-  priority: "High" | "Medium" | "Low";
-  status: "To do" | "In progress" | "Done";
-  ceoComment?: string | undefined;
-};
+export type Task = z.infer<typeof taskSchema>;
 export const tasks: Task[] = [
   {
     id: "t1",
@@ -320,20 +307,7 @@ export const tasks: Task[] = [
   },
 ];
 
-export type Report = {
-  id: string;
-  title: string;
-  type: "Project update" | "Weekly department" | "Ad-hoc";
-  project?: string | undefined;
-  dept: DeptId;
-  author: string;
-  date: string;
-  progress?: string | undefined;
-  blockers?: string | undefined;
-  next?: string | undefined;
-  reviewed: boolean;
-  comment?: string | undefined;
-};
+export type Report = z.infer<typeof reportSchema>;
 export const reports: Report[] = [
   {
     id: "r1",
@@ -504,20 +478,7 @@ export const documents: Doc[] = [
     updated: "2026-06-11",
   },
 ];
-export type Doc = {
-  id: string;
-  name: string;
-  folder: string;
-  access: Access;
-  owner: string;
-  updated: string;
-  project?: string | undefined;
-  dept?: DeptId | undefined;
-  allowed?: string[] | undefined;
-  fileKey?: string | undefined;
-  sample?: boolean | undefined;
-  mime?: string | undefined;
-};
+export type Doc = z.infer<typeof documentSchema>;
 
 export const deptName = (id: DeptId) => departments.find((d) => d.id === id)?.name ?? id;
 
@@ -606,17 +567,7 @@ export const tenders: Tender[] = [
 
 export const requestStatuses = ["Received", "In progress", "Closed"] as const;
 export type RequestStatus = (typeof requestStatuses)[number];
-export type ClientRequest = {
-  id: string;
-  title: string;
-  client?: string | undefined;
-  prospectClientName?: string | undefined;
-  source: "operations" | "marketing";
-  received: string;
-  handler: string;
-  status: RequestStatus;
-  notes?: string | undefined;
-};
+export type ClientRequest = z.infer<typeof requestSchema>;
 export const clientRequests: ClientRequest[] = [
   {
     id: "cr1",
@@ -696,7 +647,12 @@ export const businesses: Business[] = [
   { id: "b4", name: "Restaurant", sector: "Hospitality" },
 ];
 export const CORE_BUSINESS_ID = "b0";
-export type PersonBusiness = { person: string; business: string };
+export type PersonBusiness = {
+  person: string;
+  business: string;
+  manage?: boolean | undefined;
+  finance?: "view" | "manage" | undefined;
+};
 export const staffBusiness: PersonBusiness[] = [
   { person: "p9", business: "b1" },
   { person: "p7", business: "b3" },

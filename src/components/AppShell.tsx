@@ -1,6 +1,7 @@
 import ReceiptLongOutlined from "@mui/icons-material/ReceiptLongOutlined";
 import AssignmentOutlined from "@mui/icons-material/AssignmentOutlined";
 import WaterDropOutlined from "@mui/icons-material/WaterDropOutlined";
+import Inventory2Outlined from "@mui/icons-material/Inventory2Outlined";
 import { Link, useLocation } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import {
@@ -35,7 +36,8 @@ const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/tasks", label: "Tasks", icon: CheckSquare },
   { to: "/projects", label: "Projects", icon: FolderKanban },
-  { to: "/reports", label: "General Reports", icon: FileText },
+  { to: "/reports", label: "Monthly Reports", icon: FileText },
+  { to: "/inventory", label: "Inventory", icon: Inventory2Outlined },
   { to: "/weekly-reports", label: "Weekly reporting", icon: AssignmentOutlined },
   { to: "/tenders", label: "Tenders", icon: Gavel },
   { to: "/client-requests", label: "Client requests", icon: Inbox },
@@ -67,11 +69,20 @@ export function AppShell({ children }: { children: ReactNode }) {
       (item.to !== "/payment-ledger" || !!moduleAccess(account, "ledger")) &&
       (item.to !== "/water" || !!moduleAccess(account, "water")) &&
       (item.to !== "/marketing/blog" || !!moduleAccess(account, "blog")) &&
+      (item.to !== "/inventory" || !!moduleAccess(account, "inventory")) &&
       (item.to !== "/departments" || canViewDepartments(mode)) &&
       (item.to !== "/people" || mode === "ceo") &&
-      (item.to !== "/tenders" || !isDemo || canSeeTenders(mode, me.id, tenders)) &&
+      (item.to !== "/tenders" ||
+        (isDemo ? canSeeTenders(mode, me.id, tenders) : !!moduleAccess(account, "tender"))) &&
       (item.to !== "/client-requests" ||
-        canSeeRequests(mode, me.id, me.dept, clientRequests, people)) &&
+        canSeeRequests(
+          mode,
+          me.id,
+          me.dept,
+          clientRequests,
+          people,
+          access.permissions?.filter((grant) => grant.manage).map((grant) => grant.business),
+        )) &&
       (item.to !== "/businesses" || canSeeBusinesses(mode, me.id, me.dept, businesses, access)),
   );
   const restricted =
@@ -82,6 +93,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     ((pathname === "/water" || pathname.startsWith("/water/")) &&
       !moduleAccess(account, "water")) ||
     (pathname.startsWith("/marketing/blog") && !moduleAccess(account, "blog")) ||
+    (pathname.startsWith("/inventory") && !moduleAccess(account, "inventory")) ||
+    (pathname.startsWith("/tenders") && !isDemo && !moduleAccess(account, "tender")) ||
     (pathname.startsWith("/departments") && !canViewDepartments(mode)) ||
     (pathname === "/admin" && mode !== "ceo");
   return (

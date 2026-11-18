@@ -198,12 +198,14 @@ export function RecordActions({
   label,
   onEdit,
   onDelete,
+  canDelete = true,
 }: {
   collection: Collection;
   id: string;
   label: string;
   onEdit: () => void;
   onDelete?: (() => void | Promise<void>) | undefined;
+  canDelete?: boolean;
 }) {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -212,16 +214,18 @@ export function RecordActions({
       <Button size="sm" variant="ghost" aria-label={`Edit ${label}`} title="Edit" onClick={onEdit}>
         <Edit className="h-4 w-4" />
       </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        aria-label={`Delete ${label}`}
-        title="Delete"
-        onClick={() => setConfirm(true)}
-      >
-        <Delete className="h-4 w-4" />
-      </Button>
-      {confirm && (
+      {canDelete && (
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label={`Delete ${label}`}
+          title="Delete"
+          onClick={() => setConfirm(true)}
+        >
+          <Delete className="h-4 w-4" />
+        </Button>
+      )}
+      {confirm && canDelete && (
         <Dialog open onOpenChange={setConfirm}>
           <DialogContent>
             <DialogHeader>

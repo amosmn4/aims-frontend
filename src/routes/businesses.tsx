@@ -1,13 +1,15 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, PageHeader, SectionTitle, Stat } from "@/components/kit";
-import { EmptyState, RecordActions } from "@/components/RecordDialog";
+import { EmptyState, RecordActions, SearchField } from "@/components/RecordDialog";
 import { BusinessForm, FinanceForm } from "@/components/WorkspaceForms";
 import type { Business, BusinessFinance } from "@/lib/data";
 import {
   businessTotals,
+  canReadBusinessFinance,
+  canManageBusinessFinance,
   canSeeBusiness,
   canSeeBusinesses,
   compactKes,
@@ -30,32 +32,40 @@ const colors = ["var(--primary)", "var(--warning)", "var(--success)"];
 
 function Businesses() {
   const { mode, me } = useRole();
-  const { businesses, businessFinance } = useWorkspace();
+  const { businesses, businessFinance, projects } = useWorkspace();
   const access = useBusinessAccess();
   const [editBusiness, setEditBusiness] = useState<Business | "new" | null>(null);
   const [editFinance, setEditFinance] = useState<BusinessFinance | "new" | null>(null);
   const [businessId, setBusinessId] = useState("");
   const [month, setMonth] = useState("");
+  const [search, setSearch] = useState("");
   if (!canSeeBusinesses(mode, me.id, me.dept, businesses, access))
     return (
       <Card>You do not have permission to view business finances. Ask the CEO for access.</Card>
     );
-  const visible = businesses.filter((business) =>
-    canSeeBusiness(business, mode, me.id, me.dept, access),
+  const visible = businesses.filter(
+    (business) =>
+      canSeeBusiness(business, mode, me.id, me.dept, access) &&
+      `${business.name} ${business.sector}`.toLowerCase().includes(search.toLowerCase()),
   );
-  const rows = businessFinance.filter((row) =>
-    visible.some((business) => business.id === row.business),
+  const rows = businessFinance.filter(
+    (row) =>
+      visible.some((business) => business.id === row.business) &&
+      canReadBusinessFinance(mode, row.business, access),
   );
   const months = [...new Set(rows.map((row) => row.month))].sort();
   const selected = month || latestMonth(rows);
   const group = businessTotals(rows.filter((row) => row.month === selected));
   const chartData = revenueByBusiness(rows, visible);
-  const canEditFinance = mode === "ceo" || me.dept === "finance";
+  const canEditFinance = visible.some((business) =>
+    canManageBusinessFinance(mode, business.id, access),
+  );
+  const hasFinance = visible.some((business) => canReadBusinessFinance(mode, business.id, access));
   return (
     <div>
       <PageHeader
         title="Businesses"
-        subtitle="Monthly finances across Amsol and its sister businesses"
+        subtitle="Amsol and your assigned businesses"
         action={
           <div className="flex flex-wrap gap-2">
             {mode === "ceo" && <Button onClick={() => setEditBusiness("new")}>Add business</Button>}
@@ -63,7 +73,10 @@ function Businesses() {
               <Button
                 variant="outline"
                 onClick={() => {
-                  setBusinessId(visible[0]?.id ?? "");
+                  setBusinessId(
+                    visible.find((business) => canManageBusinessFinance(mode, business.id, access))
+                      ?.id ?? "",
+                  );
                   setEditFinance("new");
                 }}
               >
@@ -73,71 +86,76 @@ function Businesses() {
           </div>
         }
       />
-      <label className="field-label mb-5 max-w-xs">
-        Reporting month
-        <select
-          className="field-input"
-          value={selected}
-          onChange={(event) => setMonth(event.target.value)}
-        >
-          {!months.length && <option value="">No finance records</option>}
-          {months.map((value) => (
-            <option key={value} value={value}>
-              {monthLabel(value)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="mb-8 grid gap-4 sm:grid-cols-3">
-        <Stat
-          label={`Revenue | ${selected ? monthLabel(selected) : "No entries"}`}
-          value={compactKes(group.revenue)}
-        />
-        <Stat label="Expenses" value={compactKes(group.expenses)} />
-        <Stat label="Profit" value={compactKes(group.profit)} />
-      </div>
-      <Card className="mb-8">
-        <SectionTitle>Revenue comparison</SectionTitle>
-        {!rows.length ? (
-          <EmptyState>No monthly finance records yet.</EmptyState>
-        ) : (
-          <div
-            className="h-72"
-            role="img"
-            aria-label={`Monthly revenue for ${visible.map((business) => business.name).join(", ")}`}
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={11}
-                  tickFormatter={compactKes}
-                  width={64}
-                />
-                <Tooltip
-                  formatter={(value: number) => fmtKes(value)}
-                  contentStyle={{
-                    background: "var(--popover)",
-                    borderColor: "var(--border)",
-                    borderRadius: 6,
-                  }}
-                />
-                {months.map((value, index) => (
-                  <Bar
-                    key={value}
-                    dataKey={value}
-                    name={monthLabel(value)}
-                    fill={colors[index % colors.length]}
-                    radius={[4, 4, 0, 0]}
-                  />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
+      <SearchField value={search} onChange={setSearch} placeholder="Search assigned businesses" />
+      {hasFinance && (
+        <>
+          <label className="field-label mb-5 max-w-xs">
+            Reporting month
+            <select
+              className="field-input"
+              value={selected}
+              onChange={(event) => setMonth(event.target.value)}
+            >
+              {!months.length && <option value="">No finance records</option>}
+              {months.map((value) => (
+                <option key={value} value={value}>
+                  {monthLabel(value)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="mb-8 grid gap-4 sm:grid-cols-3">
+            <Stat
+              label={`Revenue | ${selected ? monthLabel(selected) : "No entries"}`}
+              value={compactKes(group.revenue)}
+            />
+            <Stat label="Expenses" value={compactKes(group.expenses)} />
+            <Stat label="Profit" value={compactKes(group.profit)} />
           </div>
-        )}
-      </Card>
+          <Card className="mb-8">
+            <SectionTitle>Revenue comparison</SectionTitle>
+            {!rows.length ? (
+              <EmptyState>No monthly finance records yet.</EmptyState>
+            ) : (
+              <div
+                className="h-72"
+                role="img"
+                aria-label={`Monthly revenue for ${visible.map((business) => business.name).join(", ")}`}
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={11}
+                      tickFormatter={compactKes}
+                      width={64}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => fmtKes(value)}
+                      contentStyle={{
+                        background: "var(--popover)",
+                        borderColor: "var(--border)",
+                        borderRadius: 6,
+                      }}
+                    />
+                    {months.map((value, index) => (
+                      <Bar
+                        key={value}
+                        dataKey={value}
+                        name={monthLabel(value)}
+                        fill={colors[index % colors.length]}
+                        radius={[4, 4, 0, 0]}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </Card>
+        </>
+      )}
       <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {visible.map((business) => {
           const monthlyRows = rowsFor(rows, business.id).filter((row) => row.month === selected);
@@ -149,30 +167,54 @@ function Businesses() {
                   <h2 className="font-display text-lg font-semibold">{business.name}</h2>
                   <p className="text-sm text-muted-foreground">{business.sector}</p>
                 </div>
-                {mode === "ceo" && (
+                {(mode === "ceo" ||
+                  access.permissions?.some(
+                    (grant) => grant.business === business.id && grant.manage,
+                  )) && (
                   <RecordActions
                     collection="businesses"
                     id={business.id}
                     label={business.name}
+                    canDelete={mode === "ceo" && business.id !== "b0"}
                     onEdit={() => setEditBusiness(business)}
                   />
                 )}
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-3 border-t pt-4 text-sm">
-                <div>
-                  <p className="text-xs text-muted-foreground">Revenue</p>
-                  {monthlyRows.length ? compactKes(totals.revenue) : "No entry"}
+              {canReadBusinessFinance(mode, business.id, access) ? (
+                <div className="mt-4 grid grid-cols-3 gap-3 border-t pt-4 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Revenue</p>
+                    {monthlyRows.length ? compactKes(totals.revenue) : "No entry"}
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Expenses</p>
+                    {monthlyRows.length ? compactKes(totals.expenses) : "No entry"}
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Profit</p>
+                    {monthlyRows.length ? compactKes(totals.profit) : "No entry"}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Expenses</p>
-                  {monthlyRows.length ? compactKes(totals.expenses) : "No entry"}
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Profit</p>
-                  {monthlyRows.length ? compactKes(totals.profit) : "No entry"}
-                </div>
+              ) : (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Financial access has not been assigned.
+                </p>
+              )}
+              <div className="mt-3 space-y-2">
+                {projects
+                  .filter((project) => (project.business ?? "b0") === business.id)
+                  .map((project) => (
+                    <Link
+                      key={project.id}
+                      to="/projects/$id"
+                      params={{ id: project.id }}
+                      className="block text-sm text-primary underline"
+                    >
+                      {project.name}
+                    </Link>
+                  ))}
               </div>
-              {canEditFinance && (
+              {canManageBusinessFinance(mode, business.id, access) && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -229,12 +271,14 @@ function Businesses() {
                     <td className="px-4 py-3">{row.description}</td>
                     {canEditFinance && (
                       <td className="px-4 py-3">
-                        <RecordActions
-                          collection="businessFinance"
-                          id={row.id}
-                          label={`${row.date} finances`}
-                          onEdit={() => setEditFinance(row)}
-                        />
+                        {canManageBusinessFinance(mode, row.business, access) && (
+                          <RecordActions
+                            collection="businessFinance"
+                            id={row.id}
+                            label={`${row.date} finances`}
+                            onEdit={() => setEditFinance(row)}
+                          />
+                        )}
                       </td>
                     )}
                   </tr>

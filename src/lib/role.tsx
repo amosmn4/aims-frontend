@@ -66,11 +66,19 @@ export function myProjects(
   meId: string,
   dept: string | null,
   list: Project[] = projects,
+  managedBusinesses: string[] = [],
 ) {
   if (mode === "ceo") return list;
   if (mode === "department")
-    return list.filter((project) => dept && project.depts.includes(dept as never));
-  return list.filter((project) => project.members.includes(meId));
+    return list.filter(
+      (project) =>
+        (dept && project.depts.includes(dept as never)) ||
+        managedBusinesses.includes(project.business ?? "b0"),
+    );
+  return list.filter(
+    (project) =>
+      project.members.includes(meId) || managedBusinesses.includes(project.business ?? "b0"),
+  );
 }
 export function deptOtherProjects(meId: string, dept: string | null, list: Project[] = projects) {
   return list.filter(

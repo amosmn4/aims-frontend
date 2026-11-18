@@ -106,7 +106,7 @@ Connected tests start an isolated API on port 4001, a mock payment gateway on po
 
 ## Weekly staff reporting
 
-Open /weekly-reports to prepare a plan or report for a selected Monday-to-Sunday week. Staff can add routine work or import their own project tasks, attach up to 10 private files or images (25 MB each), save drafts, and submit a dated snapshot. Draft content and attachments stay private to the author and CEO. Reports start with the planned tasks and require an outcome for each one: Completed, In progress, Pending, Blocked or Cancelled. Reporting does not silently change project task statuses.
+Open /weekly-reports to prepare a plan or report for a selected Monday-to-Sunday week. Staff can add routine work or import their own project tasks, attach up to 10 private files or images (25 MB each), save drafts, and submit a dated snapshot. Draft content and attachments stay private to the author until submission. Reports start with the planned tasks and require an outcome for each one: Completed, In progress, Pending, Blocked or Cancelled. Submitting creates persistent Tasks records, and reports update linked task outcomes while retaining submitted snapshots.
 
 The CEO sees submissions and missing reports, reviews them, or returns them for correction with a reason. Submitted records are locked until returned. Submission and correction history retains the earlier snapshots. Dashboard reminders and links lead to the current reporting cycle.
 
@@ -114,7 +114,7 @@ At /weekly-settings, the CEO sets plan and report deadlines and email schedules 
 
 Set SMTP and OPS_FRONTEND_URL in the backend. Automatic delivery also requires OPS_EMAIL_JOBS_ENABLED=true; it defaults to false locally. The CEO can preview emails, explicitly send a brief to their own inbox, and inspect delivery history. Sent briefs are not sent again. An interrupted or unconfirmed send needs an explicit retry after checking the inbox.
 
-Apply the outstanding Ops migrations, including `20261115110000_ops_task_descriptions`, and regenerate Prisma before starting the updated API. They add weekly records/settings/deliveries, an Ops profile creation timestamp and task details; existing Water, Blog and Ledger tables remain unchanged.
+Apply the outstanding Ops migrations, including `20261118100000_ops_workflows`, and regenerate Prisma before starting the updated API. They add weekly records/settings/deliveries, an Ops profile creation timestamp and task details; existing Water, Blog and Ledger tables remain unchanged.
 
 ## Deployment
 
@@ -124,7 +124,7 @@ See [the deployment guide](../deploy/ops/README.md) for production configuration
 
 Water Project is available at /water, with its existing zones, meters, customers, balances, readings, payment uploads, import review, expenses, reports and AI screens. Blog is available at /marketing/blog with the production list, rich text editor, formatting toolbar, media uploads, preview and publishing dialogs.
 
-In Settings, open Module access and assign each account No access, View or Manage for Water Project, Blog and Payment Ledger independently. Accounts start with No access, including CEO accounts. Assign your own account when you need to use a module. Viewers can read, preview and export; managers can also change records and publish. These modules require connected mode and are hidden in the browser demo.
+In Settings, open Module access and assign staff No access, View or Manage for Water Project, Blog, Tenders, Inventory and Payment Ledger independently. The CEO has full Water, Blog, Tender and Inventory access. Payment Ledger continues to require its own grant. Viewers can read, preview and export; managers can also change records and publish. These modules require connected mode and are hidden in the browser demo.
 
 The new routes use /api/v1/ops/water and /api/v1/ops/blog. They reuse the existing backend services, database rows, identifiers, authorship and upload keys. Blog styling is scoped to preserve its production interface within Ops navigation. Water AI can query only Water records and Water expenses. The dedicated Ops server runs the existing import and cleanup workers.
 
@@ -133,3 +133,5 @@ Run backend migrations before starting the updated frontend. Both API entry poin
 Payment Ledger is available at /payment-ledger with the existing transaction filters, Nairobi dates, currency and direction totals, full transaction snapshots and CSV export. Manage access also enables allocation to meters or registered systems, delivery retry with a reason, synchronization and payment system registration, editing and credential rotation. Credentials appear once and disappear when dismissed or when the page is left. Grant administration links to Settings rather than the legacy access screen.
 
 Ledger requests use /api/v1/ops/payment-ledger and reuse the existing payment_ledger_entries and payment_ledger_sync tables. The gateway connection remains server-side using PAYMENT_GATEWAY_URL and PAYMENT_GATEWAY_BRIDGE_KEY. Stored transactions remain readable when the gateway is unavailable; gateway actions require a configured, reachable connection. Ops and legacy modules share a sync provider within one backend process, and database leases coordinate separate processes. Existing gateway callbacks and production records have not been reseeded or converted.
+
+See [Ops workflows](../backend/docs/ops-workflows.md) for monthly reports, scheduled submission, leave, document versions, password recovery and retirement of the old reporting modules.

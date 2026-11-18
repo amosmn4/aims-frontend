@@ -2,6 +2,9 @@ import { RecordDialog } from "./RecordDialog";
 import { saveRecord, useWorkspace } from "@/lib/workspace";
 import { useRole } from "@/lib/role";
 import { today } from "@/lib/access";
+import { useBusinessAccess } from "@/lib/access";
+import { canManageBusinessFinance } from "@/lib/business";
+import { reportingWeek } from "@/lib/weekly";
 import {
   clientSchema,
   projectSchema,
@@ -36,8 +39,9 @@ export function ProjectForm({
   record?: Project | undefined;
   onClose: () => void;
 }) {
-  const { people, clients, departments } = useWorkspace();
+  const { people, clients, departments, businesses } = useWorkspace();
   const { me, mode } = useRole();
+  const businessAccess = useBusinessAccess();
   return (
     <RecordDialog
       title={record ? "Edit project" : "New project"}
@@ -53,8 +57,9 @@ export function ProjectForm({
         progress: record?.progress ?? 0,
         due: record?.due ?? today(),
         summary: record?.summary ?? "",
+        business: record?.business ?? "b0",
       }}
-      fields={[
+      fields={(values) => [
         { name: "name", label: "Project name", required: true },
         {
           name: "client",
@@ -71,7 +76,14 @@ export function ProjectForm({
           type: "select",
           required: true,
           options: people
-            .filter((person) => mode === "ceo" || person.id === me.id)
+            .filter(
+              (person) =>
+                mode === "ceo" ||
+                person.id === me.id ||
+                businessAccess.permissions?.some(
+                  (grant) => grant.business === values.business && grant.manage,
+                ),
+            )
             .map((person) => ({ value: person.id, label: person.name })),
         },
         {
@@ -115,6 +127,12 @@ export function ProjectForm({
         },
         { name: "due", label: "Due date", type: "date", required: true },
         { name: "summary", label: "Summary", type: "richtext", required: true },
+        {
+          name: "business",
+          label: "Business",
+          type: "select",
+          options: businesses.map((business) => ({ value: business.id, label: business.name })),
+        },
       ]}
       onSave={async (values) => {
         const completed =
@@ -143,10 +161,17 @@ export function TaskForm({
   projectId?: string | undefined;
   onClose: () => void;
 }) {
-  const { projects, people } = useWorkspace();
+  const { projects, people, businesses } = useWorkspace();
   const { mode, me } = useRole();
-  const available = projects.filter((project) => mode === "ceo" || project.members.includes(me.id));
-  const selected = record?.project ?? projectId ?? available[0]?.id ?? "";
+  const businessAccess = useBusinessAccess();
+  const manages = (business?: string) =>
+    !!businessAccess.permissions?.some(
+      (grant) => grant.business === (business ?? "b0") && grant.manage,
+    );
+  const available = projects.filter(
+    (project) => mode === "ceo" || project.members.includes(me.id) || manages(project.business),
+  );
+  const selected = record?.project ?? projectId ?? "";
   return (
     <RecordDialog
       title={record ? "Edit task" : "New task"}
@@ -163,6 +188,10 @@ export function TaskForm({
         due: record?.due ?? today(),
         priority: record?.priority ?? "Medium",
         status: record?.status ?? "To do",
+        business: record?.business ?? "b0",
+        weekStart: record?.weekStart ?? reportingWeek(),
+        source: record?.source ?? (selected ? "project" : "ad_hoc"),
+        subtasksText: record?.subtasks?.map((item) => item.title).join("\n") ?? "",
       }}
       fields={(values) => [
         { name: "title", label: "Task title", required: true },
@@ -171,9 +200,8 @@ export function TaskForm({
           name: "project",
           label: "Project",
           type: "select",
-          required: true,
           options: [
-            { value: "", label: "Select a project" },
+            { value: "", label: "Weekly or standalone task" },
             ...available.map((project) => ({ value: project.id, label: project.name })),
           ],
         },
@@ -185,14 +213,18 @@ export function TaskForm({
           options: [
             { value: "", label: "Select a team member" },
             ...people
-              .filter(
-                (person) =>
-                  projects
-                    .find((project) => project.id === values.project)
-                    ?.members.includes(person.id) &&
-                  (mode === "ceo" ||
-                    projects.find((project) => project.id === values.project)?.lead === me.id ||
-                    person.id === me.id),
+              .filter((person) =>
+                !values.project
+                  ? mode === "ceo" || person.id === me.id
+                  : projects
+                      .find((project) => project.id === values.project)
+                      ?.members.includes(person.id) &&
+                    (mode === "ceo" ||
+                      manages(
+                        projects.find((project) => project.id === values.project)?.business,
+                      ) ||
+                      projects.find((project) => project.id === values.project)?.lead === me.id ||
+                      person.id === me.id),
               )
               .map((person) => ({ value: person.id, label: person.name })),
           ],
@@ -202,7 +234,7 @@ export function TaskForm({
           name: "priority",
           label: "Priority",
           type: "select",
-          options: options(["High", "Medium", "Low"]),
+          options: options(["Urgent", "High", "Medium", "Low"]),
         },
         {
           name: "status",
@@ -210,9 +242,46 @@ export function TaskForm({
           type: "select",
           options: options(["To do", "In progress", "Done"]),
         },
+        {
+          name: "business",
+          label: "Business",
+          type: "select",
+          options: businesses.map((business) => ({ value: business.id, label: business.name })),
+        },
+        { name: "weekStart", label: "Reporting week (Monday)", type: "date" },
+        {
+          name: "source",
+          label: "Work type",
+          type: "select",
+          options: options(["project", "planned", "ad_hoc", "contingency"]),
+        },
+        { name: "subtasksText", label: "Subtasks (one per line)", type: "textarea" },
       ]}
       onSave={(values) =>
-        saveRecord("tasks", taskSchema.parse({ ...values, id: record?.id ?? crypto.randomUUID() }))
+        saveRecord(
+          "tasks",
+          taskSchema.parse({
+            ...record,
+            ...values,
+            id: record?.id ?? crypto.randomUUID(),
+            weekStart: values.weekStart
+              ? reportingWeek(new Date(`${values.weekStart}T12:00:00Z`))
+              : undefined,
+            subtasks: values.subtasksText
+              .split("\n")
+              .map((title) => title.trim())
+              .filter(Boolean)
+              .map((title, index) => ({
+                id:
+                  record?.subtasks?.[index]?.title === title
+                    ? record.subtasks[index]!.id
+                    : crypto.randomUUID(),
+                title,
+                done:
+                  record?.subtasks?.[index]?.title === title ? record.subtasks[index]!.done : false,
+              })),
+          }),
+        )
       }
     />
   );
@@ -225,6 +294,8 @@ export function ClientForm({
   record?: Client | undefined;
   onClose: () => void;
 }) {
+  const { people, departments, businesses } = useWorkspace();
+  const { mode, me } = useRole();
   return (
     <RecordDialog
       title={record ? "Edit client" : "Add client"}
@@ -233,11 +304,37 @@ export function ClientForm({
         name: record?.name ?? "",
         contact: record?.contact ?? "",
         services: record?.services.join(", ") ?? "",
+        assignees: record?.assignees ?? [me.id],
+        assignedDept: record?.assignedDept ?? "",
+        business: record?.business ?? "b0",
       }}
       fields={[
         { name: "name", label: "Client name", required: true },
         { name: "contact", label: "Contact person", required: true },
         { name: "services", label: "Services (comma separated)", required: true },
+        {
+          name: "assignees",
+          label: "Assigned staff",
+          type: "multi",
+          options: people.map((person) => ({ value: person.id, label: person.name })),
+        },
+        {
+          name: "assignedDept",
+          label: "Assigned department",
+          type: "select",
+          options: [
+            { value: "", label: "Selected staff only" },
+            ...departments
+              .filter((dept) => mode === "ceo" || dept.id === me.dept)
+              .map((dept) => ({ value: dept.id, label: dept.name })),
+          ],
+        },
+        {
+          name: "business",
+          label: "Business",
+          type: "select",
+          options: businesses.map((business) => ({ value: business.id, label: business.name })),
+        },
       ]}
       onSave={(values) =>
         saveRecord(
@@ -245,6 +342,7 @@ export function ClientForm({
           clientSchema.parse({
             ...values,
             id: record?.id ?? crypto.randomUUID(),
+            assignedDept: values.assignedDept || undefined,
             services: [
               ...new Set(
                 values.services
@@ -318,7 +416,7 @@ export function RequestForm({
   record?: ClientRequest | undefined;
   onClose: () => void;
 }) {
-  const { people, clients } = useWorkspace();
+  const { people, clients, departments, businesses } = useWorkspace();
   const { mode, me } = useRole();
   return (
     <RecordDialog
@@ -332,6 +430,8 @@ export function RequestForm({
         source: record?.source ?? (me.dept === "marketing" ? "marketing" : "operations"),
         received: record?.received ?? today(),
         handler: record?.handler ?? me.id,
+        assignedDept: record?.assignedDept ?? me.dept ?? "",
+        business: record?.business ?? "b0",
         status: record?.status ?? "Received",
         notes: record?.notes ?? "",
       }}
@@ -341,7 +441,7 @@ export function RequestForm({
           ? [
               {
                 name: "source" as const,
-                label: "Owning department",
+                label: "Request source",
                 type: "select" as const,
                 options: [
                   { value: "operations", label: "Operations" },
@@ -381,6 +481,23 @@ export function RequestForm({
             ]),
         { name: "received", label: "Date received", type: "date", required: true },
         {
+          name: "assignedDept",
+          label: "Assigned department",
+          type: "select",
+          options: [
+            { value: "", label: "Assigned handler only" },
+            ...departments
+              .filter((dept) => mode === "ceo" || dept.id === me.dept)
+              .map((dept) => ({ value: dept.id, label: dept.name })),
+          ],
+        },
+        {
+          name: "business",
+          label: "Business",
+          type: "select",
+          options: businesses.map((business) => ({ value: business.id, label: business.name })),
+        },
+        {
           name: "handler",
           label: "Handler",
           type: "select",
@@ -401,6 +518,7 @@ export function RequestForm({
             ...values,
             id: record?.id ?? crypto.randomUUID(),
             client: values.clientMode === "existing" ? values.client : undefined,
+            assignedDept: values.assignedDept || undefined,
             prospectClientName:
               values.clientMode === "prospective" ? values.prospectClientName : undefined,
           }),
@@ -445,7 +563,12 @@ export function FinanceForm({
   businessId?: string | undefined;
   onClose: () => void;
 }) {
-  const { businesses } = useWorkspace();
+  const { businesses: allBusinesses } = useWorkspace();
+  const { mode } = useRole();
+  const access = useBusinessAccess();
+  const businesses = allBusinesses.filter((business) =>
+    canManageBusinessFinance(mode, business.id, access),
+  );
   return (
     <RecordDialog
       title={record ? "Edit finance entry" : "Log business finances"}

@@ -4,14 +4,18 @@ import { useAccount } from "@/lib/account";
 import { AccountSignIn } from "@/components/AccountSignIn";
 
 export const Route = createFileRoute("/login")({
-  validateSearch: z.object({ redirect: z.string().optional(), token: z.string().optional() }),
+  validateSearch: z.object({
+    redirect: z.string().optional(),
+    token: z.string().optional(),
+    reset: z.string().optional(),
+  }),
   head: () => ({ meta: [{ title: "Sign in | Amsol Ops" }] }),
   component: Login,
 });
 
 function Login() {
   const { account } = useAccount();
-  const { redirect, token } = Route.useSearch();
+  const { redirect, token, reset } = Route.useSearch();
   const destination =
     redirect?.startsWith("/") && !redirect.startsWith("//") && !redirect.startsWith("/login")
       ? redirect
@@ -19,7 +23,6 @@ function Login() {
   if (account) return <Navigate to={destination as "/"} replace />;
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-muted/40 p-5 sm:p-8">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,hsl(var(--primary)/0.12),transparent_55%)]" />
       <main className="relative grid w-full max-w-5xl overflow-hidden rounded-3xl border bg-background shadow-2xl md:min-h-[620px] md:grid-cols-[1fr_0.9fr]">
         <section className="hidden flex-col justify-between bg-primary p-10 text-primary-foreground md:flex lg:p-14">
           <div className="inline-flex w-fit rounded-xl bg-white px-3 py-2">
@@ -39,7 +42,7 @@ function Login() {
           <p className="text-sm text-blue-100/70">Amsol Operations</p>
         </section>
         <div className="flex items-center justify-center p-5 sm:p-10">
-          <AccountSignIn token={token} />
+          <AccountSignIn token={token} reset={reset} />
         </div>
       </main>
     </div>

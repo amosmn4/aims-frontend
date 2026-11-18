@@ -20,6 +20,7 @@ import {
   Users,
 } from "@/components/icons";
 import { useWorkspace } from "@/lib/workspace";
+import { ModuleSummaries } from "./ModuleSummaries";
 import { useRole } from "@/lib/role";
 import { compactKes, fmtKes } from "@/lib/business";
 import {
@@ -381,6 +382,7 @@ export function CeoDashboard() {
           </a>
         </div>
       </header>
+      <ModuleSummaries />
       {rangeError && (
         <p role="alert" className="mb-3 text-right text-xs text-destructive">
           {rangeError}

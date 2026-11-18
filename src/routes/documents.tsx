@@ -1,3 +1,4 @@
+import { UploadField } from "@/components/UploadField";
 import { createFileRoute, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -25,6 +26,7 @@ import {
 import { isDemo } from "@/lib/api";
 import { today } from "@/lib/access";
 import { meta } from "@/lib/meta";
+import { DocumentVersions } from "@/components/DocumentVersions";
 
 export const Route = createFileRoute("/documents")({
   head: () => ({ meta: meta("Documents", "Upload, open and manage document permissions.") }),
@@ -35,14 +37,18 @@ function Documents() {
   const { documents, projects, person } = useWorkspace();
   const [edit, setEdit] = useState<StoredDocument | "new" | null>(null);
   const [preview, setPreview] = useState<StoredDocument | null>(null);
+  const [versions, setVersions] = useState<StoredDocument | null>(null);
   const previewRecord = documents.find((doc) => doc.id === preview?.id);
   const [search, setSearch] = useState("");
+  const [folder, setFolder] = useState("");
+  const [projectId, setProjectId] = useState("");
   const hash = useLocation({ select: (location) => location.hash });
   const list = documents.filter(
     (doc) =>
-      !search ||
-      (canOpenDoc(doc, mode, me.id, me.dept, projects) &&
-        `${doc.name} ${doc.folder}`.toLowerCase().includes(search.toLowerCase())),
+      canOpenDoc(doc, mode, me.id, me.dept, projects) &&
+      (!folder || doc.folder === folder) &&
+      (!projectId || doc.project === projectId) &&
+      (!search || `${doc.name} ${doc.folder}`.toLowerCase().includes(search.toLowerCase())),
   );
   useEffect(() => {
     if (hash.startsWith("document-"))
@@ -56,6 +62,36 @@ function Documents() {
         action={<Button onClick={() => setEdit("new")}>Upload document</Button>}
       />
       <SearchField value={search} onChange={setSearch} placeholder="Search documents" />
+      <div className="mb-5 flex flex-wrap gap-3">
+        <label className="field-label">
+          Folder
+          <select
+            className="field-input"
+            value={folder}
+            onChange={(event) => setFolder(event.target.value)}
+          >
+            <option value="">All accessible folders</option>
+            {[...new Set(documents.map((doc) => doc.folder))].sort().map((value) => (
+              <option key={value}>{value}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field-label">
+          Project
+          <select
+            className="field-input"
+            value={projectId}
+            onChange={(event) => setProjectId(event.target.value)}
+          >
+            <option value="">All accessible projects</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       {!list.length ? (
         <EmptyState>No documents found.</EmptyState>
       ) : (
@@ -83,6 +119,9 @@ function Documents() {
                         >
                           <FileText className="h-4 w-4 shrink-0" />
                           {doc.name}
+                          <span className="text-xs text-muted-foreground">
+                            Version {doc.version ?? 1}
+                          </span>
                         </button>
                       ) : (
                         <span className="flex items-center gap-2 text-muted-foreground">
@@ -117,23 +156,30 @@ function Documents() {
                             <Download className="h-4 w-4" />
                           </Button>
                         )}
-                        {(mode === "ceo" || doc.owner === me.id) && !doc.weeklyRef && (
-                          <RecordActions
-                            collection="documents"
-                            id={doc.id}
-                            label={doc.name}
-                            onEdit={() => setEdit(doc)}
-                            onDelete={async () => {
-                              await removeRecord("documents", doc.id);
-                              if (isDemo && doc.fileKey)
-                                await deleteFile(doc.fileKey).catch(() =>
-                                  toast.error(
-                                    "The record was removed, but its stored file could not be cleared.",
-                                  ),
-                                );
-                            }}
-                          />
+                        {allowed && !isDemo && (
+                          <Button variant="ghost" size="sm" onClick={() => setVersions(doc)}>
+                            Versions
+                          </Button>
                         )}
+                        {(mode === "ceo" || doc.owner === me.id) &&
+                          !doc.weeklyRef &&
+                          !doc.report && (
+                            <RecordActions
+                              collection="documents"
+                              id={doc.id}
+                              label={doc.name}
+                              onEdit={() => setEdit(doc)}
+                              onDelete={async () => {
+                                await removeRecord("documents", doc.id);
+                                if (isDemo && doc.fileKey)
+                                  await deleteFile(doc.fileKey).catch(() =>
+                                    toast.error(
+                                      "The record was removed, but its stored file could not be cleared.",
+                                    ),
+                                  );
+                              }}
+                            />
+                          )}
                       </div>
                     </td>
                   </tr>
@@ -146,6 +192,7 @@ function Documents() {
       {edit && (
         <DocumentForm record={edit === "new" ? undefined : edit} onClose={() => setEdit(null)} />
       )}
+      {versions && <DocumentVersions doc={versions} onClose={() => setVersions(null)} />}
       {previewRecord && canOpenDoc(previewRecord, mode, me.id, me.dept, projects) && (
         <DocumentPreview doc={previewRecord} onClose={() => setPreview(null)} />
       )}
@@ -244,8 +291,7 @@ function DocumentForm({
         !record && (
           <label className="field-label">
             File *
-            <input
-              type="file"
+            <UploadField
               required
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
               className="field-input"

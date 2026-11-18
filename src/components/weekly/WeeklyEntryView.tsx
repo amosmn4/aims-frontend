@@ -13,6 +13,7 @@ import {
   weeklyLabels,
   weeklyStatus,
   weeklyTime,
+  leaveDays,
   type WeeklyEntry,
   type WeeklySubmission,
 } from "@/lib/weekly";
@@ -22,6 +23,17 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
   return (
     <div className="space-y-4 text-sm">
       <SafeHtml html={submission.summary} className="blog-content text-sm" />
+      {!!submission.leave?.length && (
+        <div className="rounded-lg border bg-muted/20 p-3">
+          <strong>Recorded leave | {leaveDays(submission.leave)} calendar days</strong>
+          {submission.leave.map((row) => (
+            <p key={`${row.start}:${row.end}`}>
+              {row.start} to {row.end}
+              {row.note ? ` | ${row.note}` : ""}
+            </p>
+          ))}
+        </div>
+      )}
       {submission.items.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -35,7 +47,25 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
             <tbody>
               {submission.items.map((item) => (
                 <tr key={item.id} className="border-b">
-                  <td className="p-2 align-top font-medium">{item.title}</td>
+                  <td className="p-2 align-top font-medium">
+                    {item.title}
+                    {item.priority && (
+                      <div className="mt-1">
+                        <Pill>{item.priority}</Pill>
+                      </div>
+                    )}
+                    {item.source && (
+                      <p className="mt-1 text-xs font-normal text-muted-foreground">
+                        {item.source.replaceAll("_", " ")}
+                      </p>
+                    )}
+                    {item.subtasks?.map((task) => (
+                      <label key={task.id} className="mt-1 flex gap-2 text-xs font-normal">
+                        <input type="checkbox" checked={task.done} readOnly disabled />
+                        {task.title}
+                      </label>
+                    ))}
+                  </td>
                   <td className="p-2 align-top">{weeklyLabels[item.status]}</td>
                   <td className="p-2 align-top">
                     {item.detail ? (

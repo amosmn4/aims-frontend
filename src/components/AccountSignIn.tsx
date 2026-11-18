@@ -4,8 +4,16 @@ import { useAccount } from "@/lib/account";
 import { useWorkspace } from "@/lib/workspace";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { PasswordInput } from "./PasswordInput";
+import { PasswordRecovery } from "./PasswordRecovery";
 
-export function AccountSignIn({ token }: { token?: string | undefined }) {
+export function AccountSignIn({
+  token,
+  reset,
+}: {
+  token?: string | undefined;
+  reset?: string | undefined;
+}) {
   const { signIn, acceptInvitation } = useAccount();
   const { accounts } = useWorkspace();
   const invitation = token
@@ -24,6 +32,7 @@ export function AccountSignIn({ token }: { token?: string | undefined }) {
   const [busy, setBusy] = useState(false);
   const [remoteInvitation, setRemoteInvitation] = useState<{ email: string } | null>(null);
   const [checking, setChecking] = useState(!!token && !isDemo);
+  const [recovering, setRecovering] = useState(false);
   useEffect(() => {
     if (!token || isDemo) return;
     let active = true;
@@ -46,6 +55,16 @@ export function AccountSignIn({ token }: { token?: string | undefined }) {
       active = false;
     };
   }, [token]);
+  if (recovering || reset)
+    return (
+      <PasswordRecovery
+        token={reset}
+        onBack={() => {
+          if (reset) window.location.assign("/login");
+          else setRecovering(false);
+        }}
+      />
+    );
   return (
     <section className="w-full max-w-md rounded-2xl border bg-card p-8 shadow-xl sm:p-10">
       <div className="mb-8 flex items-center justify-between">
@@ -109,8 +128,7 @@ export function AccountSignIn({ token }: { token?: string | undefined }) {
           </label>
           <label className="field-label">
             Password
-            <Input
-              type="password"
+            <PasswordInput
               autoComplete={token ? "new-password" : "current-password"}
               minLength={token ? (isDemo ? 8 : 12) : 1}
               maxLength={128}
@@ -122,8 +140,7 @@ export function AccountSignIn({ token }: { token?: string | undefined }) {
           {token ? (
             <label className="field-label">
               Confirm password
-              <Input
-                type="password"
+              <PasswordInput
                 autoComplete="new-password"
                 minLength={isDemo ? 8 : 12}
                 required
@@ -149,6 +166,16 @@ export function AccountSignIn({ token }: { token?: string | undefined }) {
           <Button type="submit" disabled={busy} className="w-full">
             {busy ? "Please wait..." : token ? "Activate account" : "Sign in"}
           </Button>
+          {!token && !isDemo && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => setRecovering(true)}
+            >
+              Forgot password?
+            </Button>
+          )}
         </form>
       )}
       {!token && isDemo && (

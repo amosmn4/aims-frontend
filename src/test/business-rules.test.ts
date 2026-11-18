@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   businessTotals,
+  canReadBusinessFinance,
+  canManageBusinessFinance,
   canSeeBusinesses,
   latestMonth,
   monthLabel,
@@ -14,11 +16,33 @@ describe("business access rules", () => {
   it("shows all businesses to the CEO", () => {
     expect(canSeeBusinesses("ceo", "p1", null)).toBe(true);
   });
-  it("shows all businesses to Finance, who feeds the data", () => {
-    expect(canSeeBusinesses("department", "p4", "finance")).toBe(true);
+  it("does not grant Finance access to an unassigned sister business", () => {
+    expect(
+      canSeeBusinesses(
+        "department",
+        "p4",
+        "finance",
+        [{ id: "private", name: "Private", sector: "x" }],
+        { home: null, granted: [] },
+      ),
+    ).toBe(false);
   });
   it("hides business finances from staff without permission", () => {
-    expect(canSeeBusinesses("staff", "p2", "hr")).toBe(false);
+    expect(canReadBusinessFinance("staff", "b0", { home: null, granted: [] })).toBe(false);
+    expect(
+      canReadBusinessFinance("staff", "b1", {
+        home: null,
+        granted: ["b1"],
+        permissions: [{ person: "p2", business: "b1", manage: true }],
+      }),
+    ).toBe(false);
+    expect(
+      canManageBusinessFinance("staff", "b1", {
+        home: null,
+        granted: ["b1"],
+        permissions: [{ person: "p2", business: "b1", finance: "view" }],
+      }),
+    ).toBe(false);
   });
   it("shows businesses to a person granted permission on at least one", () => {
     expect(
@@ -68,12 +92,15 @@ describe("tender visibility", () => {
 });
 
 describe("client request visibility", () => {
-  it("shows the CEO and Operations every request", () => {
+  it("shows the CEO every request and Operations its assigned work", () => {
     expect(visibleRequests("ceo", "p1", null).length).toBe(6);
-    expect(visibleRequests("department", "p8", "operations").length).toBe(6);
+    expect(visibleRequests("department", "p8", "operations").map((r) => r.id)).toEqual([
+      "cr2",
+      "cr3",
+    ]);
   });
-  it("shows a department the requests its own people handle", () => {
-    expect(visibleRequests("department", "p4", "finance").map((r) => r.id)).toEqual(["cr1", "cr5"]);
+  it("does not infer department assignment from another handler", () => {
+    expect(visibleRequests("department", "p4", "finance").map((r) => r.id)).toEqual(["cr1"]);
   });
   it("shows staff only requests they personally handle", () => {
     expect(visibleRequests("staff", "p4", "finance").map((r) => r.id)).toEqual(["cr1"]);

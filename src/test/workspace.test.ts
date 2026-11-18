@@ -9,7 +9,7 @@ import {
   validateRelationships,
 } from "@/lib/workspace";
 import { searchProjects } from "@/lib/project-search";
-import { canSeeBusiness } from "@/lib/business";
+import { canSeeBusiness, canReadBusinessFinance } from "@/lib/business";
 import { createProjectPdf } from "@/lib/project-export";
 
 beforeEach(() => {
@@ -126,10 +126,16 @@ describe("current data and business visibility", () => {
     const visible = data.businesses.filter((business) =>
       canSeeBusiness(business, "staff", "p6", "it", { home: null, granted: ["b1"] }),
     );
-    expect(visible.map((business) => business.id)).toEqual(["b1"]);
+    expect(visible.map((business) => business.id)).toEqual(["b0", "b1"]);
     expect(
       data.businessFinance
-        .filter((row) => visible.some((business) => business.id === row.business))
+        .filter((row) =>
+          canReadBusinessFinance("staff", row.business, {
+            home: null,
+            granted: ["b1"],
+            permissions: [{ person: "p6", business: "b1", finance: "view" }],
+          }),
+        )
         .every((row) => row.business === "b1"),
     ).toBe(true);
   });

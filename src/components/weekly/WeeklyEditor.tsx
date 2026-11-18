@@ -11,6 +11,8 @@ import { documentSchema } from "@/lib/models";
 import { today } from "@/lib/access";
 import { loadWorkspace, perform, useWorkspace } from "@/lib/workspace";
 import { uploadDocument } from "@/lib/file-storage";
+import { SubmissionSchedule } from "@/components/SubmissionSchedule";
+import { UploadField } from "@/components/UploadField";
 import {
   emptyWeeklySubmission,
   weeklyLabels,
@@ -32,16 +34,48 @@ export function WeeklyEditor({
 }) {
   const entry = detail[phase];
   const client = useQueryClient();
-  const { documents } = useWorkspace();
+  const { documents, businesses } = useWorkspace();
   const [version, setVersion] = useState(entry?.version ?? 0);
   const [uploading, setUploading] = useState(false);
+  const outcome = (status?: string) =>
+    status === "Done"
+      ? ("completed" as const)
+      : status === "In progress"
+        ? ("in_progress" as const)
+        : ("pending" as const);
+  const planned =
+    detail.plan?.submission.items.map((item) => {
+      const task = detail.tasks.find((task) => task.id === (item.taskId ?? item.id));
+      return {
+        ...item,
+        status: outcome(task?.status),
+        subtasks: task?.subtasks ?? item.subtasks,
+        priority: task?.priority ?? item.priority,
+        due: task?.due ?? item.due,
+      };
+    }) ?? [];
+  const additional = detail.tasks
+    .filter(
+      (task) =>
+        (task.weekStart === detail.weekStart ||
+          (task.due >= detail.weekStart && task.due <= detail.weekEnd)) &&
+        !planned.some((item) => (item.taskId ?? item.id) === task.id),
+    )
+    .map((task) => ({
+      id: crypto.randomUUID(),
+      taskId: task.id,
+      title: task.title,
+      detail: "",
+      status: outcome(task.status),
+      due: task.due,
+      priority: task.priority,
+      source: task.source,
+      business: task.business,
+      subtasks: task.subtasks,
+    }));
   const initial = entry?.submission ?? {
     ...emptyWeeklySubmission(),
-    items:
-      phase === "report"
-        ? (detail.plan?.submission.items.map((item) => ({ ...item, status: "pending" as const })) ??
-          [])
-        : [],
+    items: phase === "report" ? [...planned, ...additional] : [],
   };
   const [form, setForm] = useState<WeeklySubmission>(initial);
   const [saved, setSaved] = useState(JSON.stringify(initial));
@@ -139,8 +173,7 @@ export function WeeklyEditor({
           })}
           <label className="field-label w-fit">
             Add document or image
-            <input
-              type="file"
+            <UploadField
               className="field-input"
               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
               disabled={(form.attachments ?? []).length >= 10 || mutation.isPending || uploading}
@@ -233,7 +266,7 @@ export function WeeklyEditor({
                 <option
                   key={task.id}
                   value={task.id}
-                  disabled={form.items.some((item) => item.taskId === task.id)}
+                  disabled={form.items.some((item) => (item.taskId ?? item.id) === task.id)}
                 >
                   {task.title} | {task.project}
                 </option>
@@ -251,7 +284,11 @@ export function WeeklyEditor({
                     ...form.items,
                     ...detail
                       .plan!.submission.items.filter(
-                        (item) => !form.items.some((current) => current.id === item.id),
+                        (item) =>
+                          !form.items.some(
+                            (current) =>
+                              (current.taskId ?? current.id) === (item.taskId ?? item.id),
+                          ),
                       )
                       .map((item) => ({ ...item, status: "pending" as const })),
                   ],
@@ -276,6 +313,63 @@ export function WeeklyEditor({
                   onChange={(event) => updateItem(item.id, { title: event.target.value })}
                 />
               </label>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="field-label">
+                  Due date
+                  <input
+                    className="field-input"
+                    type="date"
+                    value={item.due ?? detail.weekEnd}
+                    onChange={(event) => updateItem(item.id, { due: event.target.value })}
+                  />
+                </label>
+                <label className="field-label">
+                  Priority
+                  <select
+                    className="field-input"
+                    value={item.priority ?? "Medium"}
+                    onChange={(event) =>
+                      updateItem(item.id, {
+                        priority: event.target.value as WeeklyItem["priority"],
+                      })
+                    }
+                  >
+                    {["Urgent", "High", "Medium", "Low"].map((value) => (
+                      <option key={value}>{value}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-label">
+                  Work type
+                  <select
+                    className="field-input"
+                    value={item.source ?? (phase === "plan" ? "planned" : "ad_hoc")}
+                    onChange={(event) =>
+                      updateItem(item.id, { source: event.target.value as WeeklyItem["source"] })
+                    }
+                  >
+                    {["planned", "ad_hoc", "contingency", "project"].map((value) => (
+                      <option key={value} value={value}>
+                        {value.replaceAll("_", " ")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field-label">
+                  Business
+                  <select
+                    className="field-input"
+                    value={item.business ?? "b0"}
+                    onChange={(event) => updateItem(item.id, { business: event.target.value })}
+                  >
+                    {businesses.map((business) => (
+                      <option key={business.id} value={business.id}>
+                        {business.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               {phase === "report" && (
                 <label className="field-label">
                   Outcome {index + 1}
@@ -358,8 +452,8 @@ export function WeeklyEditor({
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Submitting locks this snapshot. The CEO can return it for correction. Project task
-          statuses are kept separately.
+          Submitting saves this snapshot and adds its work to Tasks. Add urgent or contingency work
+          from Tasks during the week; the original plan stays in your submission history.
         </p>
         {mutation.error && (
           <div role="alert" className="space-y-2 text-sm text-destructive">
@@ -404,6 +498,25 @@ export function WeeklyEditor({
           )}
         </div>
       </form>
+      <div className="mt-5">
+        <SubmissionSchedule
+          disabled={mutation.isPending || uploading}
+          kind={phase}
+          target={detail.weekStart}
+          saveDraft={() => mutation.mutateAsync(false)}
+        />
+      </div>
+      {!!detail.leave?.length && (
+        <div className="mt-4 rounded-lg border p-3 text-sm">
+          <strong>Recorded leave</strong>
+          {detail.leave.map((row) => (
+            <p key={`${row.start}:${row.end}`}>
+              {row.start} to {row.end}
+              {row.note ? ` | ${row.note}` : ""}
+            </p>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }

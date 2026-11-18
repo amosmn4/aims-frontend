@@ -13,6 +13,7 @@ import { Route as BusinessesRouteImport } from './routes/businesses'
 import { Route as ClientRequestsRouteImport } from './routes/client-requests'
 import { Route as ClientsRouteImport } from './routes/clients'
 import { Route as DocumentsRouteImport } from './routes/documents'
+import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PaymentLedgerRouteImport } from './routes/payment-ledger'
 import { Route as PeopleRouteImport } from './routes/people'
@@ -79,6 +80,11 @@ const ClientsRoute = ClientsRouteImport.update({
 const DocumentsRoute = DocumentsRouteImport.update({
   id: '/documents',
   path: '/documents',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InventoryRoute = InventoryRouteImport.update({
+  id: '/inventory',
+  path: '/inventory',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -277,6 +283,7 @@ export interface FileRoutesByFullPath {
   '/client-requests': typeof ClientRequestsRoute
   '/clients': typeof ClientsRoute
   '/documents': typeof DocumentsRoute
+  '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
   '/payment-ledger': typeof PaymentLedgerRouteWithChildren
   '/people': typeof PeopleRoute
@@ -322,6 +329,7 @@ export interface FileRoutesByTo {
   '/client-requests': typeof ClientRequestsRoute
   '/clients': typeof ClientsRoute
   '/documents': typeof DocumentsRoute
+  '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
   '/people': typeof PeopleRoute
   '/reports': typeof ReportsRoute
@@ -365,6 +373,7 @@ export interface FileRoutesById {
   '/client-requests': typeof ClientRequestsRoute
   '/clients': typeof ClientsRoute
   '/documents': typeof DocumentsRoute
+  '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
   '/payment-ledger': typeof PaymentLedgerRouteWithChildren
   '/people': typeof PeopleRoute
@@ -412,6 +421,7 @@ export interface FileRouteTypes {
     | '/client-requests'
     | '/clients'
     | '/documents'
+    | '/inventory'
     | '/login'
     | '/payment-ledger'
     | '/people'
@@ -457,6 +467,7 @@ export interface FileRouteTypes {
     | '/client-requests'
     | '/clients'
     | '/documents'
+    | '/inventory'
     | '/login'
     | '/people'
     | '/reports'
@@ -499,6 +510,7 @@ export interface FileRouteTypes {
     | '/client-requests'
     | '/clients'
     | '/documents'
+    | '/inventory'
     | '/login'
     | '/payment-ledger'
     | '/people'
@@ -545,6 +557,7 @@ export interface RootRouteChildren {
   ClientRequestsRoute: typeof ClientRequestsRoute
   ClientsRoute: typeof ClientsRoute
   DocumentsRoute: typeof DocumentsRoute
+  InventoryRoute: typeof InventoryRoute
   LoginRoute: typeof LoginRoute
   PaymentLedgerRoute: typeof PaymentLedgerRouteWithChildren
   PeopleRoute: typeof PeopleRoute
@@ -606,6 +619,13 @@ declare module '@tanstack/react-router' {
       path: '/documents'
       fullPath: '/documents'
       preLoaderRoute: typeof DocumentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inventory': {
+      id: '/inventory'
+      path: '/inventory'
+      fullPath: '/inventory'
+      preLoaderRoute: typeof InventoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -945,6 +965,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClientRequestsRoute: ClientRequestsRoute,
   ClientsRoute: ClientsRoute,
   DocumentsRoute: DocumentsRoute,
+  InventoryRoute: InventoryRoute,
   LoginRoute: LoginRoute,
   PaymentLedgerRoute: PaymentLedgerRouteWithChildren,
   PeopleRoute: PeopleRoute,

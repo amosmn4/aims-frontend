@@ -13,9 +13,11 @@ const owner = accountSchema.parse({
   active: true,
 });
 describe("Individual production module visibility", () => {
-  it("hides modules from unassigned CEO and signed-out accounts", () => {
-    expect(moduleAccess(owner, "water")).toBeUndefined();
-    expect(moduleAccess(owner, "blog")).toBeUndefined();
+  it("gives the CEO operational modules while keeping Ledger and signed-out access restricted", () => {
+    expect(moduleAccess(owner, "water")).toBe("manage");
+    expect(moduleAccess(owner, "blog")).toBe("manage");
+    expect(moduleAccess(owner, "inventory")).toBe("manage");
+    expect(moduleAccess(owner, "tender")).toBe("manage");
     expect(moduleAccess(owner, "ledger")).toBeUndefined();
     expect(moduleAccess(null, "water")).toBeUndefined();
   });

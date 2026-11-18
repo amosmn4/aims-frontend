@@ -483,89 +483,149 @@ function InviteForm({
 
 function BusinessPermissions() {
   const { people, businesses, businessAccess, staffBusiness } = useWorkspace();
-  const [personId, setPersonId] = useState(people[0]!.id);
+  const [personId, setPersonId] = useState(people[0]?.id ?? "");
   const home = staffBusiness.find((row) => row.person === personId)?.business ?? "";
+  const change = (
+    business: string,
+    patch: { manage?: boolean; finance?: "view" | "manage" | undefined },
+    enabled = true,
+  ) =>
+    perform(() =>
+      updateWorkspace((previous) => ({
+        ...previous,
+        businessAccess: [
+          ...previous.businessAccess.filter(
+            (row) => !(row.person === personId && row.business === business),
+          ),
+          ...(enabled
+            ? [
+                {
+                  ...previous.businessAccess.find(
+                    (row) => row.person === personId && row.business === business,
+                  ),
+                  person: personId,
+                  business,
+                  ...patch,
+                },
+              ]
+            : []),
+        ],
+      })),
+    );
   return (
     <Card>
       <h2 className="mb-4 font-display text-lg font-semibold">Staff business permissions</h2>
-      <label className="field-label mb-4 max-w-sm">
-        Staff member
-        <select
-          className="field-input"
-          value={personId}
-          onChange={(event) => setPersonId(event.target.value)}
-        >
-          {people.map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field-label mb-4 max-w-sm">
-        Works for
-        <select
-          className="field-input"
-          value={home}
-          onChange={(event) =>
-            perform(() =>
-              updateWorkspace((previous) => ({
-                ...previous,
-                staffBusiness: [
-                  ...previous.staffBusiness.filter((row) => row.person !== personId),
-                  ...(event.target.value
-                    ? [{ person: personId, business: event.target.value }]
-                    : []),
-                ],
-              })),
-            )
-          }
-        >
-          <option value="">Amsol (core staff)</option>
-          {businesses
-            .filter((business) => business.id !== "b0")
-            .map((business) => (
-              <option key={business.id} value={business.id}>
-                {business.name}
+      <div className="mb-4 flex flex-wrap gap-4">
+        <label className="field-label">
+          Staff member
+          <select
+            className="field-input"
+            value={personId}
+            onChange={(event) => setPersonId(event.target.value)}
+          >
+            {people.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name}
               </option>
             ))}
-        </select>
-      </label>
-      <p className="mb-3 text-sm text-muted-foreground">
-        CEO and Finance see all business figures. Other staff see their sister business and
-        explicitly granted businesses.
+          </select>
+        </label>
+        <label className="field-label">
+          Works for
+          <select
+            className="field-input"
+            value={home}
+            onChange={(event) => {
+              const business = event.target.value;
+              void perform(() =>
+                updateWorkspace((previous) => ({
+                  ...previous,
+                  staffBusiness: [
+                    ...previous.staffBusiness.filter((row) => row.person !== personId),
+                    ...(business ? [{ person: personId, business }] : []),
+                  ],
+                })),
+              );
+            }}
+          >
+            <option value="">Amsol (core staff)</option>
+            {businesses
+              .filter((business) => business.id !== "b0")
+              .map((business) => (
+                <option key={business.id} value={business.id}>
+                  {business.name}
+                </option>
+              ))}
+          </select>
+        </label>
+      </div>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Assign several businesses independently. Business management and financial access are
+        separate permissions. The CEO has full access.
       </p>
-      <fieldset className="space-y-2">
-        <legend className="mb-2 text-sm font-medium">Additional business access</legend>
-        {businesses.map((business) => (
-          <label key={business.id} className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={businessAccess.some(
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr>
+              <th className="p-3">Business</th>
+              <th className="p-3">Assigned</th>
+              <th className="p-3">Manage business</th>
+              <th className="p-3">Finance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {businesses.map((business) => {
+              const grant = businessAccess.find(
                 (row) => row.person === personId && row.business === business.id,
-              )}
-              onChange={(event) =>
-                perform(() =>
-                  updateWorkspace((previous) => ({
-                    ...previous,
-                    businessAccess: event.target.checked
-                      ? [
-                          ...previous.businessAccess.filter(
-                            (row) => !(row.person === personId && row.business === business.id),
-                          ),
-                          { person: personId, business: business.id },
-                        ]
-                      : previous.businessAccess.filter(
-                          (row) => !(row.person === personId && row.business === business.id),
-                        ),
-                  })),
-                )
-              }
-            />
-            {business.name}
-          </label>
-        ))}
-      </fieldset>
+              );
+              return (
+                <tr className="border-t" key={business.id}>
+                  <td className="p-3">{business.name}</td>
+                  <td className="p-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Assign ${business.name}`}
+                      checked={!!grant}
+                      onChange={(event) => {
+                        void change(business.id, {}, event.target.checked);
+                      }}
+                    />
+                  </td>
+                  <td className="p-3">
+                    <input
+                      type="checkbox"
+                      aria-label={`Manage ${business.name}`}
+                      checked={grant?.manage ?? false}
+                      onChange={(event) => {
+                        void change(business.id, { manage: event.target.checked });
+                      }}
+                    />
+                  </td>
+                  <td className="p-3">
+                    <select
+                      className="field-input"
+                      aria-label={`Finance access for ${business.name}`}
+                      value={grant?.finance ?? "none"}
+                      onChange={(event) => {
+                        void change(business.id, {
+                          finance:
+                            event.target.value === "none"
+                              ? undefined
+                              : (event.target.value as "view" | "manage"),
+                        });
+                      }}
+                    >
+                      <option value="none">No finance access</option>
+                      <option value="view">View finance</option>
+                      <option value="manage">Manage finance</option>
+                    </select>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </Card>
   );
 }
@@ -647,8 +707,8 @@ function ModuleAccessSettings() {
     <Card>
       <h2 className="mb-2 font-display text-lg font-semibold">Production modules</h2>
       <p className="mb-4 text-sm text-muted-foreground">
-        Assign Water Project, Blog and Payment Ledger individually. View includes reports and
-        previews. Manage also allows changes. CEO accounts need a module grant too.
+        Assign modules independently. View includes reports and previews. Manage allows changes. The
+        CEO has full Water, Blog, Tender and Inventory access. Payment Ledger uses its own grant.
       </p>
       {isDemo ? (
         <p>Module permissions are available when connected to the backend.</p>
@@ -661,6 +721,8 @@ function ModuleAccessSettings() {
                 <th className="p-3 text-left">Water Project</th>
                 <th className="p-3 text-left">Blog</th>
                 <th className="p-3 text-left">Payment Ledger</th>
+                <th className="p-3 text-left">Inventory</th>
+                <th className="p-3 text-left">Tenders</th>
               </tr>
             </thead>
             <tbody>
@@ -670,13 +732,17 @@ function ModuleAccessSettings() {
                     {people.find((person) => person.id === account.personId)?.name}
                     <div className="text-xs text-muted-foreground">{account.email}</div>
                   </td>
-                  {(["water", "blog", "ledger"] as const).map((module) => (
+                  {(["water", "blog", "ledger", "inventory", "tender"] as const).map((module) => (
                     <td key={module} className="p-3">
                       <select
                         aria-label={module + " access for " + account.email}
                         className="field-input"
-                        value={account.modules?.[module] ?? "none"}
-                        disabled={saving}
+                        value={
+                          account.role === "ceo" && module !== "ledger"
+                            ? "manage"
+                            : (account.modules?.[module] ?? "none")
+                        }
+                        disabled={saving || (account.role === "ceo" && module !== "ledger")}
                         onChange={(event) => {
                           const access = event.target.value;
                           setSaving(true);

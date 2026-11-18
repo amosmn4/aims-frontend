@@ -31,7 +31,7 @@ export const monthLabel = (month: string) => {
 };
 
 // Where a person works and which extra businesses the CEO granted them.
-export type BizAccess = { home: string | null; granted: string[] };
+export type BizAccess = { home: string | null; granted: string[]; permissions?: PersonBusiness[] };
 export function accessFor(
   meId: string,
   home: PersonBusiness[] = staffBusiness,
@@ -40,14 +40,14 @@ export function accessFor(
   return {
     home: home.find((h) => h.person === meId)?.business ?? null,
     granted: grants.filter((g) => g.person === meId).map((g) => g.business),
+    permissions: grants.filter((g) => g.person === meId),
   };
 }
 // Everyone without a home business works for Amsol itself.
 export const homeBusinessOf = (meId: string, access: BizAccess = accessFor(meId)) =>
   access.home ?? "b0";
 
-// Businesses: the CEO sees every business; Finance feeds the data so they see all;
-// every other person sees only the business they work for, plus any business the CEO grants them.
+// Business membership and financial access are assigned independently.
 export function canSeeBusinesses(
   mode: ViewMode,
   meId: string,
@@ -56,7 +56,6 @@ export function canSeeBusinesses(
   access: BizAccess = accessFor(meId),
 ): boolean {
   if (mode === "ceo") return true;
-  if (dept === "finance") return true;
   return list.some((b) => canSeeBusiness(b, mode, meId, dept, access));
 }
 export function canSeeBusiness(
@@ -66,8 +65,23 @@ export function canSeeBusiness(
   dept: string | null,
   access: BizAccess = accessFor(meId),
 ): boolean {
-  if (mode === "ceo" || dept === "finance") return true;
-  return (access.home !== null && b.id === access.home) || access.granted.includes(b.id);
+  if (mode === "ceo") return true;
+  return (
+    b.id === "b0" || (access.home !== null && b.id === access.home) || access.granted.includes(b.id)
+  );
+}
+
+export function canReadBusinessFinance(mode: ViewMode, business: string, access: BizAccess) {
+  return (
+    mode === "ceo" || !!access.permissions?.find((grant) => grant.business === business)?.finance
+  );
+}
+
+export function canManageBusinessFinance(mode: ViewMode, business: string, access: BizAccess) {
+  return (
+    mode === "ceo" ||
+    access.permissions?.find((grant) => grant.business === business)?.finance === "manage"
+  );
 }
 
 export type Totals = { revenue: number; expenses: number; profit: number };
@@ -114,13 +128,15 @@ export function visibleRequests(
   dept: string | null,
   list: ClientRequest[] = clientRequests,
   staff = people,
+  managedBusinesses: string[] = [],
 ): ClientRequest[] {
   if (mode === "ceo") return list;
-  if (dept === "operations") return list;
-  if (dept === "marketing") return list.filter((request) => request.source === dept);
-  if (mode === "department")
-    return list.filter((r) => staff.find((person) => person.id === r.handler)?.dept === dept);
-  return list.filter((r) => r.handler === meId);
+  return list.filter(
+    (r) =>
+      r.handler === meId ||
+      (!!dept && r.assignedDept === dept) ||
+      managedBusinesses.includes(r.business ?? "b0"),
+  );
 }
 export function canSeeRequests(
   mode: ViewMode,
@@ -128,11 +144,12 @@ export function canSeeRequests(
   dept: string | null,
   list: ClientRequest[] = clientRequests,
   staff = people,
+  managedBusinesses: string[] = [],
 ): boolean {
   return (
     mode === "ceo" ||
-    (dept !== null && ["operations", "marketing"].includes(dept)) ||
-    visibleRequests(mode, meId, dept, list, staff).length > 0
+    (!!dept && ["operations", "marketing"].includes(dept)) ||
+    visibleRequests(mode, meId, dept, list, staff, managedBusinesses).length > 0
   );
 }
 export const peopleOf = people;

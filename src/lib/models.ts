@@ -17,6 +17,9 @@ export const clientSchema = z.object({
   name: text,
   contact: text,
   services: z.array(text).min(1),
+  assignees: z.array(id).optional(),
+  assignedDept: deptId.optional(),
+  business: id.optional(),
 });
 export const projectSchema = z.object({
   id,
@@ -30,22 +33,27 @@ export const projectSchema = z.object({
   progress: z.number().int().min(0).max(100),
   due: date,
   summary: z.string().trim().min(1).max(5000),
+  business: id.optional(),
 });
 export const taskSchema = z.object({
   id,
   title: text,
   description: z.string().max(10000).optional(),
-  project: id,
+  project: z.string(),
   assignee: id,
   due: date,
-  priority: z.enum(["High", "Medium", "Low"]),
+  priority: z.enum(["Urgent", "High", "Medium", "Low"]),
   status: z.enum(["To do", "In progress", "Done"]),
   ceoComment: z.string().max(10000).optional(),
+  business: id.optional(),
+  weekStart: date.optional(),
+  source: z.enum(["project", "planned", "ad_hoc", "contingency"]).optional(),
+  subtasks: z.array(z.object({ id, title: text, done: z.boolean() })).optional(),
 });
 export const reportSchema = z.object({
   id,
   title: text,
-  type: z.enum(["Project update", "Weekly department", "Ad-hoc"]),
+  type: z.enum(["Monthly", "Project update", "Weekly department", "Ad-hoc"]),
   project: id.optional(),
   dept: deptId,
   author: id,
@@ -55,6 +63,30 @@ export const reportSchema = z.object({
   next: z.string().max(10000).optional(),
   reviewed: z.boolean(),
   comment: z.string().max(10000).optional(),
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+    .optional(),
+  status: z.enum(["draft", "submitted"]).optional(),
+  business: id.optional(),
+  taskIds: z.array(id).optional(),
+  attachments: z.array(id).optional(),
+  taskSnapshots: z
+    .array(
+      z.object({
+        id,
+        title: text,
+        status: z.string(),
+        due: date,
+        source: z.string(),
+        priority: z.enum(["Urgent", "High", "Medium", "Low"]).optional(),
+        subtasks: z.array(z.object({ id, title: text, done: z.boolean() })).optional(),
+      }),
+    )
+    .optional(),
+  leaveSnapshot: z
+    .array(z.object({ start: date, end: date, note: z.string().nullable().optional() }))
+    .optional(),
 });
 export const documentSchema = z.object({
   id,
@@ -66,6 +98,8 @@ export const documentSchema = z.object({
   project: id.optional(),
   task: id.optional(),
   weeklyRef: z.string().max(100).optional(),
+  report: id.optional(),
+  version: z.number().int().min(1).optional(),
   dept: deptId.optional(),
   allowed: z.array(id).optional(),
   fileKey: id.optional(),
@@ -99,6 +133,8 @@ export const requestSchema = z
     source: z.enum(["operations", "marketing"]),
     received: date,
     handler: id,
+    assignedDept: deptId.optional(),
+    business: id.optional(),
     status: z.enum(["Received", "In progress", "Closed"]),
     notes: z.string().max(5000).optional(),
   })
@@ -132,6 +168,8 @@ export const accountSchema = z.object({
       water: z.enum(["view", "manage"]).optional(),
       blog: z.enum(["view", "manage"]).optional(),
       ledger: z.enum(["view", "manage"]).optional(),
+      inventory: z.enum(["view", "manage"]).optional(),
+      tender: z.enum(["view", "manage"]).optional(),
     })
     .optional(),
   salt: z.string().default(""),
@@ -166,7 +204,14 @@ export const workspaceSchema = z.object({
   clientRequests: z.array(requestSchema),
   businesses: z.array(businessSchema),
   businessFinance: z.array(financeSchema),
-  businessAccess: z.array(z.object({ person: id, business: id })),
+  businessAccess: z.array(
+    z.object({
+      person: id,
+      business: id,
+      manage: z.boolean().optional(),
+      finance: z.enum(["view", "manage"]).optional(),
+    }),
+  ),
   staffBusiness: z.array(z.object({ person: id, business: id })),
   accounts: z.array(accountSchema),
   moduleRecords: z.array(moduleRecordSchema),

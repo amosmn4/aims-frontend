@@ -19,6 +19,7 @@ import {
 import type { Stage } from "@/lib/data";
 import { canOpenDoc, useRole } from "@/lib/role";
 import { SafeHtml } from "@/production/components/safe-html";
+import { useBusinessAccess } from "@/lib/access";
 
 export const Route = createFileRoute("/projects/$id")({
   loader: ({ params }) => {
@@ -56,6 +57,10 @@ function ProjectPage() {
   const [edit, setEdit] = useState(false);
   const [newTask, setNewTask] = useState(false);
   const { mode, me, reports } = useRole();
+  const access = useBusinessAccess();
+  const managesBusiness = !!access.permissions?.some(
+    (grant) => grant.business === (p?.business ?? "b0") && grant.manage,
+  );
   if (!p)
     return (
       <Card>
@@ -67,6 +72,7 @@ function ProjectPage() {
     );
   const isMember =
     mode === "ceo" ||
+    managesBusiness ||
     p.members.includes(me.id) ||
     (mode === "department" && me.dept !== null && p.depts.includes(me.dept));
   const pt = tasks.filter((t) => t.project === p.id);
@@ -84,7 +90,7 @@ function ProjectPage() {
         action={
           <div className="flex flex-wrap items-center gap-3">
             <StatusBadge status={p.status} />
-            {(mode === "ceo" || p.lead === me.id) && (
+            {(mode === "ceo" || p.lead === me.id || managesBusiness) && (
               <Button onClick={() => setEdit(true)}>Edit project</Button>
             )}
             {mode === "ceo" && (

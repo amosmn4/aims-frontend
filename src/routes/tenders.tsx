@@ -10,6 +10,9 @@ import { perform, useWorkspace } from "@/lib/workspace";
 import { meta } from "@/lib/meta";
 import { useRole } from "@/lib/role";
 import { api, isDemo } from "@/lib/api";
+import { useModuleAccess } from "@/lib/modules";
+import { TenderDetails, ProductionTenderEditor } from "@/components/TenderDetails";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/tenders")({
   head: () => ({ meta: meta("Tenders", "Log and manage the Amsol tender pipeline.") }),
@@ -50,6 +53,9 @@ function ProductionTenders() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("all");
+  const [detail, setDetail] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const access = useModuleAccess("tender");
   const query = useQuery({
     queryKey: ["ops-production-tenders"],
     queryFn: () => api<ProductionTender[]>("/tenders"),
@@ -74,7 +80,12 @@ function ProductionTenders() {
     <div>
       <PageHeader
         title="Tenders"
-        subtitle="Live production tender records. CEO assignments update only the existing owner field."
+        subtitle="Assigned bids, requirements, financials and supporting documents"
+        action={
+          access === "manage" ? (
+            <Button onClick={() => setCreating(true)}>New tender</Button>
+          ) : undefined
+        }
       />
       {query.error && (
         <p role="alert" className="mb-4 rounded-lg border p-4">
@@ -125,6 +136,14 @@ function ProductionTenders() {
                 <div className="flex flex-wrap justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <h2 className="font-medium">{tender.title}</h2>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() => setDetail(tender.id)}
+                    >
+                      Open tender
+                    </Button>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {tender.referenceNumber ? `${tender.referenceNumber} | ` : ""}
                       {tender.client?.name ?? tender.prospectClientName ?? "No client recorded"}
@@ -198,6 +217,15 @@ function ProductionTenders() {
             ))}
           </div>
         </>
+      )}
+      {detail && <TenderDetails id={detail} onClose={() => setDetail(null)} />}
+      {creating && (
+        <ProductionTenderEditor
+          onClose={() => setCreating(false)}
+          onSaved={async () => {
+            await queryClient.invalidateQueries({ queryKey: ["ops-production-tenders"] });
+          }}
+        />
       )}
     </div>
   );

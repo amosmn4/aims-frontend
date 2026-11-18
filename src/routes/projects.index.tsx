@@ -7,6 +7,7 @@ import type { Project, Status } from "@/lib/data";
 import { myProjects, useRole } from "@/lib/role";
 import { useWorkspace } from "@/lib/workspace";
 import { meta } from "@/lib/meta";
+import { useBusinessAccess } from "@/lib/access";
 
 export const Route = createFileRoute("/projects/")({
   head: () => ({ meta: meta("Projects", "Amsol projects, progress and teams.") }),
@@ -16,13 +17,18 @@ const filters: (Status | "all")[] = ["all", "on-track", "at-risk", "delayed", "c
 
 function Projects() {
   const { mode, me } = useRole();
-  const { projects, client, deptName, person } = useWorkspace();
+  const { projects, client, deptName, person, businesses } = useWorkspace();
   const [filter, setFilter] = useState<Status | "all">("all");
   const [search, setSearch] = useState("");
+  const [business, setBusiness] = useState("");
   const [edit, setEdit] = useState<Project | "new" | null>(null);
-  const list = myProjects(mode, me.id, me.dept, projects).filter(
+  const access = useBusinessAccess();
+  const managed =
+    access.permissions?.filter((grant) => grant.manage).map((grant) => grant.business) ?? [];
+  const list = myProjects(mode, me.id, me.dept, projects, managed).filter(
     (project) =>
       (filter === "all" || project.status === filter) &&
+      (!business || (project.business ?? "b0") === business) &&
       project.name.toLowerCase().includes(search.toLowerCase()),
   );
   return (
@@ -37,7 +43,7 @@ function Projects() {
               : "Projects you belong to"
         }
         action={
-          mode !== "staff" && (
+          (mode !== "staff" || managed.length > 0) && (
             <button className="action-button" onClick={() => setEdit("new")}>
               New project
             </button>
@@ -57,6 +63,21 @@ function Projects() {
         ))}
       </div>
       <SearchField value={search} onChange={setSearch} placeholder="Search projects" />
+      <label className="field-label mb-5 max-w-sm">
+        Business
+        <select
+          className="field-input"
+          value={business}
+          onChange={(event) => setBusiness(event.target.value)}
+        >
+          <option value="">All assigned businesses</option>
+          {businesses.map((row) => (
+            <option key={row.id} value={row.id}>
+              {row.name}
+            </option>
+          ))}
+        </select>
+      </label>
       {!list.length && (
         <EmptyState>No projects found. Change the filters or create a project.</EmptyState>
       )}
@@ -95,7 +116,9 @@ function Projects() {
                 </span>
               </div>
             </Link>
-            {(mode === "ceo" || project.lead === me.id) && (
+            {(mode === "ceo" ||
+              project.lead === me.id ||
+              managed.includes(project.business ?? "b0")) && (
               <div className="mt-3 flex justify-end border-t pt-2">
                 <RecordActions
                   collection="projects"

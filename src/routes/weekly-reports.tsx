@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { Card, PageHeader, Pill } from "@/components/kit";
+import { Card, PageHeader, Pill, Stat } from "@/components/kit";
+import { useWorkspace } from "@/lib/workspace";
+import { SearchField } from "@/components/RecordDialog";
 import { Button } from "@/components/ui/button";
 import { WeeklyEditor } from "@/components/weekly/WeeklyEditor";
 import { WeeklyEntryView } from "@/components/weekly/WeeklyEntryView";
@@ -44,6 +46,21 @@ function WeeklyReports() {
     !!staff,
   );
   const [reload, setReload] = useState(0);
+  const { departments, deptName } = useWorkspace();
+  const [staffSearch, setStaffSearch] = useState("");
+  const [department, setDepartment] = useState("");
+  const [status, setStatus] = useState("");
+  const staffRows = (overview.data?.staff ?? []).filter(
+    (person) =>
+      (!department || person.dept === department) &&
+      person.name.toLowerCase().includes(staffSearch.toLowerCase()) &&
+      (!status ||
+        (status === "review"
+          ? !!person[phase]?.submittedAt && !person[phase]?.reviewedAt
+          : status === "submitted"
+            ? !!person[phase]?.submittedAt
+            : !person[phase]?.submittedAt && person.expected[phase])),
+  );
   if (isDemo)
     return (
       <Card>
@@ -127,6 +144,63 @@ function WeeklyReports() {
       {ceo && overview.data && (
         <Card>
           <h2 className="mb-4 font-display text-xl font-semibold">Staff submissions</h2>
+          <div className="mb-5 grid gap-3 sm:grid-cols-4">
+            <Stat label="Staff in view" value={staffRows.length} />
+            <Stat
+              label="Submitted"
+              value={staffRows.filter((person) => person[phase]?.submittedAt).length}
+            />
+            <Stat
+              label="Awaiting review"
+              value={
+                staffRows.filter(
+                  (person) => person[phase]?.submittedAt && !person[phase]?.reviewedAt,
+                ).length
+              }
+            />
+            <Stat
+              label="Missing"
+              value={
+                staffRows.filter((person) => person.expected[phase] && !person[phase]?.submittedAt)
+                  .length
+              }
+            />
+          </div>
+          <div className="mb-4 flex flex-wrap gap-3">
+            <label className="field-label">
+              Department
+              <select
+                className="field-input"
+                value={department}
+                onChange={(event) => setDepartment(event.target.value)}
+              >
+                <option value="">All departments</option>
+                {departments.map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-label">
+              Status
+              <select
+                className="field-input"
+                value={status}
+                onChange={(event) => setStatus(event.target.value)}
+              >
+                <option value="">All</option>
+                <option value="review">Awaiting review</option>
+                <option value="submitted">Submitted</option>
+                <option value="missing">Missing submission</option>
+              </select>
+            </label>
+          </div>
+          <SearchField
+            value={staffSearch}
+            onChange={setStaffSearch}
+            placeholder="Search staff within these filters"
+          />
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
@@ -134,10 +208,11 @@ function WeeklyReports() {
                   <th className="p-3">Staff</th>
                   <th className="p-3">Weekly plan</th>
                   <th className="p-3">Weekly report</th>
+                  <th className="p-3">Task outcomes</th>
                 </tr>
               </thead>
               <tbody>
-                {overview.data.staff.map((person) => (
+                {staffRows.map((person) => (
                   <tr key={person.id} className="border-b">
                     <td className="p-3">
                       <Link
@@ -147,6 +222,9 @@ function WeeklyReports() {
                       >
                         {person.name}
                       </Link>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {person.dept ? deptName(person.dept) : "No department"}
+                      </p>
                     </td>
                     <td className="p-3">
                       <Pill>{weeklyStatus(person.plan, person.expected.plan)}</Pill>
@@ -154,11 +232,16 @@ function WeeklyReports() {
                     <td className="p-3">
                       <Pill>{weeklyStatus(person.report, person.expected.report)}</Pill>
                     </td>
+                    <td className="p-3 text-xs">
+                      {person[phase]?.submittedAt
+                        ? `${person[phase]!.submission.items.length} tasks | ${person[phase]!.submission.items.filter((item) => item.status === "completed").length} completed | ${person[phase]!.submission.items.filter((item) => item.priority === "Urgent").length} urgent`
+                        : "Awaiting submission"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {!overview.data.staff.length && (
+            {!staffRows.length && (
               <p className="p-4 text-sm text-muted-foreground">
                 No staff submissions are expected for this week.
               </p>
@@ -168,7 +251,7 @@ function WeeklyReports() {
       )}
       {detail.error && <p role="alert">{detail.error.message}</p>}
       {detail.isLoading && staff && <p role="status">Loading submission...</p>}
-      {detail.data && (
+      {detail.data && (!ceo || staffRows.some((person) => person.id === staff)) && (
         <section className="space-y-4">
           <h2 className="font-display text-xl font-semibold">
             {detail.data.person.name} | {week}

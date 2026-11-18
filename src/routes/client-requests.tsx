@@ -7,6 +7,7 @@ import { requestStatuses, type ClientRequest } from "@/lib/data";
 import { canSeeRequests, visibleRequests } from "@/lib/business";
 import { useWorkspace } from "@/lib/workspace";
 import { meta } from "@/lib/meta";
+import { useBusinessAccess } from "@/lib/access";
 import { useRole } from "@/lib/role";
 
 export const Route = createFileRoute("/client-requests")({
@@ -15,18 +16,28 @@ export const Route = createFileRoute("/client-requests")({
 });
 function ClientRequests() {
   const { mode, me } = useRole();
-  const { clientRequests, person, client, people } = useWorkspace();
+  const { clientRequests, person, client, people, businesses, deptName } = useWorkspace();
   const [edit, setEdit] = useState<ClientRequest | "new" | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
-  if (!canSeeRequests(mode, me.id, me.dept, clientRequests, people))
+  const [business, setBusiness] = useState("");
+  const [department, setDepartment] = useState("");
+  const access = useBusinessAccess();
+  const managed =
+    access.permissions?.filter((grant) => grant.manage).map((grant) => grant.business) ?? [];
+  if (!canSeeRequests(mode, me.id, me.dept, clientRequests, people, managed))
     return (
       <Card>
         No client requests are assigned to you. Operations, Marketing or the CEO can assign
         requests.
       </Card>
     );
-  const visible = visibleRequests(mode, me.id, me.dept, clientRequests, people);
+  const assigned = visibleRequests(mode, me.id, me.dept, clientRequests, people, managed);
+  const visible = assigned.filter(
+    (request) =>
+      (!business || (request.business ?? "b0") === business) &&
+      (!department || request.assignedDept === department),
+  );
   const list = visible.filter(
     (request) =>
       (status === "all" || request.status === status) &&
@@ -67,6 +78,42 @@ function ClientRequests() {
         ))}
       </div>
       <SearchField value={search} onChange={setSearch} placeholder="Search client requests" />
+      <div className="mb-5 flex flex-wrap gap-3">
+        <label className="field-label">
+          Business
+          <select
+            className="field-input"
+            value={business}
+            onChange={(event) => setBusiness(event.target.value)}
+          >
+            <option value="">All assigned businesses</option>
+            {businesses.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field-label">
+          Assigned department
+          <select
+            className="field-input"
+            value={department}
+            onChange={(event) => setDepartment(event.target.value)}
+          >
+            <option value="">All assignments</option>
+            {[
+              ...new Set(
+                assigned.flatMap((request) => (request.assignedDept ? [request.assignedDept] : [])),
+              ),
+            ].map((id) => (
+              <option key={id} value={id}>
+                {deptName(id)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       {!list.length ? (
         <EmptyState>No requests match your selection.</EmptyState>
       ) : (
@@ -100,7 +147,8 @@ function ClientRequests() {
                   </td>
                   <td className="px-5 py-3">
                     {(mode === "ceo" ||
-                      me.dept === request.source ||
+                      me.dept === request.assignedDept ||
+                      managed.includes(request.business ?? "b0") ||
                       request.handler === me.id) && (
                       <RecordActions
                         collection="clientRequests"

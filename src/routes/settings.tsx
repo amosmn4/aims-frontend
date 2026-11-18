@@ -1,3 +1,5 @@
+import { PasswordInput } from "@/components/PasswordInput";
+import { LeaveSettings } from "@/components/LeaveSettings";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -81,9 +83,9 @@ function Settings() {
           >
             <label className="field-label">
               Current password
-              <input
+              <PasswordInput
                 className="field-input"
-                type="password"
+
                 autoComplete="current-password"
                 required
                 value={oldPassword}
@@ -92,9 +94,9 @@ function Settings() {
             </label>
             <label className="field-label">
               New password
-              <input
+              <PasswordInput
                 className="field-input"
-                type="password"
+
                 autoComplete="new-password"
                 minLength={isDemo ? 8 : 12}
                 maxLength={128}
@@ -105,9 +107,9 @@ function Settings() {
             </label>
             <label className="field-label">
               Confirm new password
-              <input
+              <PasswordInput
                 className="field-input"
-                type="password"
+
                 autoComplete="new-password"
                 minLength={isDemo ? 8 : 12}
                 maxLength={128}
@@ -127,6 +129,7 @@ function Settings() {
           </form>
         </Card>
       </div>
+      <LeaveSettings />
     </div>
   );
 }

@@ -1,3 +1,7 @@
+import { UploadField } from "@/components/UploadField";
+import { SubtaskChecklist } from "@/components/SubtaskChecklist";
+import { reportingWeek } from "@/lib/weekly";
+import { useBusinessAccess } from "@/lib/access";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Card, PageHeader, Pill, fmtDate } from "@/components/kit";
@@ -37,19 +41,42 @@ const cols = ["To do", "In progress", "Done"] as const;
 
 function Tasks() {
   const { mode, me } = useRole();
-  const { tasks, projects, documents, person, project } = useWorkspace();
+  const { tasks, projects, documents, businesses, person, project } = useWorkspace();
+  const access = useBusinessAccess();
+  const manages = (task: Task) =>
+    !!access.permissions?.some(
+      (grant) => grant.business === (task.business ?? "b0") && grant.manage,
+    );
   const [edit, setEdit] = useState<Task | "new" | null>(null);
   const [commenting, setCommenting] = useState<Task | null>(null);
   const [search, setSearch] = useState("");
+  const [week, setWeek] = useState("");
+  const [source, setSource] = useState("");
+  const [priority, setPriority] = useState("");
+  const [staff, setStaff] = useState("");
+  const [business, setBusiness] = useState("");
   const list = tasks.filter(
     (task) =>
       (mode === "ceo" ||
+        manages(task) ||
         (mode === "department"
           ? person(task.assignee).dept === me.dept
           : task.assignee === me.id)) &&
-      task.title.toLowerCase().includes(search.toLowerCase()),
+      (!week ||
+        task.weekStart === week ||
+        (!task.weekStart &&
+          task.due >= week &&
+          task.due <=
+            new Date(new Date(`${week}T12:00:00Z`).getTime() + 6 * 86400000)
+              .toISOString()
+              .slice(0, 10))) &&
+      (!source || task.source === source) &&
+      (!priority || task.priority === priority) &&
+      (!staff || task.assignee === staff) &&
+      (!business || (task.business ?? "b0") === business) &&
+      `${task.title} ${task.description ?? ""}`.toLowerCase().includes(search.toLowerCase()),
   );
-  const canCreate = mode === "ceo" || projects.some((project) => project.members.includes(me.id));
+  const canCreate = true;
   return (
     <div>
       <PageHeader
@@ -66,6 +93,83 @@ function Tasks() {
         }
       />
       <SearchField value={search} onChange={setSearch} placeholder="Search tasks" />
+      <div className="mb-5 flex flex-wrap gap-3">
+        <label className="field-label">
+          Week
+          <input
+            className="field-input"
+            type="date"
+            value={week}
+            onChange={(event) =>
+              setWeek(
+                event.target.value
+                  ? reportingWeek(new Date(`${event.target.value}T12:00:00Z`))
+                  : "",
+              )
+            }
+          />
+        </label>
+        <label className="field-label">
+          Work type
+          <select
+            className="field-input"
+            value={source}
+            onChange={(event) => setSource(event.target.value)}
+          >
+            <option value="">All</option>
+            {["planned", "ad_hoc", "contingency", "project"].map((value) => (
+              <option key={value} value={value}>
+                {value.replaceAll("_", " ")}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field-label">
+          Priority
+          <select
+            className="field-input"
+            value={priority}
+            onChange={(event) => setPriority(event.target.value)}
+          >
+            <option value="">All</option>
+            {["Urgent", "High", "Medium", "Low"].map((value) => (
+              <option key={value}>{value}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field-label">
+          Business
+          <select
+            className="field-input"
+            value={business}
+            onChange={(event) => setBusiness(event.target.value)}
+          >
+            <option value="">All assigned businesses</option>
+            {businesses.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {mode === "ceo" && (
+          <label className="field-label">
+            Staff
+            <select
+              className="field-input"
+              value={staff}
+              onChange={(event) => setStaff(event.target.value)}
+            >
+              <option value="">All staff</option>
+              {[...new Set(tasks.map((task) => task.assignee))].map((id) => (
+                <option key={id} value={id}>
+                  {person(id).name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
       <div className="grid gap-5 md:grid-cols-3">
         {cols.map((status) => (
           <section key={status}>
@@ -82,24 +186,39 @@ function Tasks() {
                 .map((task) => {
                   const editable =
                     mode === "ceo" ||
+                    manages(task) ||
                     task.assignee === me.id ||
                     project(task.project)?.lead === me.id;
                   const attachments = documents.filter((doc) => doc.task === task.id);
                   const canAttach =
-                    mode === "ceo" || project(task.project)?.members.includes(me.id);
+                    mode === "ceo" ||
+                    (!task.project && task.assignee === me.id) ||
+                    project(task.project)?.members.includes(me.id);
                   return (
                     <Card key={task.id} className="p-4">
                       <div className="font-medium">{task.title}</div>
-                      <Link
-                        to="/projects/$id"
-                        params={{ id: task.project }}
-                        className="mt-1 block text-xs text-primary"
-                      >
-                        {project(task.project)?.name}
-                      </Link>
+                      {task.project ? (
+                        <Link
+                          to="/projects/$id"
+                          params={{ id: task.project }}
+                          className="mt-1 block text-xs text-primary"
+                        >
+                          {project(task.project)?.name}
+                        </Link>
+                      ) : (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {task.source?.replaceAll("_", " ") ?? "Weekly work"}
+                          {task.weekStart ? ` | Week of ${task.weekStart}` : ""}
+                        </p>
+                      )}
                       {task.description && (
                         <SafeHtml html={task.description} className="blog-content mt-2 text-sm" />
                       )}
+                      <SubtaskChecklist
+                        key={`${task.id}:${JSON.stringify(task.subtasks)}`}
+                        task={task}
+                        editable={editable}
+                      />
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                         <span>{person(task.assignee).name}</span>
                         <span className="flex gap-2">
@@ -140,8 +259,7 @@ function Tasks() {
                           {canAttach && (
                             <label className="inline-flex cursor-pointer items-center text-xs font-medium text-primary underline">
                               Attach document or image
-                              <input
-                                type="file"
+                              <UploadField
                                 className="sr-only"
                                 aria-label={`Attach document or image to ${task.title}`}
                                 accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
@@ -159,10 +277,11 @@ function Tasks() {
                                     id: crypto.randomUUID(),
                                     name: file.name,
                                     folder: "Task attachments",
-                                    access: "project",
+                                    access: task.project ? "project" : "restricted",
+                                    allowed: task.project ? undefined : [me.id],
                                     owner: me.id,
                                     updated: today(),
-                                    project: task.project,
+                                    project: task.project || undefined,
                                     task: task.id,
                                     fileKey,
                                     mime: file.type || "application/octet-stream",
@@ -202,7 +321,10 @@ function Tasks() {
                               <option key={value}>{value}</option>
                             ))}
                           </select>
-                          {(mode === "ceo" || project(task.project)?.lead === me.id) && (
+                          {(mode === "ceo" ||
+                            manages(task) ||
+                            project(task.project)?.lead === me.id ||
+                            (!task.project && task.assignee === me.id)) && (
                             <RecordActions
                               collection="tasks"
                               id={task.id}

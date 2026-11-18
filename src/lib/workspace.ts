@@ -163,6 +163,9 @@ export function updateWorkspace(update: (previous: Workspace) => Workspace): voi
         grants: next.businessAccess
           .filter((row) => row.person === person)
           .map((row) => row.business),
+        permissions: next.businessAccess
+          .filter((row) => row.person === person)
+          .map(({ business, manage, finance }) => ({ business, manage, finance })),
       }),
     }).then(() => {});
   }
