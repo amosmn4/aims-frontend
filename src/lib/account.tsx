@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -39,6 +40,8 @@ type AccountContext = {
   signOut: () => void;
   acceptInvitation: (token: string, password: string) => Promise<void>;
   changePassword: (current: string, next: string) => Promise<void>;
+  startImpersonation?: (staffId: string, onSwitched?: () => Promise<void>) => Promise<void>;
+  stopImpersonation?: (onSwitched?: () => Promise<void>) => Promise<void>;
 };
 const Context = createContext<AccountContext | null>(null);
 
@@ -54,16 +57,28 @@ function ApiProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const refreshFlight = useRef<Promise<void> | null>(null);
   const authGeneration = useRef(0);
-  const account = identity ? (accounts.find((item) => item.id === identity.id) ?? identity) : null;
-  const completeSignIn = useCallback(async (generation = authGeneration.current) => {
-    const profile = accountSchema.parse(await api("/auth/me"));
-    if (generation !== authGeneration.current) return;
-    clearWorkspace();
-    await loadWorkspace();
-    if (generation !== authGeneration.current) return;
-    setIdentity(profile);
-    setError("");
-  }, []);
+  const account = useMemo(
+    () =>
+      identity
+        ? {
+            ...(accounts.find((item) => item.id === identity.id) ?? identity),
+            impersonation: identity.impersonation,
+          }
+        : null,
+    [accounts, identity],
+  );
+  const completeSignIn = useCallback(
+    async (generation = authGeneration.current, suppliedProfile?: Account) => {
+      const profile = suppliedProfile ?? accountSchema.parse(await api("/auth/me"));
+      if (generation !== authGeneration.current) return;
+      clearWorkspace();
+      await loadWorkspace();
+      if (generation !== authGeneration.current) return;
+      setIdentity(profile);
+      setError("");
+    },
+    [],
+  );
   const restore = useCallback(async () => {
     const generation = authGeneration.current;
     setReady(false);
@@ -99,6 +114,42 @@ function ApiProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("amsol-ops-session-expired", expired);
     };
   }, [restore]);
+  useEffect(() => {
+    if (!identity) return;
+    const refreshed = () => {
+      let generation = authGeneration.current;
+      let switched = false;
+      void api("/auth/me")
+        .then(async (raw) => {
+          if (generation !== authGeneration.current) return;
+          const profile = accountSchema.parse(raw);
+          if (
+            profile.id === identity.id &&
+            profile.role === identity.role &&
+            profile.impersonation?.staffId === identity.impersonation?.staffId
+          ) {
+            setIdentity(profile);
+            return;
+          }
+          generation = ++authGeneration.current;
+          switched = true;
+          refreshFlight.current = null;
+          setReady(false);
+          setIdentity(null);
+          clearWorkspace();
+          await completeSignIn(generation, profile);
+        })
+        .catch((error: unknown) => {
+          if (generation === authGeneration.current)
+            setError(error instanceof Error ? error.message : "The account could not refresh.");
+        })
+        .finally(() => {
+          if (switched && generation === authGeneration.current) setReady(true);
+        });
+    };
+    window.addEventListener("amsol-ops-session-refreshed", refreshed);
+    return () => window.removeEventListener("amsol-ops-session-refreshed", refreshed);
+  }, [identity, completeSignIn]);
   useEffect(() => {
     if (!identity) return;
     const refresh = () => {
@@ -169,6 +220,32 @@ function ApiProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ currentPassword, newPassword }),
     });
   };
+  const switchIdentity = async (
+    path: string,
+    body?: { staffId: string },
+    onSwitched?: () => Promise<void>,
+  ) => {
+    const result = await api<{ accessToken: string }>(path, {
+      method: "POST",
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const generation = ++authGeneration.current;
+    refreshFlight.current = null;
+    setAccessToken(result.accessToken);
+    setIdentity(null);
+    setReady(false);
+    clearWorkspace();
+    try {
+      await completeSignIn(generation);
+      if (generation === authGeneration.current) await onSwitched?.();
+    } catch (error) {
+      if (generation === authGeneration.current)
+        setError(error instanceof Error ? error.message : "The workspace could not load.");
+      throw error;
+    } finally {
+      if (generation === authGeneration.current) setReady(true);
+    }
+  };
   return (
     <Context.Provider
       value={{
@@ -180,6 +257,10 @@ function ApiProvider({ children }: { children: ReactNode }) {
         signOut,
         acceptInvitation,
         changePassword,
+        startImpersonation: (staffId, onSwitched) =>
+          switchIdentity("/auth/impersonation", { staffId }, onSwitched),
+        stopImpersonation: (onSwitched) =>
+          switchIdentity("/auth/impersonation/stop", undefined, onSwitched),
       }}
     >
       {children}

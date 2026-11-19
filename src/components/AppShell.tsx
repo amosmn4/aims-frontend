@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { moduleAccess } from "@/lib/modules";
 import { Button } from "./ui/button";
 import { isDemo } from "@/lib/api";
+import { CeoImpersonationControl } from "./CeoImpersonationControl";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -181,12 +182,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             <>
               <div className="flex items-center gap-2">
                 <Avatar name={me.name} size="sm" />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="truncate text-xs font-medium">{me.name}</div>
                   <div className="truncate text-[10px] text-sidebar-foreground/70">
                     {me.dept ? deptName(me.dept) : "Executive"}
                   </div>
                 </div>
+                <CeoImpersonationControl />
               </div>
               {mode !== "ceo" && account?.role !== "system_admin" && (
                 <select
@@ -201,6 +203,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               )}
             </>
           )}
+          {collapsed && <CeoImpersonationControl />}
           <Button
             variant="ghost"
             className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"

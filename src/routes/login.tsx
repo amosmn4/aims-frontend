@@ -20,7 +20,17 @@ function Login() {
     redirect?.startsWith("/") && !redirect.startsWith("//") && !redirect.startsWith("/login")
       ? redirect
       : "/";
-  if (account) return <Navigate to={destination as "/"} replace />;
+  if (account)
+    return (
+      <Navigate
+        to={
+          destination === "/" && account.role === "system_admin"
+            ? "/system-admin"
+            : (destination as "/")
+        }
+        replace
+      />
+    );
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-muted/40 p-5 sm:p-8">
       <main className="relative grid w-full max-w-5xl overflow-hidden rounded-3xl border bg-background shadow-2xl md:min-h-[620px] md:grid-cols-[1fr_0.9fr]">

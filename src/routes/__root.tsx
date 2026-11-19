@@ -6,6 +6,7 @@ import {
   createRootRouteWithContext,
   useLocation,
   useRouter,
+  useNavigate,
   HeadContent,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
@@ -94,13 +95,20 @@ function AuthenticatedContent() {
       </div>
     );
   if (!account) return <Navigate to="/login" search={{ redirect: href }} replace />;
-  if (account.role === "system_admin" && pathname === "/")
-    return <Navigate to="/system-admin" replace />;
+  if (account.role === "system_admin" && pathname === "/") return <SystemAdminRedirect />;
   return (
     <AppShell>
       <Outlet />
     </AppShell>
   );
+}
+
+function SystemAdminRedirect() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    void navigate({ to: "/system-admin", replace: true });
+  }, [navigate]);
+  return null;
 }
 
 function ModuleCacheLifecycle() {

@@ -175,6 +175,14 @@ export const accountSchema = z.object({
   salt: z.string().default(""),
   passwordHash: z.string().default(""),
   hasPassword: z.boolean().optional(),
+  impersonation: z
+    .object({
+      staffId: id,
+      userId: id,
+      name: z.string(),
+      email: z.string().email(),
+    })
+    .optional(),
   invitation: z.string().optional(),
   invitationExpires: z.number().optional(),
 });

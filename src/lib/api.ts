@@ -41,6 +41,7 @@ export async function restoreSession() {
       if (!response.ok) await failure(response);
       const body = await response.json();
       accessToken = body.accessToken;
+      window.dispatchEvent(new Event("amsol-ops-session-refreshed"));
     })().finally(() => {
       refreshing = undefined;
     });
