@@ -26,6 +26,7 @@ import { deptOtherProjects, myProjects, useRole } from "@/lib/role";
 import { ProjectAnalytics } from "@/components/ProjectAnalytics";
 import { today } from "@/lib/access";
 import { CeoDashboard } from "@/components/CeoDashboard";
+import { DepartmentWorkspace } from "@/components/DepartmentWorkspace";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -49,7 +50,13 @@ export const Route = createFileRoute("/")({
 
 function Dashboard() {
   const { mode } = useRole();
-  return mode === "ceo" ? <CeoDashboard /> : <LegacyDashboard />;
+  return mode === "ceo" ? (
+    <CeoDashboard />
+  ) : mode === "department" ? (
+    <DepartmentWorkspace />
+  ) : (
+    <LegacyDashboard />
+  );
 }
 
 function LegacyDashboard() {

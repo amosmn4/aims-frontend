@@ -4,7 +4,7 @@ import { Card, PageHeader, Pill, Stat } from "@/components/kit";
 import { useWorkspace } from "@/lib/workspace";
 import { SearchField } from "@/components/RecordDialog";
 import { Button } from "@/components/ui/button";
-import { WeeklyEditor } from "@/components/weekly/WeeklyEditor";
+import { StaffWeeklyReports } from "@/components/weekly/StaffWeeklyReports";
 import { WeeklyEntryView } from "@/components/weekly/WeeklyEntryView";
 import { useAccount } from "@/lib/account";
 import { isDemo } from "@/lib/api";
@@ -36,6 +36,26 @@ function WeeklyReports() {
   const { account } = useAccount();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
+  if (isDemo)
+    return (
+      <Card>Weekly reporting uses the connected backend. Sign in to submit plans and reports.</Card>
+    );
+  if (account?.role !== "ceo")
+    return (
+      <StaffWeeklyReports
+        phase={search.phase ?? "plan"}
+        week={search.week}
+        onFilter={(phase, week) => {
+          void navigate({ search: { phase, ...(week ? { week } : {}) } });
+        }}
+      />
+    );
+  return <CeoWeeklyReports />;
+}
+function CeoWeeklyReports() {
+  const { account } = useAccount();
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   const week = search.week ?? reportingWeek();
   const phase = search.phase ?? "plan";
   const ceo = account?.role === "ceo";
@@ -45,7 +65,6 @@ function WeeklyReports() {
     `reports/${encodeURIComponent(week)}/${encodeURIComponent(staff ?? "")}`,
     !!staff,
   );
-  const [reload, setReload] = useState(0);
   const { departments, deptName } = useWorkspace();
   const [staffSearch, setStaffSearch] = useState("");
   const [department, setDepartment] = useState("");
@@ -256,19 +275,7 @@ function WeeklyReports() {
           <h2 className="font-display text-xl font-semibold">
             {detail.data.person.name} | {week}
           </h2>
-          {staff === account?.id &&
-          detail.data.configured &&
-          !detail.data[phase]?.submittedAt &&
-          !detail.data[phase]?.reviewedAt ? (
-            <WeeklyEditor
-              key={`${staff}:${week}:${phase}:${reload}:${detail.data[phase]?.id ?? "new"}`}
-              detail={detail.data}
-              phase={phase}
-              onReload={() => {
-                void detail.refetch().then(() => setReload((value) => value + 1));
-              }}
-            />
-          ) : detail.data[phase] ? (
+          {detail.data[phase] ? (
             <WeeklyEntryView key={`${staff}:${week}:${phase}`} entry={detail.data[phase]!} />
           ) : (
             <Card>No {phase === "plan" ? "weekly plan" : "weekly report"} has been submitted.</Card>

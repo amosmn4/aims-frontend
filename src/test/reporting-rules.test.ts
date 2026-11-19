@@ -40,4 +40,16 @@ describe("Amsol reporting structure", () => {
       { status: "completed", count: 1 },
     ]);
   });
+  it("keeps department project lists scoped when the staff member manages other businesses", () => {
+    const list = [
+      { ...projects[0]!, id: "department", depts: ["hr"], business: "b0" },
+      { ...projects[0]!, id: "managed", depts: ["it"], business: "other-business" },
+    ];
+    expect(
+      myProjects("department", "p3", "hr", list, ["other-business"]).map((row) => row.id),
+    ).toEqual(["department"]);
+    expect(
+      myProjects("staff", "p3", "hr", list, ["other-business"]).some((row) => row.id === "managed"),
+    ).toBe(true);
+  });
 });

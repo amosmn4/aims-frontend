@@ -222,6 +222,13 @@ export function removeRecord(collection: Collection, id: string) {
   updateWorkspace((previous) => ({
     ...previous,
     [collection]: previous[collection].filter((item) => item.id !== id),
+    ...(collection === "people"
+      ? {
+          accounts: previous.accounts.filter((row) => row.personId !== id),
+          businessAccess: previous.businessAccess.filter((row) => row.person !== id),
+          staffBusiness: previous.staffBusiness.filter((row) => row.person !== id),
+        }
+      : {}),
   }));
 }
 

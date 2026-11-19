@@ -120,6 +120,37 @@ export function removeRecord(collection: Collection, id: string) {
   );
 }
 
+export function saveStaffProfile(person: RecordOf<"people">, email?: string) {
+  const { id, ...profile } = person;
+  if (isDemo)
+    return demo.updateWorkspace((previous) => ({
+      ...previous,
+      people: previous.people.map((row) => (row.id === id ? person : row)),
+      accounts: previous.accounts.map((row) =>
+        row.personId === id && email ? { ...row, email: email.trim().toLowerCase() } : row,
+      ),
+    }));
+  return mutateApi(`/staff/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ ...profile, ...(email !== undefined ? { email } : {}) }),
+  }).then(() => {});
+}
+
+export function removeStaffAccount(id: string) {
+  if (isDemo)
+    return demo.updateWorkspace((previous) => ({
+      ...previous,
+      accounts: previous.accounts.filter((row) => row.id !== id),
+      businessAccess: previous.businessAccess.filter(
+        (row) => row.person !== previous.accounts.find((account) => account.id === id)?.personId,
+      ),
+      staffBusiness: previous.staffBusiness.filter(
+        (row) => row.person !== previous.accounts.find((account) => account.id === id)?.personId,
+      ),
+    }));
+  return mutateApi(`/accounts/${encodeURIComponent(id)}`, { method: "DELETE" }).then(() => {});
+}
+
 export function updateWorkspace(update: (previous: Workspace) => Workspace): void | Promise<void> {
   if (isDemo) return demo.updateWorkspace(update);
   const next = update(current);

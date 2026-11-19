@@ -418,40 +418,38 @@ export function RichTextEditor({
       },
     },
   });
-  const state = useEditorState({
-    editor,
-    selector: ({ editor: e }) => {
-      if (!e) return null;
-      const textStyle = e.getAttributes("textStyle");
-      const paragraph = e.getAttributes("paragraph");
-      const heading = HEADING_LEVELS.find((level) => e.isActive("heading", { level }));
-      return {
-        bold: e.isActive("bold"),
-        italic: e.isActive("italic"),
-        underline: e.isActive("underline"),
-        strike: e.isActive("strike"),
-        subscript: e.isActive("subscript"),
-        superscript: e.isActive("superscript"),
-        link: e.isActive("link"),
-        textStyle: (heading ? `h${heading}` : "p") as TextStyleKey,
-        blockquote: e.isActive("blockquote"),
-        bulletList: e.isActive("bulletList"),
-        orderedList: e.isActive("orderedList"),
-        alignLeft: e.isActive({ textAlign: "left" }),
-        alignCenter: e.isActive({ textAlign: "center" }),
-        alignRight: e.isActive({ textAlign: "right" }),
-        alignJustify: e.isActive({ textAlign: "justify" }),
-        dropCap: !!paragraph["dropCap"],
-        lineHeight: (paragraph["lineHeight"] as string | null) ?? null,
-        color: toHex(textStyle["color"] as string | null),
-        backgroundColor: toHex(textStyle["backgroundColor"] as string | null),
-        fontFamily: (textStyle["fontFamily"] as string | null) ?? null,
-        fontSize: (textStyle["fontSize"] as string | null) ?? null,
-        canUndo: e.can().undo(),
-        canRedo: e.can().redo(),
-      };
-    },
-  });
+  const currentState = ({ editor: e }: { editor: Editor | null }) => {
+    if (!e) return null;
+    const textStyle = e.getAttributes("textStyle");
+    const paragraph = e.getAttributes("paragraph");
+    const heading = HEADING_LEVELS.find((level) => e.isActive("heading", { level }));
+    return {
+      bold: e.isActive("bold"),
+      italic: e.isActive("italic"),
+      underline: e.isActive("underline"),
+      strike: e.isActive("strike"),
+      subscript: e.isActive("subscript"),
+      superscript: e.isActive("superscript"),
+      link: e.isActive("link"),
+      textStyle: (heading ? `h${heading}` : "p") as TextStyleKey,
+      blockquote: e.isActive("blockquote"),
+      bulletList: e.isActive("bulletList"),
+      orderedList: e.isActive("orderedList"),
+      alignLeft: e.isActive({ textAlign: "left" }),
+      alignCenter: e.isActive({ textAlign: "center" }),
+      alignRight: e.isActive({ textAlign: "right" }),
+      alignJustify: e.isActive({ textAlign: "justify" }),
+      dropCap: !!paragraph["dropCap"],
+      lineHeight: (paragraph["lineHeight"] as string | null) ?? null,
+      color: toHex(textStyle["color"] as string | null),
+      backgroundColor: toHex(textStyle["backgroundColor"] as string | null),
+      fontFamily: (textStyle["fontFamily"] as string | null) ?? null,
+      fontSize: (textStyle["fontSize"] as string | null) ?? null,
+      canUndo: e.can().undo(),
+      canRedo: e.can().redo(),
+    };
+  };
+  const state = useEditorState({ editor, selector: currentState }) ?? currentState({ editor });
   useEffect(() => {
     if (!editor) return;
     if (value !== editor.getHTML()) {
@@ -459,7 +457,7 @@ export function RichTextEditor({
     }
   }, [value, editor]);
   useEffect(() => {
-    editor?.setEditable(!disabled);
+    editor?.setEditable(!disabled, false);
   }, [disabled, editor]);
   if (!editor || !state) return null;
   const openLinkDialog = () => {

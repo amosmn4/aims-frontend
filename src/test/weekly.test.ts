@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { reportingWeek, weeklyStatus, type WeeklyEntry } from "@/lib/weekly";
+import {
+  reportingWeek,
+  reportItems,
+  weeklyStatus,
+  type WeeklyEntry,
+  type WeeklyDetail,
+} from "@/lib/weekly";
 
 describe("Weekly reporting", () => {
   it("changes reporting week at Nairobi midnight", () => {
@@ -21,5 +27,34 @@ describe("Weekly reporting", () => {
         reviewedAt: null,
       } as WeeklyEntry),
     ).toBe("Returned for correction");
+  });
+  it("includes appended plan tasks in an existing report draft without duplicating linked tasks", () => {
+    const original = {
+      id: "original",
+      taskId: "task",
+      title: "Original",
+      detail: "",
+      status: "planned" as const,
+    };
+    const added = { id: "added", title: "Contingency", detail: "", status: "planned" as const };
+    const detail = {
+      weekStart: "2026-11-16",
+      weekEnd: "2026-11-22",
+      plan: { submission: { items: [original, added] } },
+      report: {
+        submission: {
+          items: [
+            { ...original, id: "different-item-id", detail: "Saved notes", status: "blocked" },
+          ],
+        },
+      },
+      tasks: [
+        { id: "added", title: "Contingency", project: "", status: "Done", due: "2026-11-20" },
+      ],
+    } as unknown as WeeklyDetail;
+    const items = reportItems(detail);
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ taskId: "task", status: "blocked", detail: "Saved notes" });
+    expect(items[1]).toMatchObject({ id: "added", status: "completed" });
   });
 });

@@ -70,11 +70,7 @@ export function myProjects(
 ) {
   if (mode === "ceo") return list;
   if (mode === "department")
-    return list.filter(
-      (project) =>
-        (dept && project.depts.includes(dept as never)) ||
-        managedBusinesses.includes(project.business ?? "b0"),
-    );
+    return list.filter((project) => dept && project.depts.includes(dept as never));
   return list.filter(
     (project) =>
       project.members.includes(meId) || managedBusinesses.includes(project.business ?? "b0"),

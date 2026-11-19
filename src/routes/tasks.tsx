@@ -31,6 +31,7 @@ import {
 } from "@/lib/file-storage";
 import { isDemo } from "@/lib/api";
 import { meta } from "@/lib/meta";
+import { departmentTasks } from "@/lib/department";
 import { SafeHtml } from "@/production/components/safe-html";
 
 export const Route = createFileRoute("/tasks")({
@@ -41,7 +42,7 @@ const cols = ["To do", "In progress", "Done"] as const;
 
 function Tasks() {
   const { mode, me } = useRole();
-  const { tasks, projects, documents, businesses, person, project } = useWorkspace();
+  const { tasks, projects, people, documents, businesses, person, project } = useWorkspace();
   const access = useBusinessAccess();
   const manages = (task: Task) =>
     !!access.permissions?.some(
@@ -55,13 +56,15 @@ function Tasks() {
   const [priority, setPriority] = useState("");
   const [staff, setStaff] = useState("");
   const [business, setBusiness] = useState("");
+  const departmentIds = new Set(
+    departmentTasks(tasks, projects, people, me.dept).map((row) => row.id),
+  );
   const list = tasks.filter(
     (task) =>
       (mode === "ceo" ||
-        manages(task) ||
         (mode === "department"
-          ? person(task.assignee).dept === me.dept
-          : task.assignee === me.id)) &&
+          ? departmentIds.has(task.id)
+          : manages(task) || task.assignee === me.id)) &&
       (!week ||
         task.weekStart === week ||
         (!task.weekStart &&

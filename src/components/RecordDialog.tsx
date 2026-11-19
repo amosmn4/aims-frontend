@@ -199,6 +199,7 @@ export function RecordActions({
   onEdit,
   onDelete,
   canDelete = true,
+  deleteDescription,
 }: {
   collection: Collection;
   id: string;
@@ -206,6 +207,7 @@ export function RecordActions({
   onEdit: () => void;
   onDelete?: (() => void | Promise<void>) | undefined;
   canDelete?: boolean;
+  deleteDescription?: string;
 }) {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -229,9 +231,9 @@ export function RecordActions({
         <Dialog open onOpenChange={setConfirm}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Delete {label}-</DialogTitle>
+              <DialogTitle>Delete {label}?</DialogTitle>
               <DialogDescription>
-                Records linked elsewhere must be unlinked before deletion.
+                {deleteDescription ?? "Records linked elsewhere must be unlinked before deletion."}
               </DialogDescription>
             </DialogHeader>
             <div className="flex justify-end gap-2">

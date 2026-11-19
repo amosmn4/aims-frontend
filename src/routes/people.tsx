@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Avatar, Card, PageHeader, Pill } from "@/components/kit";
-import { EmptyState, RecordActions, RecordDialog, SearchField } from "@/components/RecordDialog";
-import { useWorkspace, saveRecord } from "@/lib/workspace";
-import { personSchema } from "@/lib/models";
+import { EmptyState, RecordActions, SearchField } from "@/components/RecordDialog";
+import { StaffEditor } from "@/components/StaffEditor";
+import { useWorkspace } from "@/lib/workspace";
 import { useRole } from "@/lib/role";
 import type { Person } from "@/lib/data";
 import { meta } from "@/lib/meta";
@@ -13,14 +13,14 @@ export const Route = createFileRoute("/people")({
   component: People,
 });
 function People() {
-  const { people, projects, deptName, departments, accounts } = useWorkspace();
+  const { people, projects, deptName, accounts } = useWorkspace();
   const { mode } = useRole();
   const [edit, setEdit] = useState<Person | "new" | null>(null);
   const [search, setSearch] = useState("");
   if (mode !== "ceo") return <Card>Staff directory is available to the CEO.</Card>;
   const record = edit === "new" ? undefined : (edit ?? undefined);
   const list = people.filter((person) =>
-    `${person.name} ${person.title} ${person.dept ? deptName(person.dept) : "Executive"}`
+    `${person.name} ${person.title} ${person.dept ? deptName(person.dept) : "Executive"} ${accounts.find((account) => account.personId === person.id)?.email ?? ""}`
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
@@ -67,49 +67,19 @@ function People() {
                   id={person.id}
                   label={person.name}
                   onEdit={() => setEdit(person)}
+                  canDelete={
+                    !accounts.some(
+                      (account) => account.personId === person.id && account.role !== "staff",
+                    )
+                  }
+                  deleteDescription="Deletes this staff entry and its Ops access. Staff with linked work or reporting history must be retained; use Accounts to deactivate or delete their sign-in access."
                 />
               </div>
             )}
           </Card>
         ))}
       </div>
-      {edit && (
-        <RecordDialog
-          title={record ? "Edit staff" : "Add staff"}
-          onClose={() => setEdit(null)}
-          initial={{
-            name: record?.name ?? "",
-            title: record?.title ?? "",
-            dept: record?.dept ?? "hr",
-          }}
-          fields={[
-            { name: "name", label: "Full name", required: true },
-            { name: "title", label: "Job title", required: true },
-            {
-              name: "dept",
-              label: "Department",
-              type: "select",
-              options: [
-                { value: "", label: "Executive" },
-                ...departments.map((department) => ({
-                  value: department.id,
-                  label: department.name,
-                })),
-              ],
-            },
-          ]}
-          onSave={(values) =>
-            saveRecord(
-              "people",
-              personSchema.parse({
-                ...values,
-                dept: values.dept || null,
-                id: record?.id ?? crypto.randomUUID(),
-              }),
-            )
-          }
-        />
-      )}
+      {edit && <StaffEditor record={record} onClose={() => setEdit(null)} />}
     </div>
   );
 }

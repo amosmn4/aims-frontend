@@ -9,6 +9,8 @@ import { mutateApi, perform, saveRecord, updateWorkspace, useWorkspace } from "@
 import { isDemo } from "@/lib/api";
 import { useRole } from "@/lib/role";
 import { useAccount } from "@/lib/account";
+import { StaffEditor } from "@/components/StaffEditor";
+import { removeStaffAccount } from "@/lib/workspace";
 import { meta } from "@/lib/meta";
 
 export const Route = createFileRoute("/admin")({
@@ -29,6 +31,7 @@ function Admin() {
   const [tab, setTab] = useState(requestedTab ?? "Accounts");
   const [invite, setInvite] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
+  const [editStaff, setEditStaff] = useState<Workspace["people"][number] | null>(null);
   const [department, setDepartment] = useState<Department | "new" | null>(null);
   const [template, setTemplate] = useState<Template | "new" | null>(null);
   if (mode !== "ceo") return <Card>Settings are available to the CEO.</Card>;
@@ -164,35 +167,46 @@ function Admin() {
                         </Pill>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              perform(() =>
-                                saveRecord("accounts", { ...account, active: !account.active }),
-                              )
-                            }
-                          >
-                            {account.active ? "Deactivate" : "Activate"}
-                          </Button>
-                          {account.id !== me?.id && (
+                        {account.role === "staff" && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <RecordActions
+                              collection="people"
+                              id={person.id}
+                              label={account.email}
+                              onEdit={() => setEditStaff(person)}
+                              onDelete={() => removeStaffAccount(account.id)}
+                              deleteDescription="Removes this staff member's Ops sign-in access, invitations and permissions. Their staff record and reporting history are retained."
+                            />
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() =>
-                                perform(
-                                  () => issueInvitation(account.id),
-                                  "New activation link created",
+                                perform(() =>
+                                  saveRecord("accounts", { ...account, active: !account.active }),
                                 )
                               }
                             >
-                              {(account.hasPassword ?? !!account.passwordHash)
-                                ? "Reset access"
-                                : "Renew invitation"}
+                              {account.active ? "Deactivate" : "Activate"}
                             </Button>
-                          )}
-                        </div>
+                            {account.id !== me?.id && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={!account.active}
+                                title={
+                                  !account.active
+                                    ? "Activate this account before resending its invitation."
+                                    : "Email a new password setup link to this staff member."
+                                }
+                                onClick={() =>
+                                  perform(() => issueInvitation(account.id), "Invitation renewed")
+                                }
+                              >
+                                Resend invitation
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
@@ -202,6 +216,7 @@ function Admin() {
         </Card>
       )}
       {tab === "Business access" && <BusinessPermissions />}
+      {editStaff && <StaffEditor record={editStaff} onClose={() => setEditStaff(null)} />}
       {tab === "Departments" && (
         <>
           <div className="mb-4 flex justify-end">

@@ -1,0 +1,55 @@
+import { test, expect } from "@playwright/test";
+
+test("CEO corrects staff email from both views, resends an invitation and removes access and unused staff", async ({
+  page,
+}) => {
+  const suffix = Date.now();
+  const name = `Email correction ${suffix}`;
+  const wrongEmail = `wrong-${suffix}@ops-verify.local`;
+  const correctedEmail = `corrected-${suffix}@ops-verify.local`;
+  const finalEmail = `final-${suffix}@ops-verify.local`;
+  await page.goto("/login");
+  await page.getByLabel("Email", { exact: true }).fill("ceo@ops-verify.local");
+  await page.getByLabel("Password", { exact: true }).fill("OpsBrowser2026!");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+  await page.goto("/admin");
+  await page.getByRole("button", { name: "Invite staff", exact: true }).click();
+  let dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Full name", { exact: true }).fill(name);
+  await dialog.getByLabel("Job title", { exact: true }).fill("Consultant");
+  await dialog.getByLabel("Email", { exact: true }).fill(wrongEmail);
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await page.getByRole("button", { name: `Edit ${wrongEmail}`, exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Email", { exact: true }).fill(correctedEmail);
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator("tbody tr").filter({ hasText: correctedEmail })).toHaveCount(1);
+  await page.goto("/people");
+  await page.getByPlaceholder("Search staff").fill(correctedEmail);
+  await page.getByRole("button", { name: `Edit ${name}`, exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Email", { exact: true }).fill(finalEmail);
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await page.goto("/admin");
+  const row = page.locator("tbody tr").filter({ hasText: finalEmail });
+  await row.getByRole("button", { name: "Resend invitation", exact: true }).click();
+  await expect(page.getByText("Invitation renewed", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Invitation link", { exact: true })).toHaveValue(/token=/);
+  await row.getByRole("button", { name: `Delete ${finalEmail}`, exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await expect(dialog.getByText(/staff record and reporting history are retained/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(row).toHaveCount(0);
+  await page.goto("/people");
+  await page.getByPlaceholder("Search staff").fill(name);
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  await expect(page.getByText("Directory entry", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: `Delete ${name}`, exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByText("No staff found.", { exact: true })).toBeVisible();
+});
