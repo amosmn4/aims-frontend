@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { plainText, validDate } from "@/lib/text";
 import { useQueryClient } from "@tanstack/react-query";
 import UndoOutlined from "@mui/icons-material/UndoOutlined";
 import DeleteOutline from "@mui/icons-material/DeleteOutline";
@@ -14,6 +16,7 @@ import {
   weeklyStatus,
   type WeeklyDetail,
   type WeeklyPhase,
+  type WeeklyHistory,
 } from "@/lib/weekly";
 import { confirmDialog } from "@/production/components/confirm-dialog";
 import { ReportingHeader, ReportingPanel, ReportingTag, ReportingPagination } from "./ReportingUI";
@@ -41,6 +44,8 @@ export function WeeklyReportingPage({
     !!entry,
   );
   const [page, setPage] = useState(1);
+  const [weekInput, setWeekInput] = useState(week);
+  const submissions = useWeekly<WeeklyHistory>(`submissions?phase=${phase}&page=${page}`);
   const [busy, setBusy] = useState(false);
   const action = async (kind: "recall" | "delete") => {
     if (
@@ -81,7 +86,7 @@ export function WeeklyReportingPage({
     <>
       <ReportingHeader
         title={`Weekly ${phase}`}
-        eyebrow={`Staff workspace | ${phase === "plan" ? "Planning" : "Performance update"}`}
+        eyebrow={`Staff workspace | ${phase === "plan" ? "Planning" : "Weekly reporting"}`}
         subtitle={
           phase === "plan"
             ? "Create your weekly commitments. Submit immediately or schedule delivery."
@@ -115,11 +120,17 @@ export function WeeklyReportingPage({
                 <input
                   aria-label="Reporting week"
                   type="date"
-                  value={week}
-                  onChange={(event) => {
-                    if (event.target.value) onWeek(event.target.value);
-                  }}
+                  value={weekInput}
+                  onChange={(event) => setWeekInput(event.target.value)}
                 />
+                <button
+                  type="button"
+                  className="btn secondary sm"
+                  disabled={!validDate(weekInput)}
+                  onClick={() => onWeek(weekInput)}
+                >
+                  Apply week
+                </button>
               </label>
               <WeeklyEntryView entry={entry} />
               <p className="notice">The editing window for this submission has closed.</p>
@@ -172,40 +183,53 @@ export function WeeklyReportingPage({
             </div>
           )}
           <ReportingPanel title={`${phase === "plan" ? "Plan" : "Report"} submission timeline`}>
-            {history.error && <p role="alert">{history.error.message}</p>}
+            {submissions.error && <p role="alert">{submissions.error.message}</p>}
             <div className="tablewrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Event</th>
-                    <th>Date</th>
-                    <th>Recipient</th>
-                    <th>Delivery</th>
+                    <th>Submission</th>
+                    <th>Week</th>
+                    <th>Updated</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {[...(history.data ?? [])]
-                    .reverse()
-                    .slice((page - 1) * 10, page * 10)
-                    .map((event) => (
-                      <tr key={event.id}>
-                        <td>{event.action.replace("ops.weekly.", "").replaceAll("_", " ")}</td>
-                        <td>{weeklyTime(event.createdAt)}</td>
-                        <td>{event.action.includes("draft") ? "Only you" : "CEO"}</td>
-                        <td>
-                          <ReportingTag>
-                            {event.action.includes("draft") ? "Saved" : "Recorded in system"}
-                          </ReportingTag>
-                        </td>
-                      </tr>
-                    ))}
+                  {submissions.data?.items.map((submission) => (
+                    <tr key={submission.id}>
+                      <td>
+                        <Link
+                          className="font-semibold hover:underline"
+                          to="/reporting"
+                          search={{
+                            view: "detail",
+                            week: submission.weekStart,
+                            phase,
+                            staff: submission.staffId,
+                          }}
+                        >
+                          {plainText(submission.submission.title) || `Weekly ${phase}`}
+                        </Link>
+                      </td>
+                      <td>{submission.weekStart}</td>
+                      <td>{weeklyTime(submission.updatedAt)}</td>
+                      <td>
+                        <ReportingTag>{weeklyStatus(submission)}</ReportingTag>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
-            {!history.data?.length && (
+            {!submissions.data?.items.length && (
               <p className="report-empty">Your saved drafts and submissions will appear here.</p>
             )}
-            <ReportingPagination page={page} total={history.data?.length ?? 0} onPage={setPage} />
+            <ReportingPagination
+              page={submissions.data?.page ?? page}
+              total={submissions.data?.total ?? 0}
+              limit={submissions.data?.limit ?? 20}
+              onPage={setPage}
+            />
           </ReportingPanel>
         </>
       )}

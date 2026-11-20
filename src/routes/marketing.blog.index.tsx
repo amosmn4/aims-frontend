@@ -1,7 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus } from "lucide-react";
+import CircularProgress from "@mui/material/CircularProgress";
+import AddOutlined from "@mui/icons-material/AddOutlined";
+import { ReportingPagination } from "@/components/reporting/ReportingUI";
+import { plainText } from "@/lib/text";
 import {
   useBlogPosts,
   useSaveBlogPost,
@@ -42,12 +45,14 @@ export const Route = createFileRoute("/marketing/blog/")({
 function BlogList() {
   const { isAdminOrCeo, hasCapability } = useAuth();
   const canManage = hasCapability("publish_blog");
-  const postsQ = useBlogPosts();
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const postsQ = useBlogPosts(page, limit);
   const [newOpen, setNewOpen] = useState(false);
-  const posts = postsQ.data ?? [];
+  const posts = postsQ.data?.items ?? [];
   const newButton = (
     <Button size="sm" onClick={() => setNewOpen(true)}>
-      <Plus className="mr-1 h-4 w-4" /> New post
+      <AddOutlined className="mr-1 h-4 w-4" /> New post
     </Button>
   );
   return (
@@ -58,12 +63,30 @@ function BlogList() {
         actions={canManage ? newButton : undefined}
       />
       {!canManage && <ViewOnlyBanner area="blog posts" action="write or publish them" />}
+      <label className="flex items-center gap-2 text-sm">
+        Limit
+        <select
+          aria-label="Blog limit"
+          className="rounded-md border bg-background px-3 py-2"
+          value={limit}
+          onChange={(event) => {
+            setLimit(Number(event.target.value));
+            setPage(1);
+          }}
+        >
+          {[10, 20, 50].map((value) => (
+            <option key={value} value={value}>
+              {value} posts
+            </option>
+          ))}
+        </select>
+      </label>
 
       {postsQ.isError ? (
         <LoadError what="blog posts" error={postsQ.error} onRetry={() => postsQ.refetch()} />
       ) : postsQ.isLoading ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <CircularProgress size={24} />
         </div>
       ) : posts.length === 0 ? (
         <div className="rounded-lg border bg-card px-4 py-12 text-center">
@@ -95,7 +118,7 @@ function BlogList() {
                       params={{ postId: p.id }}
                       className="font-medium text-foreground hover:text-primary hover:underline"
                     >
-                      {p.title}
+                      {plainText(p.title)}
                     </Link>
                     <div className="text-xs text-muted-foreground">
                       Last saved {formatRelative(p.updated_at)}
@@ -117,6 +140,14 @@ function BlogList() {
             </TableBody>
           </Table>
         </div>
+      )}
+      {postsQ.data && (
+        <ReportingPagination
+          page={postsQ.data.page}
+          total={postsQ.data.total}
+          limit={postsQ.data.limit}
+          onPage={setPage}
+        />
       )}
 
       {newOpen && <NewPostDialog onClose={() => setNewOpen(false)} />}
@@ -229,7 +260,7 @@ function NewPostDialog({ onClose }: { onClose: () => void }) {
               Cancel
             </Button>
             <Button type="submit" disabled={save.isPending}>
-              {save.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+              {save.isPending && <CircularProgress className="mr-1" size={16} />}
               Save draft
             </Button>
           </DialogFooter>

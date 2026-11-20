@@ -6,6 +6,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { projectHealth } from "@/lib/analytics";
 import { useRole } from "@/lib/role";
 import { Card, Progress, SectionTitle } from "./kit";
+import { plainText } from "@/lib/text";
 
 const labels: Record<Status, string> = {
   "on-track": "On track",
@@ -105,7 +106,9 @@ export function ProjectAnalytics() {
                 {r.title}
                 <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-primary" />
               </div>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{r.blockers}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {plainText(r.blockers)}
+              </p>
             </Link>
           ))}
         </div>

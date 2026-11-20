@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, isDemo } from "./api";
 import type { WeeklyEntry } from "./weekly";
+export { plainText } from "./text";
 
 export type ReportingView =
   | "overview"
@@ -51,6 +52,8 @@ export type ReportingWorkspace = {
   page: number;
   limit: number;
   metrics: {
+    tasks: number;
+    completed: number;
     staff: number;
     plans: number;
     reports: number;
@@ -80,14 +83,6 @@ export function weekEnd(week: string, days = 6) {
   return new Date(new Date(`${week}T12:00:00Z`).getTime() + days * 86400000)
     .toISOString()
     .slice(0, 10);
-}
-export function plainText(value: string) {
-  return value
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 export type SubmissionScheduleRecord = {

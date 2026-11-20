@@ -15,29 +15,29 @@ import {
 } from "@tiptap/extension-text-style";
 import TextAlign from "@tiptap/extension-text-align";
 import { TableKit } from "@tiptap/extension-table";
-import {
-  Bold,
-  Italic,
-  Underline as UnderlineIcon,
-  Strikethrough,
-  Link as LinkIcon,
-  Subscript as SubscriptIcon,
-  Superscript as SuperscriptIcon,
-  List,
-  ListOrdered,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  AlignJustify,
-  Baseline,
-  Highlighter,
-  RemoveFormatting,
-  TextQuote,
-  Unlink,
-  Table as TableIcon,
-  Undo2,
-  Redo2,
-} from "lucide-react";
+import Bold from "@mui/icons-material/FormatBold";
+import Italic from "@mui/icons-material/FormatItalic";
+import UnderlineIcon from "@mui/icons-material/FormatUnderlined";
+import Strikethrough from "@mui/icons-material/FormatStrikethrough";
+import LinkIcon from "@mui/icons-material/Link";
+import SubscriptIcon from "@mui/icons-material/Subscript";
+import SuperscriptIcon from "@mui/icons-material/Superscript";
+import List from "@mui/icons-material/FormatListBulleted";
+import ListOrdered from "@mui/icons-material/FormatListNumbered";
+import AlignLeft from "@mui/icons-material/FormatAlignLeft";
+import AlignCenter from "@mui/icons-material/FormatAlignCenter";
+import AlignRight from "@mui/icons-material/FormatAlignRight";
+import AlignJustify from "@mui/icons-material/FormatAlignJustify";
+import Baseline from "@mui/icons-material/FormatColorText";
+import Highlighter from "@mui/icons-material/Highlight";
+import RemoveFormatting from "@mui/icons-material/FormatClear";
+import TextQuote from "@mui/icons-material/FormatQuote";
+import Unlink from "@mui/icons-material/LinkOff";
+import TableIcon from "@mui/icons-material/TableChart";
+import Undo2 from "@mui/icons-material/Undo";
+import Redo2 from "@mui/icons-material/Redo";
+import FormatIndentIncrease from "@mui/icons-material/FormatIndentIncrease";
+import FormatIndentDecrease from "@mui/icons-material/FormatIndentDecrease";
 import { Button } from "@/production/components/ui/button";
 import { Input } from "@/production/components/ui/input";
 import { Label } from "@/production/components/ui/label";
@@ -395,10 +395,12 @@ export function RichTextEditor({
   value,
   onChange,
   disabled,
+  ariaLabel = "Formatted content",
 }: {
   value: string;
   onChange: (html: string) => void;
   disabled?: boolean | undefined;
+  ariaLabel?: string | undefined;
 }) {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -413,6 +415,9 @@ export function RichTextEditor({
     onUpdate: ({ editor: e }) => onChange(e.getHTML()),
     editorProps: {
       attributes: {
+        role: "textbox",
+        "aria-label": ariaLabel,
+        "aria-multiline": "true",
         class:
           "blog-content min-h-60 rounded-md rounded-t-none border border-t-0 bg-background px-4 py-3 text-sm focus-visible:outline-none",
       },
@@ -447,6 +452,8 @@ export function RichTextEditor({
       fontSize: (textStyle["fontSize"] as string | null) ?? null,
       canUndo: e.can().undo(),
       canRedo: e.can().redo(),
+      canIndent: e.can().sinkListItem("listItem"),
+      canOutdent: e.can().liftListItem("listItem"),
     };
   };
   const state = useEditorState({ editor, selector: currentState }) ?? currentState({ editor });
@@ -725,6 +732,20 @@ export function RichTextEditor({
           onClick={() => editor.chain().focus().toggleBulletList().run()}
         >
           <List className="h-4 w-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Indent list"
+          disabled={disabled || !state.canIndent}
+          onClick={() => editor.chain().focus().sinkListItem("listItem").run()}
+        >
+          <FormatIndentIncrease className="h-4 w-4" />
+        </ToolbarButton>
+        <ToolbarButton
+          label="Outdent list"
+          disabled={disabled || !state.canOutdent}
+          onClick={() => editor.chain().focus().liftListItem("listItem").run()}
+        >
+          <FormatIndentDecrease className="h-4 w-4" />
         </ToolbarButton>
         <ToolbarButton
           label="Numbered list"

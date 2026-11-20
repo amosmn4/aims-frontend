@@ -11,6 +11,8 @@ import { perform, useWorkspace } from "@/lib/workspace";
 import { documentBlob, downloadBlob } from "@/lib/file-storage";
 import { meta } from "@/lib/meta";
 import { ReportingPagination } from "@/components/reporting/ReportingUI";
+import { SafeHtml } from "@/production/components/safe-html";
+import { TaskDeliverables } from "@/components/TaskDeliverables";
 
 export const Route = createFileRoute("/reports")({
   head: () => ({
@@ -254,7 +256,10 @@ function Reports() {
                   ).map(([label, value]) => (
                     <div key={label}>
                       <h3 className="text-xs font-semibold text-muted-foreground">{label}</h3>
-                      <p className="mt-1 whitespace-pre-wrap">{value || "Not provided"}</p>
+                      <SafeHtml
+                        html={value || "Not provided"}
+                        className="blog-content mt-1 whitespace-pre-wrap"
+                      />
                     </div>
                   ))}
                 </div>
@@ -277,12 +282,7 @@ function Reports() {
                           <p className="text-xs text-muted-foreground">
                             {task.source.replaceAll("_", " ")}
                           </p>
-                          {task.subtasks?.map((item) => (
-                            <label key={item.id} className="mt-1 flex gap-2 text-xs">
-                              <input type="checkbox" checked={item.done} readOnly disabled />
-                              {item.title}
-                            </label>
-                          ))}
+                          {!!task.subtasks?.length && <TaskDeliverables items={task.subtasks} />}
                         </div>
                       ))}
                     </div>

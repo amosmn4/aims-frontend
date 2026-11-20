@@ -13,6 +13,9 @@ import { loadWorkspace, perform, useWorkspace } from "@/lib/workspace";
 import { uploadDocument } from "@/lib/file-storage";
 import { SubmissionSchedule } from "@/components/SubmissionSchedule";
 import { UploadField } from "@/components/UploadField";
+import { RichTextEditor } from "@/production/features/marketing/rich-text-editor";
+import { TaskDeliverables } from "@/components/TaskDeliverables";
+import { plainText, validDate } from "@/lib/text";
 import {
   Dialog,
   DialogContent,
@@ -55,9 +58,10 @@ export function WeeklyEditor({
   const [uploading, setUploading] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [schedulePending, setSchedulePending] = useState(false);
+  const [weekInput, setWeekInput] = useState(detail.weekStart);
   const initial = {
     ...(entry?.submission ?? emptyWeeklySubmission()),
-    title: entry?.submission.title || weeklyTitle(phase, detail.weekStart),
+    title: plainText(entry?.submission.title) || weeklyTitle(phase, detail.weekStart),
     items:
       phase === "report"
         ? reportItems(detail)
@@ -72,6 +76,11 @@ export function WeeklyEditor({
             priority: item.priority ?? ("Medium" as const),
           })),
   };
+  initial.items = initial.items.map((item) => ({
+    ...item,
+    title: plainText(item.title),
+    subtasks: item.subtasks?.map((part) => ({ ...part, title: plainText(part.title) })),
+  }));
   const [form, setForm] = useState<WeeklySubmission>(initial);
   const [saved, setSaved] = useState(JSON.stringify(initial));
   const dirty = JSON.stringify(form) !== saved;
@@ -146,6 +155,7 @@ export function WeeklyEditor({
               id: crypto.randomUUID(),
               title: "",
               detail: "",
+              ...(phase === "report" ? { outcome: "" } : {}),
               due: new Date(new Date(`${detail.weekStart}T12:00:00Z`).getTime() + 4 * 86400000)
                 .toISOString()
                 .slice(0, 10),
@@ -192,14 +202,21 @@ export function WeeklyEditor({
                 aria-label="Week to prepare"
                 className="field-input"
                 type="date"
-                value={detail.weekStart}
+                value={weekInput}
                 disabled={busy}
-                onChange={async (event) => {
-                  const value = event.target.value;
-                  if (value && (!dirty || (await discard())))
-                    onWeekChange(reportingWeek(new Date(`${value}T12:00:00Z`)));
-                }}
+                onChange={(event) => setWeekInput(event.target.value)}
               />
+              <button
+                type="button"
+                className="btn secondary sm"
+                disabled={busy || !validDate(weekInput)}
+                onClick={async () => {
+                  if (!dirty || (await discard()))
+                    onWeekChange(reportingWeek(new Date(`${weekInput}T12:00:00Z`)));
+                }}
+              >
+                Apply week
+              </button>
             </label>
           ) : (
             <p className="text-sm text-muted-foreground">Week of {detail.weekStart}</p>
@@ -207,18 +224,11 @@ export function WeeklyEditor({
         </div>
         <label className="field-label">
           {phase === "plan" ? "Weekly objective" : "Executive summary"}
-          <textarea
-            aria-label={phase === "plan" ? "Weekly objective" : "Executive summary"}
-            className="field-input min-h-20"
-            maxLength={5000}
+          <RichTextEditor
+            ariaLabel={phase === "plan" ? "Weekly objective" : "Executive summary"}
             value={form.summary}
-            placeholder={
-              phase === "plan"
-                ? "Complete priority system improvements, support operations and provide timely updates to management."
-                : "Summarise key progress and outcomes..."
-            }
             disabled={busy}
-            onChange={(event) => setForm({ ...form, summary: event.target.value })}
+            onChange={(summary) => setForm({ ...form, summary })}
           />
         </label>
         {entry?.returnComment && (
@@ -253,11 +263,6 @@ export function WeeklyEditor({
             </p>
           )}
           {form.items.map((item, index) => {
-            const editableTitle =
-              phase === "plan" ||
-              (!item.taskId &&
-                !detail.tasks.some((task) => task.id === item.id) &&
-                !detail.plan?.submission.items.some((task) => task.id === item.id));
             return (
               <div key={item.id} className={phase === "plan" ? "taskedit" : "reportrow"}>
                 {phase === "plan" && (
@@ -278,24 +283,18 @@ export function WeeklyEditor({
                 )}
                 <div className={phase === "plan" ? "taskeditgrid" : "report-task-title"}>
                   <div className="field">
-                    <label htmlFor={`weekly-task-${item.id}`}>
-                      {phase === "plan" ? "Task description" : "Task"}
-                    </label>
-                    {editableTitle ? (
-                      <input
-                        id={`weekly-task-${item.id}`}
-                        className="field-input"
-                        aria-label={`Task ${index + 1}`}
-                        placeholder="Describe the task..."
-                        required
-                        maxLength={200}
-                        value={item.title}
-                        disabled={busy}
-                        onChange={(event) => updateItem(item.id, { title: event.target.value })}
-                      />
-                    ) : (
-                      <strong>{item.title}</strong>
-                    )}
+                    <label htmlFor={`weekly-task-${item.id}`}>Task title</label>
+                    <input
+                      id={`weekly-task-${item.id}`}
+                      className="field-input"
+                      aria-label={`Task ${index + 1}`}
+                      placeholder="e.g. Recruitment for Client A"
+                      required
+                      maxLength={200}
+                      value={item.title}
+                      disabled={busy}
+                      onChange={(event) => updateItem(item.id, { title: event.target.value })}
+                    />
                     {phase === "report" && (
                       <small>
                         {item.priority ?? "Medium"} priority{item.due ? ` | Due ${item.due}` : ""}
@@ -368,34 +367,51 @@ export function WeeklyEditor({
                     </>
                   )}
                 </div>
-                {phase === "report" && (
-                  <>
-                    <select
-                      className="report-status"
-                      data-status={item.status}
-                      aria-label={`Status: ${item.title}`}
-                      value={item.status}
-                      disabled={busy}
-                      onChange={(event) =>
-                        updateItem(item.id, { status: event.target.value as WeeklyItem["status"] })
-                      }
-                    >
-                      <option value="pending">Not started</option>
-                      <option value="in_progress">In progress</option>
-                      <option value="completed">Completed</option>
-                      <option value="blocked">Blocked</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                    <input
-                      aria-label={`Outcome: ${item.title}`}
-                      placeholder="Outcome / explanation"
+                <div className="mt-3 space-y-3 md:col-span-full">
+                  <label className="field-label">
+                    Description / deliverables
+                    <RichTextEditor
+                      ariaLabel={`Description for task ${index + 1}`}
                       value={item.detail}
-                      maxLength={2000}
                       disabled={busy}
-                      onChange={(event) => updateItem(item.id, { detail: event.target.value })}
+                      onChange={(detail) => updateItem(item.id, { detail })}
                     />
-                  </>
-                )}
+                  </label>
+                  <TaskDeliverables
+                    label={`Task ${index + 1} deliverables`}
+                    items={item.subtasks ?? []}
+                    disabled={busy}
+                    onChange={(subtasks) => updateItem(item.id, { subtasks })}
+                  />
+                  <select
+                    className="report-status"
+                    data-status={item.status}
+                    aria-label={`Status: ${item.title}`}
+                    value={item.status}
+                    disabled={busy}
+                    onChange={(event) =>
+                      updateItem(item.id, { status: event.target.value as WeeklyItem["status"] })
+                    }
+                  >
+                    {phase === "plan" && <option value="planned">Planned</option>}
+                    <option value="pending">Not started</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                  {phase === "report" && (
+                    <label className="field-label">
+                      Outcome / explanation
+                      <RichTextEditor
+                        ariaLabel={`Outcome: ${plainText(item.title)}`}
+                        value={item.outcome ?? ""}
+                        disabled={busy}
+                        onChange={(outcome) => updateItem(item.id, { outcome })}
+                      />
+                    </label>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -403,41 +419,32 @@ export function WeeklyEditor({
         {phase === "report" && (
           <label className="field-label">
             Challenges and blockers
-            <textarea
-              aria-label="Challenges and blockers"
-              className="field-input min-h-20"
-              maxLength={5000}
+            <RichTextEditor
+              ariaLabel="Challenges and blockers"
               value={form.blockers}
-              placeholder="What slowed you down? What support do you need?"
               disabled={busy}
-              onChange={(event) => setForm({ ...form, blockers: event.target.value })}
+              onChange={(blockers) => setForm({ ...form, blockers })}
             />
           </label>
         )}
         {phase === "report" && (
           <label className="field-label">
             Next week's priorities
-            <textarea
-              aria-label="Next week's priorities"
-              className="field-input min-h-20"
-              maxLength={5000}
+            <RichTextEditor
+              ariaLabel="Next week's priorities"
               value={form.nextWeek}
-              placeholder="What will you focus on next week?"
               disabled={busy}
-              onChange={(event) => setForm({ ...form, nextWeek: event.target.value })}
+              onChange={(nextWeek) => setForm({ ...form, nextWeek })}
             />
           </label>
         )}
         <label className="field-label">
           Notes (optional)
-          <textarea
-            aria-label="Notes (optional)"
-            className="field-input min-h-20"
-            maxLength={5000}
+          <RichTextEditor
+            ariaLabel="Notes (optional)"
             value={form.note ?? ""}
-            placeholder="Add any additional notes..."
             disabled={busy}
-            onChange={(event) => setForm({ ...form, note: event.target.value })}
+            onChange={(note) => setForm({ ...form, note })}
           />
         </label>
         <details className="rounded-lg border p-3 text-sm">

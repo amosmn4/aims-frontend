@@ -33,15 +33,20 @@ import { isDemo } from "@/lib/api";
 import { meta } from "@/lib/meta";
 import { departmentTasks } from "@/lib/department";
 import { SafeHtml } from "@/production/components/safe-html";
+import { plainText, validDate } from "@/lib/text";
+import { ReportingPagination } from "@/components/reporting/ReportingUI";
 
 export const Route = createFileRoute("/tasks")({
+  validateSearch: (raw: Record<string, unknown>): { scope?: "staff" | "mine" } =>
+    raw["scope"] === "staff" ? { scope: "staff" } : {},
   head: () => ({ meta: meta("Tasks", "Track and update Amsol project tasks.") }),
   component: Tasks,
 });
-const cols = ["To do", "In progress", "Done"] as const;
+const cols = ["To do", "In progress", "Done", "Blocked", "Cancelled"] as const;
 
 function Tasks() {
   const { mode, me } = useRole();
+  const routeSearch = Route.useSearch();
   const { tasks, projects, people, documents, businesses, person, project } = useWorkspace();
   const access = useBusinessAccess();
   const manages = (task: Task) =>
@@ -52,6 +57,10 @@ function Tasks() {
   const [commenting, setCommenting] = useState<Task | null>(null);
   const [search, setSearch] = useState("");
   const [week, setWeek] = useState("");
+  const [weekInput, setWeekInput] = useState("");
+  const [scope, setScope] = useState<"staff" | "mine">(routeSearch.scope ?? "mine");
+  const [limit, setLimit] = useState(20);
+  const [pagination, setPagination] = useState({ key: "", page: 1 });
   const [source, setSource] = useState("");
   const [priority, setPriority] = useState("");
   const [staff, setStaff] = useState("");
@@ -61,10 +70,11 @@ function Tasks() {
   );
   const list = tasks.filter(
     (task) =>
-      (mode === "ceo" ||
-        (mode === "department"
-          ? departmentIds.has(task.id)
-          : manages(task) || task.assignee === me.id)) &&
+      ((mode === "ceo" && (scope === "mine" ? task.assignee === me.id : task.assignee !== me.id)) ||
+        (mode !== "ceo" &&
+          (mode === "department"
+            ? departmentIds.has(task.id)
+            : manages(task) || task.assignee === me.id))) &&
       (!week ||
         task.weekStart === week ||
         (!task.weekStart &&
@@ -77,14 +87,30 @@ function Tasks() {
       (!priority || task.priority === priority) &&
       (!staff || task.assignee === staff) &&
       (!business || (task.business ?? "b0") === business) &&
-      `${task.title} ${task.description ?? ""}`.toLowerCase().includes(search.toLowerCase()),
+      `${plainText(task.title)} ${plainText(task.description)}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
   );
+  const filterKey = JSON.stringify([search, week, source, priority, staff, business, scope, limit]);
+  const page = Math.min(
+    pagination.key === filterKey ? pagination.page : 1,
+    Math.max(1, Math.ceil(list.length / limit)),
+  );
+  const visible = [...list]
+    .sort((left, right) => left.due.localeCompare(right.due) || left.id.localeCompare(right.id))
+    .slice((page - 1) * limit, page * limit);
   const canCreate = true;
   return (
     <div>
       <PageHeader
         title={
-          mode === "ceo" ? "All tasks" : mode === "department" ? "Department tasks" : "My tasks"
+          mode === "ceo"
+            ? scope === "mine"
+              ? "My tasks"
+              : "Staff tasks"
+            : mode === "department"
+              ? "Department tasks"
+              : "My tasks"
         }
         subtitle="Assign work and track it through completion"
         action={
@@ -97,21 +123,63 @@ function Tasks() {
       />
       <SearchField value={search} onChange={setSearch} placeholder="Search tasks" />
       <div className="mb-5 flex flex-wrap gap-3">
+        {mode === "ceo" && (
+          <label className="field-label">
+            View
+            <select
+              aria-label="Task view"
+              className="field-input"
+              value={scope}
+              onChange={(event) => {
+                setScope(event.target.value as typeof scope);
+                setStaff("");
+              }}
+            >
+              <option value="mine">My tasks</option>
+              <option value="staff">Staff tasks</option>
+            </select>
+          </label>
+        )}
         <label className="field-label">
-          Week
+          Period
           <input
             className="field-input"
             type="date"
-            value={week}
-            onChange={(event) =>
-              setWeek(
-                event.target.value
-                  ? reportingWeek(new Date(`${event.target.value}T12:00:00Z`))
-                  : "",
-              )
-            }
+            aria-label="Task period"
+            value={weekInput}
+            onChange={(event) => setWeekInput(event.target.value)}
           />
+          <button
+            type="button"
+            className="rounded-md border px-3 py-1 text-xs"
+            disabled={!!weekInput && !validDate(weekInput)}
+            onClick={() =>
+              setWeek(weekInput ? reportingWeek(new Date(`${weekInput}T12:00:00Z`)) : "")
+            }
+          >
+            Apply period
+          </button>
         </label>
+        {mode === "ceo" && scope === "staff" && (
+          <label className="field-label">
+            Staff
+            <select
+              aria-label="Task staff"
+              className="field-input"
+              value={staff}
+              onChange={(event) => setStaff(event.target.value)}
+            >
+              <option value="">All staff</option>
+              {people
+                .filter((member) => member.id !== me.id)
+                .map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
         <label className="field-label">
           Work type
           <select
@@ -155,23 +223,21 @@ function Tasks() {
             ))}
           </select>
         </label>
-        {mode === "ceo" && (
-          <label className="field-label">
-            Staff
-            <select
-              className="field-input"
-              value={staff}
-              onChange={(event) => setStaff(event.target.value)}
-            >
-              <option value="">All staff</option>
-              {[...new Set(tasks.map((task) => task.assignee))].map((id) => (
-                <option key={id} value={id}>
-                  {person(id).name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+        <label className="field-label">
+          Limit
+          <select
+            aria-label="Task limit"
+            className="field-input"
+            value={limit}
+            onChange={(event) => setLimit(Number(event.target.value))}
+          >
+            {[10, 20, 50].map((value) => (
+              <option key={value} value={value}>
+                {value} tasks
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <div className="grid gap-5 md:grid-cols-3">
         {cols.map((status) => (
@@ -181,10 +247,10 @@ function Tasks() {
               <Pill>{list.filter((task) => task.status === status).length}</Pill>
             </div>
             <div className="space-y-3">
-              {!list.some((task) => task.status === status) && (
+              {!visible.some((task) => task.status === status) && (
                 <EmptyState>No tasks in this column.</EmptyState>
               )}
-              {list
+              {visible
                 .filter((task) => task.status === status)
                 .map((task) => {
                   const editable =
@@ -199,13 +265,13 @@ function Tasks() {
                     project(task.project)?.members.includes(me.id);
                   return (
                     <Card key={task.id} className="p-4">
-                      <div className="text-sm font-medium">{task.title}</div>
+                      <div className="text-sm font-medium">{plainText(task.title)}</div>
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                         <span>{person(task.assignee).name}</span>
                         {!!task.subtasks?.length && (
                           <span>
                             {task.subtasks.filter((item) => item.done).length}/
-                            {task.subtasks.length} subtasks
+                            {task.subtasks.length} deliverables
                           </span>
                         )}
                       </div>
@@ -361,6 +427,12 @@ function Tasks() {
           </section>
         ))}
       </div>
+      <ReportingPagination
+        page={page}
+        total={list.length}
+        limit={limit}
+        onPage={(page) => setPagination({ key: filterKey, page })}
+      />
       {edit && (
         <TaskForm record={edit === "new" ? undefined : edit} onClose={() => setEdit(null)} />
       )}

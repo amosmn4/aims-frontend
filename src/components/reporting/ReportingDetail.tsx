@@ -7,6 +7,8 @@ import { api } from "@/lib/api";
 import { useAccount } from "@/lib/account";
 import { useWorkspace } from "@/lib/workspace";
 import { WeeklySubmissionBody } from "@/components/weekly/WeeklyEntryView";
+import { SafeHtml } from "@/production/components/safe-html";
+import { plainText } from "@/lib/text";
 import {
   useWeekly,
   weeklyStatus,
@@ -65,7 +67,7 @@ export function ReportingDetail({ row, onBack }: { row: ReportingRow; onBack: ()
         <ArrowBackOutlined fontSize="inherit" /> Back to submissions
       </button>
       <ReportingHeader
-        title={row.title}
+        title={plainText(row.title)}
         eyebrow={`${account?.role === "ceo" ? "CEO" : "Staff"} workspace | Submission review`}
         subtitle={`${row.name} | ${deptName(row.dept ?? "")} | ${row.period.length === 7 ? row.period : reportingDate(row.period)}`}
         action={<ReportingTag status={status}>{status}</ReportingTag>}
@@ -102,13 +104,27 @@ export function ReportingDetail({ row, onBack }: { row: ReportingRow; onBack: ()
               <WeeklySubmissionBody submission={entry.submission} />
             ) : (
               <>
-                <p>{row.summary}</p>
+                <SafeHtml html={row.summary} className="blog-content" />
                 <Link to="/reports" hash={`report-${row.id}`} className="btn primary">
                   Open monthly report and attachments
                 </Link>
               </>
             )}
           </ReportingPanel>
+          {account?.id === row.staffId && !row.historical && row.entry && (
+            <Link
+              className="btn primary"
+              to="/reporting"
+              search={{
+                view: row.type === "plan" ? "weekly-plan" : "weekly-report",
+                week: row.period,
+              }}
+            >
+              {entry?.editable || !entry?.submittedAt
+                ? "Edit this submission"
+                : "Open this submission"}
+            </Link>
+          )}
         </div>
         <div>
           {account?.role === "ceo" && entry && (

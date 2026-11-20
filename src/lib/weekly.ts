@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, isDemo } from "./api";
 import { useAccount } from "./account";
+import { taskOutcome, type Deliverable } from "./task-content";
 
 export type WeeklyPhase = "plan" | "report";
 export type WeeklyItem = {
@@ -8,11 +9,12 @@ export type WeeklyItem = {
   priority?: "Urgent" | "High" | "Medium" | "Low" | undefined;
   source?: "project" | "planned" | "ad_hoc" | "contingency" | undefined;
   business?: string | undefined;
-  subtasks?: { id: string; title: string; done: boolean }[] | undefined;
+  subtasks?: Deliverable[] | undefined;
   id: string;
   taskId?: string | undefined;
   title: string;
   detail: string;
+  outcome?: string | undefined;
   status: "planned" | "completed" | "in_progress" | "pending" | "blocked" | "cancelled";
 };
 export type WeeklySubmission = {
@@ -63,13 +65,27 @@ export function planItems(detail: WeeklyDetail): WeeklyItem[] {
       !existing.some((item) => (item.taskId ?? item.id) === task.id),
   );
   return [
-    ...existing,
+    ...existing.map((item) => {
+      const task = detail.tasks.find((task) => task.id === (item.taskId ?? item.id));
+      return task
+        ? {
+            ...item,
+            title: task.title,
+            detail: task.description ?? item.detail,
+            subtasks: task.subtasks ?? item.subtasks,
+            due: task.due ?? item.due,
+            priority: task.priority ?? item.priority,
+            status: task.status === "To do" ? ("planned" as const) : taskOutcome(task.status),
+          }
+        : item;
+    }),
     ...additional.map((task) => ({
       id: task.id,
       taskId: task.id,
       title: task.title,
-      detail: "",
-      status: "planned" as const,
+      detail: task.description ?? "",
+      status:
+        !task.status || task.status === "To do" ? ("planned" as const) : taskOutcome(task.status),
       due: task.due,
       priority: task.priority,
       business: task.business,
@@ -80,14 +96,15 @@ export function planItems(detail: WeeklyDetail): WeeklyItem[] {
 }
 
 export function reportItems(detail: WeeklyDetail): WeeklyItem[] {
-  const outcome = (status?: string): WeeklyItem["status"] =>
-    status === "Done" ? "completed" : status === "In progress" ? "in_progress" : "pending";
+  const outcome = taskOutcome;
   const planned =
     (detail.plan?.submittedAt ? detail.plan.submission.items : []).map((item) => {
       const task = detail.tasks.find((row) => row.id === (item.taskId ?? item.id));
       return {
         ...item,
         title: task?.title ?? item.title,
+        detail: task?.description ?? item.detail,
+        outcome: "",
         status: outcome(task?.status),
         subtasks: task?.subtasks ?? item.subtasks,
         priority: task?.priority ?? item.priority,
@@ -105,7 +122,8 @@ export function reportItems(detail: WeeklyDetail): WeeklyItem[] {
       id: crypto.randomUUID(),
       taskId: task.id,
       title: task.title,
-      detail: "",
+      detail: task.description ?? "",
+      outcome: "",
       status: outcome(task.status),
       due: task.due,
       priority: task.priority,
@@ -121,6 +139,10 @@ export function reportItems(detail: WeeklyDetail): WeeklyItem[] {
       return {
         ...item,
         title: task?.title ?? plan?.title ?? item.title,
+        detail:
+          task?.description ?? plan?.detail ?? (item.outcome !== undefined ? item.detail : ""),
+        outcome: item.outcome ?? item.detail,
+        status: task ? outcome(task.status) : item.status,
         subtasks: task?.subtasks ?? item.subtasks,
       };
     }),
@@ -185,6 +207,7 @@ export type WeeklyDetail = {
   tasks: {
     id: string;
     title: string;
+    description?: string | null;
     project: string;
     due: string;
     status: string;

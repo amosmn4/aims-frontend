@@ -168,19 +168,25 @@ function ProjectPage() {
                       {r.progress && (
                         <div>
                           <dt className="inline font-semibold">Progress: </dt>
-                          <dd className="inline">{r.progress}</dd>
+                          <dd>
+                            <SafeHtml html={r.progress} className="blog-content" />
+                          </dd>
                         </div>
                       )}
                       {r.blockers && (
                         <div>
                           <dt className="inline font-semibold">Blockers: </dt>
-                          <dd className="inline">{r.blockers}</dd>
+                          <dd>
+                            <SafeHtml html={r.blockers} className="blog-content" />
+                          </dd>
                         </div>
                       )}
                       {r.next && (
                         <div>
                           <dt className="inline font-semibold">Next: </dt>
-                          <dd className="inline">{r.next}</dd>
+                          <dd>
+                            <SafeHtml html={r.next} className="blog-content" />
+                          </dd>
                         </div>
                       )}
                     </dl>

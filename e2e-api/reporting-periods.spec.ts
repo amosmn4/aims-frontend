@@ -60,11 +60,11 @@ test("restores readable full-width reporting, prototype hints and optional task-
     "Weekly Work Plan \u2013 Week 47",
   );
   await expect(page.getByLabel("Plan title", { exact: true })).toHaveCSS("font-size", "14px");
-  await expect(page.getByLabel("Weekly objective", { exact: true })).toHaveAttribute(
-    "placeholder",
-    "Complete priority system improvements, support operations and provide timely updates to management.",
-  );
+  await expect(
+    page.getByRole("textbox", { name: "Weekly objective", exact: true }),
+  ).toHaveAttribute("contenteditable", "true");
   await page.getByLabel("Week to prepare", { exact: true }).fill("2026-11-23");
+  await page.getByRole("button", { name: "Apply week", exact: true }).click();
   await expect(page.getByLabel("Plan title", { exact: true })).toHaveValue(
     "Weekly Work Plan \u2013 Week 48",
   );
@@ -76,8 +76,9 @@ test("restores readable full-width reporting, prototype hints and optional task-
   await page.getByRole("button", { name: "New task", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByLabel("Reporting period (optional)", { exact: true })).toHaveValue("");
-  await dialog.getByLabel("Task name", { exact: true }).fill("Task waiting for next week's plan");
+  await dialog.getByLabel("Task title", { exact: true }).fill("Task waiting for next week's plan");
   await dialog.getByLabel("Reporting period (optional)", { exact: true }).fill("2026-11-24");
+  await dialog.getByLabel("Reporting period (optional)", { exact: true }).blur();
   await expect(dialog.getByText("No plan exists for this period.", { exact: false })).toBeVisible();
   await dialog.getByLabel("Due date", { exact: true }).fill("2026-11-27");
   await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
@@ -90,8 +91,9 @@ test("restores readable full-width reporting, prototype hints and optional task-
   await expect(page.getByText("Draft saved", { exact: true })).toBeVisible();
   await page.goto("/tasks");
   await page.getByRole("button", { name: "New task", exact: true }).click();
-  await dialog.getByLabel("Task name", { exact: true }).fill("Task added to an existing plan");
+  await dialog.getByLabel("Task title", { exact: true }).fill("Task added to an existing plan");
   await dialog.getByLabel("Reporting period (optional)", { exact: true }).fill("2026-11-23");
+  await dialog.getByLabel("Reporting period (optional)", { exact: true }).blur();
   await expect(
     dialog.getByText("This task will be added to the plan", { exact: false }),
   ).toBeVisible();
@@ -103,24 +105,17 @@ test("restores readable full-width reporting, prototype hints and optional task-
   );
   await page.screenshot({ path: test.info().outputPath("wide-plan.png"), fullPage: true });
   await page.goto("/reporting?view=weekly-report&week=2026-11-23");
-  await expect(page.getByLabel("Executive summary", { exact: true })).toHaveAttribute(
-    "placeholder",
-    "Summarise key progress and outcomes...",
-  );
-  await expect(page.getByLabel("Challenges and blockers", { exact: true })).toHaveAttribute(
-    "placeholder",
-    "What slowed you down? What support do you need?",
-  );
-  await expect(page.getByLabel("Next week's priorities", { exact: true })).toHaveAttribute(
-    "placeholder",
-    "What will you focus on next week?",
-  );
+  for (const name of ["Executive summary", "Challenges and blockers", "Next week's priorities"])
+    await expect(page.getByRole("textbox", { name, exact: true })).toHaveAttribute(
+      "contenteditable",
+      "true",
+    );
   const status = page.getByLabel("Status: Task waiting for next week's plan", { exact: true });
   await status.selectOption("completed");
-  await expect(status).toHaveCSS("background-color", "rgb(232, 246, 239)");
+  await expect(status).toHaveCSS("background-color", "rgb(229, 231, 235)");
   await expect(
     page.getByLabel("Outcome: Task waiting for next week's plan", { exact: true }),
-  ).toHaveAttribute("placeholder", "Outcome / explanation");
+  ).toHaveAttribute("contenteditable", "true");
   await page.screenshot({ path: test.info().outputPath("wide-report.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import InboxOutlined from "@mui/icons-material/InboxOutlined";
+import { plainText as readableText, validDate } from "@/lib/text";
 import { useAccount } from "@/lib/account";
 import { useWorkspace } from "@/lib/workspace";
 import { useWeekly, weeklyTime } from "@/lib/weekly";
@@ -42,6 +43,13 @@ export function ReportingWorkspacePage({
   const { account } = useAccount();
   const { departments, deptName } = useWorkspace();
   const [selected, setSelected] = useState<ReportingRow | null>(null);
+  const rangeKey = `${filters.from}/${filters.to}`;
+  const [draftDates, setDates] = useState({ from: filters.from, to: filters.to, key: rangeKey });
+  const dates =
+    draftDates.key === rangeKey
+      ? draftDates
+      : { from: filters.from, to: filters.to, key: rangeKey };
+  const [dateError, setDateError] = useState("");
   const ceo = account?.role === "ceo";
   const apiView =
     view === "team-plans"
@@ -55,7 +63,8 @@ export function ReportingWorkspacePage({
             : "submissions";
   const { staff, ...rest } = filters;
   const params = new URLSearchParams({ ...rest, page: String(filters.page), view: apiView });
-  if (staff) params.set("staff", staff);
+  if (ceo && staff) params.set("staff", staff);
+  if (!ceo) params.delete("department");
   const query = useWeekly<ReportingWorkspace>(`workspace?${params}`);
   const data = query.data;
   const title =
@@ -95,7 +104,7 @@ export function ReportingWorkspacePage({
               {row.name} <span className="muted">{row.event.toLowerCase()}</span>
             </strong>
             <p>
-              {row.title} | {row.period}
+              {readableText(row.title)} | {row.period}
             </p>
             <div className="inboxmeta">
               {row.taskCount} tasks | {weeklyTime(row.date)}
@@ -146,11 +155,9 @@ export function ReportingWorkspacePage({
           <input
             aria-label="From date"
             type="date"
-            value={filters.from}
-            max={filters.to}
-            onChange={(event) => {
-              if (event.target.value) onFilter({ from: event.target.value, page: 1 });
-            }}
+            value={dates.from}
+            max={dates.to}
+            onChange={(event) => setDates({ ...dates, from: event.target.value })}
           />
         </label>
         <label className="field">
@@ -158,34 +165,49 @@ export function ReportingWorkspacePage({
           <input
             aria-label="To date"
             type="date"
-            value={filters.to}
-            min={filters.from}
-            onChange={(event) => {
-              if (event.target.value) onFilter({ to: event.target.value, page: 1 });
-            }}
+            value={dates.to}
+            min={dates.from}
+            onChange={(event) => setDates({ ...dates, to: event.target.value })}
           />
         </label>
-        <label className="field">
-          Department
-          <select
-            aria-label="Department"
-            value={filters.department}
-            onChange={(event) => onFilter({ department: event.target.value, page: 1 })}
-          >
-            <option value="">All departments</option>
-            {departments.map((department) => (
-              <option value={department.id} key={department.id}>
-                {department.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <button
+          type="button"
+          className="btn secondary sm"
+          onClick={() => {
+            if (!validDate(dates.from) || !validDate(dates.to) || dates.from > dates.to) {
+              setDateError("Choose a valid start and end date.");
+              return;
+            }
+            setDateError("");
+            onFilter({ from: dates.from, to: dates.to, page: 1 });
+          }}
+        >
+          Apply filters
+        </button>
+        {ceo && (
+          <label className="field">
+            Department
+            <select
+              aria-label="Department"
+              value={filters.department}
+              onChange={(event) => onFilter({ department: event.target.value, page: 1 })}
+            >
+              <option value="">All departments</option>
+              {departments.map((department) => (
+                <option value={department.id} key={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {ceo && (
           <Link to="/weekly-settings" className="btn secondary sm">
             Reporting schedules
           </Link>
         )}
       </div>
+      {dateError && <p role="alert">{dateError}</p>}
       {query.isPending && <p role="status">Loading reporting...</p>}
       {query.error && <p role="alert">{query.error.message}</p>}
       {data && (
@@ -500,7 +522,12 @@ export function ReportingWorkspacePage({
                             </>
                           )}
                           <td>
-                            <b>{row.title}</b>
+                            <button
+                              className="text-left font-semibold hover:underline"
+                              onClick={() => open(row)}
+                            >
+                              {plainText(row.title)}
+                            </button>
                             {view === "team-plans" && (
                               <small className="report-cell-note">{plainText(row.summary)}</small>
                             )}

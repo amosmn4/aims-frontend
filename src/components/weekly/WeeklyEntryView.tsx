@@ -8,6 +8,8 @@ import { api } from "@/lib/api";
 import { useWorkspace } from "@/lib/workspace";
 import { documentBlob, downloadBlob } from "@/lib/file-storage";
 import { useAccount } from "@/lib/account";
+import { TaskDeliverables } from "@/components/TaskDeliverables";
+import { plainText } from "@/lib/text";
 import {
   useWeekly,
   weeklyLabels,
@@ -22,7 +24,7 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
   const { documents } = useWorkspace();
   return (
     <div className="space-y-4 text-sm">
-      {submission.title && <h3 className="font-semibold">{submission.title}</h3>}
+      {submission.title && <h3 className="font-semibold">{plainText(submission.title)}</h3>}
       {submission.summary && (
         <div>
           <strong>Objective / executive summary</strong>
@@ -62,13 +64,14 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
               {submission.items.map((item) => (
                 <tr key={item.id} className="border-b">
                   <td className="p-2 align-top font-medium">
-                    {item.title}
-                    {item.subtasks?.map((task) => (
-                      <label key={task.id} className="mt-1 flex gap-2 text-xs font-normal">
-                        <input type="checkbox" checked={task.done} readOnly disabled />
-                        {task.title}
-                      </label>
-                    ))}
+                    {plainText(item.title)}
+                    {!!item.subtasks?.length && <TaskDeliverables items={item.subtasks} />}
+                    {item.outcome && (
+                      <div className="mt-3">
+                        <strong>Outcome</strong>
+                        <SafeHtml html={item.outcome} className="blog-content font-normal" />
+                      </div>
+                    )}
                   </td>
                   <td className="p-2 align-top">{weeklyLabels[item.status]}</td>
                   <td className="p-2 align-top">
@@ -97,22 +100,22 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
         </div>
       )}
       {submission.noWorkReason && (
-        <p className="whitespace-pre-wrap">
+        <div className="whitespace-pre-wrap">
           <strong>No work / absence: </strong>
-          {submission.noWorkReason}
-        </p>
+          <SafeHtml html={submission.noWorkReason} className="blog-content" />
+        </div>
       )}
       {submission.blockers && (
-        <p className="whitespace-pre-wrap">
+        <div className="whitespace-pre-wrap">
           <strong>Blockers and support: </strong>
-          {submission.blockers}
-        </p>
+          <SafeHtml html={submission.blockers} className="blog-content" />
+        </div>
       )}
       {submission.nextWeek && (
-        <p className="whitespace-pre-wrap">
+        <div className="whitespace-pre-wrap">
           <strong>Next week: </strong>
-          {submission.nextWeek}
-        </p>
+          <SafeHtml html={submission.nextWeek} className="blog-content" />
+        </div>
       )}
       {!!submission.attachments?.length && (
         <div className="space-y-2 border-t pt-3">

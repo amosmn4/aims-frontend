@@ -1,47 +1,63 @@
 import { useState } from "react";
 import type { Task } from "@/lib/data";
 import { perform, saveRecord } from "@/lib/workspace";
+import { deliverableStatus, deliverableStatuses, type Deliverable } from "@/lib/task-content";
+import { SafeHtml } from "@/production/components/safe-html";
+import { plainText } from "@/lib/text";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function SubtaskChecklist({ task, editable }: { task: Task; editable: boolean }) {
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<{ id: string; done: boolean } | null>(null);
-  const isDone = (item: { id: string; done: boolean }) =>
-    pending?.id === item.id ? pending.done : item.done;
+  const client = useQueryClient();
   if (!task.subtasks?.length) return null;
   return (
     <fieldset className="mt-3 space-y-2 border-t pt-3 text-sm" aria-busy={busy}>
       <legend className="text-xs font-medium text-muted-foreground">
-        Subtasks {task.subtasks.filter(isDone).length}/{task.subtasks.length}
+        Deliverables{" "}
+        {task.subtasks.filter((item) => deliverableStatus(item) === "completed").length}/
+        {task.subtasks.length}
       </legend>
       {task.subtasks.map((item) => (
-        <label key={item.id} className="flex items-start gap-2">
-          <input
-            type="checkbox"
-            className="mt-1"
-            checked={isDone(item)}
+        <div key={item.id} className="space-y-2 border-t pt-2">
+          <span
+            className={
+              deliverableStatus(item) === "completed" ? "text-muted-foreground line-through" : ""
+            }
+          >
+            {plainText(item.title)}
+          </span>
+          <select
+            aria-label={`Status for deliverable ${plainText(item.title)}`}
+            className="field-input ml-2 w-auto"
+            value={deliverableStatus(item)}
             disabled={!editable || busy}
             onChange={async (event) => {
-              const done = event.target.checked;
-              setPending({ id: item.id, done });
+              const status = event.target.value as NonNullable<Deliverable["status"]>;
               setBusy(true);
               const saved = await perform(
                 () =>
                   saveRecord("tasks", {
                     ...task,
                     subtasks: task.subtasks!.map((subtask) =>
-                      subtask.id === item.id ? { ...subtask, done } : subtask,
+                      subtask.id === item.id
+                        ? { ...subtask, status, done: status === "completed" }
+                        : subtask,
                     ),
                   }),
-                "Subtask updated",
+                "Deliverable updated",
               );
-              if (!saved) setPending(null);
+              if (saved) await client.invalidateQueries({ queryKey: ["weekly"] });
               setBusy(false);
             }}
-          />
-          <span className={isDone(item) ? "text-muted-foreground line-through" : ""}>
-            {item.title}
-          </span>
-        </label>
+          >
+            {Object.entries(deliverableStatuses).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          {item.detail && <SafeHtml html={item.detail} className="blog-content text-sm" />}
+        </div>
       ))}
       {busy && (
         <p role="status" className="text-xs text-muted-foreground">

@@ -104,7 +104,7 @@ test("matches the reporting prototype, recalls and updates a plan, and reports a
   await page.goto("/tasks");
   await page.getByRole("button", { name: "New task", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Task name", { exact: true }).fill("Standalone weekly work");
+  await dialog.getByLabel("Task title", { exact: true }).fill("Standalone weekly work");
   await expect(dialog.getByLabel("Project", { exact: true })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(dialog).toHaveCount(0);

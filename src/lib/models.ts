@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { deliverableSchema } from "./task-content";
+import { plainText } from "./text";
 
 const id = z.string().trim().min(1).max(100);
-const text = z.string().trim().min(1).max(200);
+const text = z.string().transform(plainText).pipe(z.string().trim().min(1).max(200));
 export const deptId = z.string().regex(/^[a-z][a-z0-9-]{0,19}$/);
 export const date = z
   .string()
@@ -43,12 +45,12 @@ export const taskSchema = z.object({
   assignee: id,
   due: date,
   priority: z.enum(["Urgent", "High", "Medium", "Low"]),
-  status: z.enum(["To do", "In progress", "Done"]),
+  status: z.enum(["To do", "In progress", "Done", "Blocked", "Cancelled"]),
   ceoComment: z.string().max(10000).optional(),
   business: id.optional(),
   weekStart: date.optional(),
   source: z.enum(["project", "planned", "ad_hoc", "contingency"]).optional(),
-  subtasks: z.array(z.object({ id, title: text, done: z.boolean() })).optional(),
+  subtasks: z.array(deliverableSchema).max(100).optional(),
 });
 export const reportSchema = z.object({
   id,
@@ -80,7 +82,7 @@ export const reportSchema = z.object({
         due: date,
         source: z.string(),
         priority: z.enum(["Urgent", "High", "Medium", "Low"]).optional(),
-        subtasks: z.array(z.object({ id, title: text, done: z.boolean() })).optional(),
+        subtasks: z.array(deliverableSchema).optional(),
       }),
     )
     .optional(),

@@ -91,21 +91,28 @@ export function ReportingPagination({
 }) {
   const pages = Math.max(1, Math.ceil(total / limit));
   return (
-    <nav aria-label="Pagination" className="report-pagination">
+    <nav
+      aria-label="Pagination"
+      className="report-pagination mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-sm"
+    >
       <span>
         {total
           ? `${(page - 1) * limit + 1} to ${Math.min(page * limit, total)} of ${total}`
           : "0 results"}
       </span>
-      <div>
-        <button className="btn secondary sm" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+      <div className="flex items-center gap-3">
+        <button
+          className="btn secondary sm rounded-md border px-3 py-2 disabled:opacity-50"
+          disabled={page <= 1}
+          onClick={() => onPage(page - 1)}
+        >
           Previous
         </button>
         <span>
           Page {page} of {pages}
         </span>
         <button
-          className="btn secondary sm"
+          className="btn secondary sm rounded-md border px-3 py-2 disabled:opacity-50"
           disabled={page >= pages}
           onClick={() => onPage(page + 1)}
         >

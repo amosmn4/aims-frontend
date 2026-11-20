@@ -66,6 +66,33 @@ describe("shared workspace persistence", () => {
     expect(getWorkspace()).toBe(previous);
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
+  it("persists standalone tasks with formatted deliverables while requiring an existing assignee", () => {
+    const task = {
+      id: "standalone",
+      title: "Recruitment for Client A",
+      description: "<p>Campaign and selection</p>",
+      project: "",
+      assignee: "p1",
+      due: "2026-11-22",
+      priority: "High" as const,
+      status: "In progress" as const,
+      subtasks: [
+        {
+          id: "shortlist",
+          title: "Create shortlist",
+          done: false,
+          status: "blocked" as const,
+          detail: "<ul><li>Review<ul><li>References</li></ul></li></ul>",
+        },
+      ],
+    };
+    saveRecord("tasks", task);
+    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
+    expect(getWorkspace().tasks.find((row) => row.id === task.id)).toEqual(task);
+    expect(() => saveRecord("tasks", { ...task, assignee: "missing" })).toThrow(
+      "member of their project",
+    );
+  });
   it("accepts zero finances and multiple dated records for one month", () => {
     saveRecord("businessFinance", {
       id: "zero",

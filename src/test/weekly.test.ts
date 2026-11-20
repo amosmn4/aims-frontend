@@ -39,6 +39,49 @@ describe("Weekly reporting", () => {
     expect(reportingWeek(new Date("2026-11-15T20:59:59Z"))).toBe("2026-11-09");
     expect(reportingWeek(new Date("2026-11-15T21:00:00Z"))).toBe("2026-11-16");
   });
+  it("keeps task descriptions, deliverable statuses and saved outcomes when work changes during the week", () => {
+    const part = {
+      id: "shortlist",
+      title: "Create shortlist",
+      done: false,
+      status: "in_progress",
+      detail: "<ul><li>Review candidates<ul><li>Check references</li></ul></li></ul>",
+    };
+    const item = {
+      id: "task",
+      title: "Recruitment",
+      detail: "Old instructions",
+      status: "planned",
+      subtasks: [],
+    };
+    const detail = {
+      weekStart: "2026-11-16",
+      weekEnd: "2026-11-22",
+      plan: { submittedAt: "2026-11-16", submission: { items: [item] } },
+      report: { submission: { items: [{ ...item, outcome: "<p>Campaign launched</p>" }] } },
+      tasks: [
+        {
+          id: "task",
+          title: "Recruitment for Client A",
+          description: "<p>Run campaign</p>",
+          weekStart: "2026-11-16",
+          due: "2026-11-20",
+          status: "Blocked",
+          subtasks: [part],
+        },
+      ],
+    } as unknown as WeeklyDetail;
+    for (const rows of [planItems(detail), reportItems(detail)]) {
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        title: "Recruitment for Client A",
+        detail: "<p>Run campaign</p>",
+        status: "blocked",
+        subtasks: [part],
+      });
+    }
+    expect(reportItems(detail)[0]?.outcome).toBe("<p>Campaign launched</p>");
+  });
   it("shows a missing submission consistently for every staff member", () => {
     expect(weeklyStatus(null, true)).toBe("Not submitted");
     expect(weeklyStatus(null, false)).toBe("Not submitted");
@@ -81,7 +124,12 @@ describe("Weekly reporting", () => {
     } as unknown as WeeklyDetail;
     const items = reportItems(detail);
     expect(items).toHaveLength(2);
-    expect(items[0]).toMatchObject({ taskId: "task", status: "blocked", detail: "Saved notes" });
+    expect(items[0]).toMatchObject({
+      taskId: "task",
+      status: "blocked",
+      detail: "",
+      outcome: "Saved notes",
+    });
     expect(items[1]).toMatchObject({ id: "added", status: "completed" });
   });
   it("scopes automatic task inclusion to the reporting week and excludes unsubmitted plan tasks", () => {

@@ -36,6 +36,8 @@ import {
   type DateRange,
 } from "@/lib/ceo-dashboard";
 import { Button } from "@/components/ui/button";
+import NotificationsOutlined from "@mui/icons-material/NotificationsOutlined";
+import { CeoStaffSummary } from "./reporting/CeoStaffSummary";
 
 const chartColors = ["#08785f", "#9bc9b7"];
 const inputClass =
@@ -147,7 +149,7 @@ function MetricCard({
   tone?: "green" | "amber" | "blue";
 }) {
   const iconTone = {
-    green: "bg-primary/10 text-primary",
+    green: "bg-muted text-primary",
     amber: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
     blue: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
   }[tone];
@@ -302,7 +304,7 @@ export function CeoDashboard() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-9 lg:py-7">
+    <div className="w-full min-w-0">
       <header className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <div className="text-[11px] font-bold uppercase tracking-[0.1em] text-primary">
@@ -375,7 +377,7 @@ export function CeoDashboard() {
             aria-label={`Notifications${notices.length ? `, ${notices.length} items need attention` : ", none"}`}
             title="Jump to items needing attention"
           >
-            ♧
+            <NotificationsOutlined fontSize="small" />
             {notices.length > 0 && (
               <span className="absolute right-2 top-1.5 h-2 w-2 rounded-full border border-card bg-destructive" />
             )}
@@ -458,6 +460,8 @@ export function CeoDashboard() {
           note={`${openTasks.length} open tasks · ${overdueTasks.length + attentionProjects.length} need attention`}
         />
       </section>
+
+      <CeoStaffSummary from={appliedRange.from} to={appliedRange.to} />
 
       <section className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,1fr)]">
         <article className={cardClass}>
@@ -664,7 +668,7 @@ export function CeoDashboard() {
                   key={member.id}
                   className="grid grid-cols-[30px_minmax(0,1fr)_42px] items-center gap-2"
                 >
-                  <span className="grid h-7 w-7 place-items-center rounded-full bg-primary/10 text-[9px] font-bold text-primary">
+                  <span className="grid h-7 w-7 place-items-center rounded-full bg-muted text-[9px] font-bold text-primary">
                     {dayName(member.fullName)}
                   </span>
                   <div className="min-w-0">
@@ -818,6 +822,6 @@ export function CeoDashboard() {
       <p className="mt-5 text-center text-[9px] text-muted-foreground">
         Metrics reflect workspace records and the selected reporting period.
       </p>
-    </main>
+    </div>
   );
 }

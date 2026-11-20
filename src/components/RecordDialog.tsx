@@ -7,6 +7,7 @@ import { Delete, Edit } from "./icons";
 import { perform, removeRecord } from "@/lib/workspace";
 import type { Collection } from "@/lib/models";
 import { RichTextEditor } from "@/production/features/marketing/rich-text-editor";
+import { plainText, validDate } from "@/lib/text";
 
 export type Option = { value: string; label: string };
 type Values = Record<string, string | number | string[]>;
@@ -29,6 +30,7 @@ export function RecordDialog<T extends Values>({
   initial,
   fields,
   extra,
+  afterFields,
   onSave,
   onClose,
 }: {
@@ -37,10 +39,22 @@ export function RecordDialog<T extends Values>({
   initial: T;
   fields: Field<T>[] | ((values: T) => Field<T>[]);
   extra?: React.ReactNode;
+  afterFields?: React.ReactNode;
   onSave: (values: T) => void | boolean | Promise<void | boolean>;
   onClose: () => void;
 }) {
-  const [values, setValues] = useState(initial);
+  const [values, setValues] = useState(() => {
+    const definition = typeof fields === "function" ? fields(initial) : fields;
+    return Object.fromEntries(
+      Object.entries(initial).map(([key, value]) => [
+        key,
+        typeof value === "string" &&
+        definition.some((field) => field.name === key && field.type !== "richtext")
+          ? plainText(value)
+          : value,
+      ]),
+    ) as T;
+  });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   return (
@@ -122,7 +136,12 @@ export function RecordDialog<T extends Values>({
                 {field.label}
                 {field.required ? " *" : ""}
                 {field.type === "richtext" ? (
-                  <RichTextEditor value={String(value ?? "")} onChange={(next) => change(next)} />
+                  <RichTextEditor
+                    value={String(value ?? "")}
+                    ariaLabel={field.label}
+                    disabled={busy}
+                    onChange={(next) => change(next)}
+                  />
                 ) : field.type === "textarea" ? (
                   <textarea
                     aria-label={field.label}
@@ -147,6 +166,26 @@ export function RecordDialog<T extends Values>({
                       </option>
                     ))}
                   </select>
+                ) : field.type === "date" ? (
+                  <input
+                    key={`${field.name}-${String(value)}`}
+                    aria-label={field.label}
+                    className="field-input"
+                    type="date"
+                    defaultValue={String(value ?? "")}
+                    required={field.required}
+                    disabled={busy}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                      }
+                    }}
+                    onBlur={(event) => {
+                      if (!event.target.value || validDate(event.target.value))
+                        change(event.target.value);
+                    }}
+                  />
                 ) : (
                   <input
                     aria-label={field.label}
@@ -173,6 +212,7 @@ export function RecordDialog<T extends Values>({
               </label>
             );
           })}
+          {afterFields}
           {error && (
             <p role="alert" className="text-sm text-destructive">
               {error}

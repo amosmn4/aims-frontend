@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import { client, deptName, person, type Project, type Report } from "./data";
+import { plainText } from "./text";
 
 export function latestProjectReports(projectId: string, reports: Report[]) {
   return reports
@@ -17,7 +18,7 @@ export function createProjectPdf(
   const write = (text: string, size = 11, bold = false) => {
     pdf.setFont("helvetica", bold ? "bold" : "normal");
     pdf.setFontSize(size);
-    const safe = text.replace(/[-–]/g, "-").replace(/[’]/g, "'");
+    const safe = plainText(text).replace(/[-–]/g, "-").replace(/[’]/g, "'");
     const lines: string[] = pdf.splitTextToSize(safe, 170);
     for (const line of lines) {
       if (y > 272) {

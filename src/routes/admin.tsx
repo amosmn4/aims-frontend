@@ -12,6 +12,7 @@ import { useAccount } from "@/lib/account";
 import { StaffEditor } from "@/components/StaffEditor";
 import { removeStaffAccount } from "@/lib/workspace";
 import { meta } from "@/lib/meta";
+import { plainText } from "@/lib/text";
 
 export const Route = createFileRoute("/admin")({
   validateSearch: (search: Record<string, unknown>): { tab?: "Module access" } =>
@@ -253,7 +254,7 @@ function Admin() {
                 <div>
                   <h2 className="font-medium">{item.name}</h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    {item.progress} | {item.blockers} | {item.next}
+                    {plainText(item.progress)} | {plainText(item.blockers)} | {plainText(item.next)}
                   </p>
                 </div>
                 <RecordActions

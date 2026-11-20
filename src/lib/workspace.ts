@@ -110,13 +110,17 @@ export function saveRecord<K extends Collection>(collection: K, record: RecordOf
   return mutateApi(`/records/${collection}/${encodeURIComponent(record.id)}`, {
     method: "PUT",
     body: JSON.stringify(record),
-  }).then(() => {});
+  }).then(async () => {
+    if (collection === "tasks") await queryClient.invalidateQueries({ queryKey: ["weekly"] });
+  });
 }
 
 export function removeRecord(collection: Collection, id: string) {
   if (isDemo) return demo.removeRecord(collection, id);
   return mutateApi(`/records/${collection}/${encodeURIComponent(id)}`, { method: "DELETE" }).then(
-    () => {},
+    async () => {
+      if (collection === "tasks") await queryClient.invalidateQueries({ queryKey: ["weekly"] });
+    },
   );
 }
 

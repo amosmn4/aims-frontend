@@ -71,10 +71,18 @@ function mapPost(p: BackendBlogPost): BlogPostRow {
     updated_at: p.updatedAt,
   };
 }
-export function useBlogPosts() {
+export function useBlogPosts(page = 1, limit = 20) {
   return useQuery({
-    queryKey: ["blog-posts"],
-    queryFn: async () => (await apiJson<BackendBlogPost[]>("/blog-posts")).map(mapPost),
+    queryKey: ["blog-posts", "list", page, limit],
+    queryFn: async () => {
+      const result = await apiJson<{
+        items: BackendBlogPost[];
+        page: number;
+        limit: number;
+        total: number;
+      }>(`/blog-posts?page=${page}&limit=${limit}`);
+      return { ...result, items: result.items.map(mapPost) };
+    },
   });
 }
 export function useBlogPost(id: string | undefined) {

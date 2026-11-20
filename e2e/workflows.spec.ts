@@ -124,8 +124,10 @@ test("client, project and task forms persist and project PDFs use current data",
   await page.getByLabel("Assignee").selectOption("p4");
   await save(page);
   await page.goto("/tasks");
+  await page.getByLabel("Task view", { exact: true }).selectOption("staff");
   await page.getByLabel("Status for Local Test Task").selectOption("Done");
   await page.reload();
+  await page.getByLabel("Task view", { exact: true }).selectOption("staff");
   await expect(page.getByLabel("Status for Local Test Task")).toHaveValue("Done");
   await page.getByRole("link", { name: "Local Test Project", exact: true }).click();
   const downloaded = page.waitForEvent("download");
@@ -135,6 +137,56 @@ test("client, project and task forms persist and project PDFs use current data",
   expect(content.toString()).toContain("Local Test Client");
   expect(content.toString()).toContain("Kevin Mutua");
   expect(content.toString().startsWith("%PDF")).toBe(true);
+});
+
+test("CEO task scope and formatted deliverables persist without exposing markup", async ({
+  page,
+}) => {
+  await login(page);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  expect((await page.getByRole("main").boundingBox())!.width).toBeGreaterThan(1600);
+  await page.goto("/tasks");
+  await expect(page.getByLabel("Task view", { exact: true })).toHaveValue("mine");
+  await expect(page.getByLabel("Task staff", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "New task", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Task title", { exact: true }).fill("Recruitment for Client A");
+  await dialog
+    .getByRole("textbox", { name: "Description / deliverables", exact: true })
+    .fill("Run campaign, create longlist and create shortlist.");
+  await dialog.getByRole("button", { name: "Add deliverable", exact: true }).click();
+  await dialog.getByLabel("Deliverables 1 title", { exact: true }).fill("Create shortlist");
+  const notes = dialog.getByRole("textbox", { name: "Deliverables 1 notes", exact: true });
+  await notes.fill("Review candidates");
+  const editor = notes.locator("..").locator("..");
+  await editor.getByRole("button", { name: "Bullet list", exact: true }).click();
+  await notes.press("End");
+  await notes.press("Enter");
+  await notes.pressSequentially("Check references");
+  await editor.getByRole("button", { name: "Indent list", exact: true }).click();
+  await expect(notes.locator("ul li ul li")).toHaveText("Check references");
+  await dialog.getByLabel("Deliverables 1 status", { exact: true }).selectOption("in_progress");
+  await save(page);
+  await page.reload();
+  await page.getByText("Details", { exact: true }).last().click();
+  await expect(
+    page.getByLabel("Status for deliverable Create shortlist", { exact: true }),
+  ).toHaveValue("in_progress");
+  await page
+    .getByLabel("Status for deliverable Create shortlist", { exact: true })
+    .selectOption("completed");
+  await page.reload();
+  await page.getByText("Details", { exact: true }).last().click();
+  await expect(
+    page.getByLabel("Status for deliverable Create shortlist", { exact: true }),
+  ).toHaveValue("completed");
+  await expect(page.locator("main ul li ul li")).toContainText("Check references");
+  await expect(page.getByRole("main")).not.toContainText("<p>");
+  await page.getByLabel("Task view", { exact: true }).selectOption("staff");
+  await expect(page.getByLabel("Task staff", { exact: true })).toBeVisible();
+  await expect(page.getByText("Recruitment for Client A", { exact: true })).toHaveCount(0);
+  await page.getByLabel("Task limit", { exact: true }).selectOption("10");
+  await expect(page.getByRole("navigation", { name: "Pagination", exact: true })).toBeVisible();
 });
 
 test("tenders, requests and reports support creation, review and refresh", async ({ page }) => {

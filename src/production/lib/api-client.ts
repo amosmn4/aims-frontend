@@ -12,7 +12,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
         : null;
   if (!module) throw new Error("Module access is required.");
   const mapped = path
-    .replace(/^\/blog-posts(?=\/|$)/, "/blog/posts")
+    .replace(/^\/blog-posts(?=\/|\?|$)/, "/blog/posts")
     .replace(/^\/ai\//, "/water/assistant/");
   try {
     return await request(mapped, options);

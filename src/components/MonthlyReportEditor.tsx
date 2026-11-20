@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "./ui/button";
 import { UploadField } from "./UploadField";
 import { SubmissionSchedule } from "./SubmissionSchedule";
+import { RichTextEditor } from "@/production/features/marketing/rich-text-editor";
 
 export function MonthlyReportEditor({
   record,
@@ -176,30 +177,30 @@ export function MonthlyReportEditor({
           )}
           <label className="field-label">
             {template?.progress ?? "Progress and results"}
-            <textarea
-              className="field-input min-h-32"
-              maxLength={10000}
+            <RichTextEditor
+              ariaLabel={template?.progress ?? "Progress and results"}
               value={progress}
-              onChange={(event) => setProgress(event.target.value)}
+              disabled={busy}
+              onChange={setProgress}
             />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="field-label">
               {template?.blockers ?? "Blockers and support"}
-              <textarea
-                className="field-input min-h-24"
-                maxLength={10000}
+              <RichTextEditor
+                ariaLabel={template?.blockers ?? "Blockers and support"}
                 value={blockers}
-                onChange={(event) => setBlockers(event.target.value)}
+                disabled={busy}
+                onChange={setBlockers}
               />
             </label>
             <label className="field-label">
               {template?.next ?? "Next steps"}
-              <textarea
-                className="field-input min-h-24"
-                maxLength={10000}
+              <RichTextEditor
+                ariaLabel={template?.next ?? "Next steps"}
                 value={next}
-                onChange={(event) => setNext(event.target.value)}
+                disabled={busy}
+                onChange={setNext}
               />
             </label>
           </div>

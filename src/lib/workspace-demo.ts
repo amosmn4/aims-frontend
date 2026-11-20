@@ -127,8 +127,12 @@ export function validateRelationships(data: Workspace) {
   }
   for (const task of data.tasks) {
     if (
-      !hasProject(task.project) ||
-      !data.projects.find((project) => project.id === task.project)?.members.includes(task.assignee)
+      !hasPerson(task.assignee) ||
+      (task.project &&
+        (!hasProject(task.project) ||
+          !data.projects
+            .find((project) => project.id === task.project)
+            ?.members.includes(task.assignee)))
     )
       throw new Error("Tasks must be assigned to a member of their project.");
   }

@@ -1,4 +1,6 @@
 import { RecordDialog, type Field } from "./RecordDialog";
+import { useState } from "react";
+import { TaskDeliverables } from "./TaskDeliverables";
 import { mutateApi, saveRecord, useWorkspace } from "@/lib/workspace";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -166,6 +168,7 @@ export function TaskForm({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const [deliverables, setDeliverables] = useState(record?.subtasks ?? []);
   const { projects, people, businesses } = useWorkspace();
   const { mode, me } = useRole();
   const businessAccess = useBusinessAccess();
@@ -187,14 +190,7 @@ export function TaskForm({
     .slice(0, 10);
   const initial = {
     title: record?.title ?? "",
-    description: record?.description
-      ? (new DOMParser()
-          .parseFromString(
-            record.description.replace(/<\/(p|div|li|h[1-6])>|<br\s*\/?>/gi, "\n"),
-            "text/html",
-          )
-          .body.textContent?.trim() ?? "")
-      : "",
+    description: record?.description ?? "",
     project: selected,
     assignee:
       record?.assignee ??
@@ -207,7 +203,6 @@ export function TaskForm({
     business: record?.business ?? parent?.business ?? "b0",
     weekStart: record?.weekStart ?? "",
     source: record?.source ?? (selected ? "project" : "ad_hoc"),
-    subtasksText: record?.subtasks?.map((item) => item.title).join("\n") ?? "",
   };
   return (
     <RecordDialog<typeof initial>
@@ -219,9 +214,19 @@ export function TaskForm({
       }
       onClose={onClose}
       initial={initial}
+      afterFields={<TaskDeliverables items={deliverables} onChange={setDeliverables} />}
       fields={(values): Field<typeof values>[] => [
-        { name: "title", label: "Task name", required: true },
-        { name: "description", label: "Notes (optional)", type: "textarea" },
+        { name: "title", label: "Task title", required: true },
+        { name: "description", label: "Description / deliverables", type: "richtext" },
+        {
+          name: "status",
+          label: "Task status",
+          type: "select",
+          options: ["To do", "In progress", "Done", "Blocked", "Cancelled"].map((value) => ({
+            value,
+            label: value,
+          })),
+        },
         {
           name: "weekStart",
           label: "Reporting period (optional)",
@@ -261,15 +266,6 @@ export function TaskForm({
               },
             ]
           : []),
-        ...(record
-          ? [
-              {
-                name: "subtasksText" as const,
-                label: "Subtasks (optional, one per line)",
-                type: "textarea" as const,
-              },
-            ]
-          : []),
       ]}
       onSave={async (values) => {
         const task = taskSchema.parse({
@@ -278,24 +274,9 @@ export function TaskForm({
           weekStart: values.weekStart
             ? reportingWeek(new Date(`${values.weekStart}T12:00:00Z`))
             : undefined,
-          description:
-            record && values.description === initial.description
-              ? record.description
-              : values.description,
+          description: values.description,
           id: record?.id ?? crypto.randomUUID(),
-          subtasks: values.subtasksText
-            .split("\n")
-            .map((title) => title.trim())
-            .filter(Boolean)
-            .map((title, index) => {
-              const previous =
-                record?.subtasks?.[index]?.title === title ? record.subtasks[index] : undefined;
-              return {
-                id: previous?.id ?? crypto.randomUUID(),
-                title,
-                done: previous?.done ?? false,
-              };
-            }),
+          subtasks: deliverables,
         });
         if (isDemo) await saveRecord("tasks", task);
         else {

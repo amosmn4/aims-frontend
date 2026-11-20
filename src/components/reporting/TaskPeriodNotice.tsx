@@ -1,8 +1,9 @@
 import { isDemo } from "@/lib/api";
 import { reportingWeek, useWeekly, type WeeklyDetail } from "@/lib/weekly";
+import { validDate } from "@/lib/text";
 
 export function TaskPeriodNotice({ period, staff }: { period: string; staff: string }) {
-  const week = period ? reportingWeek(new Date(`${period}T12:00:00Z`)) : "";
+  const week = validDate(period) ? reportingWeek(new Date(`${period}T12:00:00Z`)) : "";
   const query = useWeekly<WeeklyDetail>(`reports/${week}/${staff}`, !!week && !!staff);
   if (!period)
     return (
