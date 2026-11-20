@@ -76,9 +76,13 @@ function getPurifier(): Promise<Purifier> {
 export function SafeHtml({
   html,
   className,
+  taskContent = false,
+  checkboxEditable = false,
 }: {
   html: string | null | undefined;
   className?: string | undefined;
+  taskContent?: boolean;
+  checkboxEditable?: boolean;
 }) {
   const [clean, setClean] = useState("");
   useEffect(() => {
@@ -88,11 +92,41 @@ export function SafeHtml({
       return;
     }
     getPurifier().then((p) => {
-      if (active) setClean(p.sanitize(html, CONFIG));
+      if (!active) return;
+      const sanitized = p.sanitize(
+        html,
+        taskContent
+          ? {
+              ...CONFIG,
+              ALLOWED_TAGS: [...(CONFIG.ALLOWED_TAGS ?? []), "label", "div"],
+              ALLOWED_ATTR: [...(CONFIG.ALLOWED_ATTR ?? []), "data-type", "data-checked"],
+            }
+          : CONFIG,
+      );
+      if (!taskContent) {
+        setClean(sanitized);
+        return;
+      }
+      const document = new DOMParser().parseFromString(sanitized, "text/html");
+      document.querySelectorAll('li[data-type="taskItem"]').forEach((item) => {
+        Array.from(item.children)
+          .filter((child) => child.tagName === "LABEL")
+          .forEach((child) => child.remove());
+        const label = document.createElement("label");
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = item.getAttribute("data-checked") === "true";
+        input.toggleAttribute("checked", input.checked);
+        input.disabled = !checkboxEditable;
+        input.setAttribute("aria-label", item.querySelector("p")?.textContent || "Deliverable");
+        label.append(input);
+        item.prepend(label);
+      });
+      setClean(document.body.innerHTML);
     });
     return () => {
       active = false;
     };
-  }, [html]);
+  }, [html, taskContent, checkboxEditable]);
   return <div className={className} dangerouslySetInnerHTML={{ __html: clean }} />;
 }

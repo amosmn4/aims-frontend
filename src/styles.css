@@ -195,3 +195,27 @@ button:disabled {
 table {
   border-collapse: collapse;
 }
+
+.blog-content ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+.blog-content li[data-type="taskItem"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.blog-content li[data-type="taskItem"] > label {
+  flex: none;
+  padding-top: 0.25rem;
+}
+.blog-content li[data-type="taskItem"] > div {
+  flex: 1;
+  min-width: 0;
+}
+.blog-content li[data-type="taskItem"] > div > p {
+  margin: 0;
+}
+.blog-content li[data-type="taskItem"] ul {
+  margin-left: 1rem;
+}

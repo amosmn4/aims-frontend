@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "./ui/button";
 import { UploadField } from "./UploadField";
 import { SubmissionSchedule } from "./SubmissionSchedule";
-import { RichTextEditor } from "@/production/features/marketing/rich-text-editor";
+import { checklistProgress, taskDescription } from "@/lib/task-content";
+import { plainText } from "@/lib/text";
 
 export function MonthlyReportEditor({
   record,
@@ -30,9 +31,9 @@ export function MonthlyReportEditor({
   const [title, setTitle] = useState(record?.title ?? `Monthly report | ${month}`);
   const [type, setType] = useState<Report["type"]>(record?.type ?? "Monthly");
   const [business, setBusiness] = useState(record?.business ?? "b0");
-  const [progress, setProgress] = useState(record?.progress ?? "");
-  const [blockers, setBlockers] = useState(record?.blockers ?? "");
-  const [next, setNext] = useState(record?.next ?? "");
+  const [progress, setProgress] = useState(plainText(record?.progress));
+  const [blockers, setBlockers] = useState(plainText(record?.blockers));
+  const [next, setNext] = useState(plainText(record?.next));
   const inMonth = (row: (typeof tasks)[number], value: string) =>
     row.assignee === me.id && (row.due.startsWith(value) || row.weekStart?.startsWith(value));
   const [selected, setSelected] = useState(
@@ -177,37 +178,40 @@ export function MonthlyReportEditor({
           )}
           <label className="field-label">
             {template?.progress ?? "Progress and results"}
-            <RichTextEditor
-              ariaLabel={template?.progress ?? "Progress and results"}
+            <textarea
+              className="field-input min-h-24"
+              maxLength={5000}
               value={progress}
               disabled={busy}
-              onChange={setProgress}
+              onChange={(event) => setProgress(event.target.value)}
             />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="field-label">
               {template?.blockers ?? "Blockers and support"}
-              <RichTextEditor
-                ariaLabel={template?.blockers ?? "Blockers and support"}
+              <textarea
+                className="field-input min-h-24"
+                maxLength={5000}
                 value={blockers}
                 disabled={busy}
-                onChange={setBlockers}
+                onChange={(event) => setBlockers(event.target.value)}
               />
             </label>
             <label className="field-label">
               {template?.next ?? "Next steps"}
-              <RichTextEditor
-                ariaLabel={template?.next ?? "Next steps"}
+              <textarea
+                className="field-input min-h-24"
+                maxLength={5000}
                 value={next}
                 disabled={busy}
-                onChange={setNext}
+                onChange={(event) => setNext(event.target.value)}
               />
             </label>
           </div>
           <fieldset className="rounded-lg border p-4">
             <legend className="px-1 text-sm font-semibold">Tasks for this month</legend>
             <p className="mb-3 text-xs text-muted-foreground">
-              Task outcomes and subtasks are saved with the report.
+              Task progress and deliverables are saved with the report.
             </p>
             {!relevant.length && <p className="text-sm">No tasks are recorded for this period.</p>}
             {relevant.map((task) => (
@@ -227,8 +231,8 @@ export function MonthlyReportEditor({
                   <span className="font-medium">{task.title}</span>
                   <span className="block text-xs text-muted-foreground">
                     {task.status} | {task.source?.replaceAll("_", " ") ?? "project"}
-                    {task.subtasks?.length
-                      ? ` | ${task.subtasks.filter((item) => item.done).length}/${task.subtasks.length} subtasks`
+                    {checklistProgress(taskDescription(task.description, task.subtasks)).total
+                      ? ` | ${checklistProgress(taskDescription(task.description, task.subtasks)).done}/${checklistProgress(taskDescription(task.description, task.subtasks)).total} deliverables`
                       : ""}
                   </span>
                 </span>

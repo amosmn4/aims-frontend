@@ -151,37 +151,49 @@ test("CEO task scope and formatted deliverables persist without exposing markup"
   await page.getByRole("button", { name: "New task", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Task title", { exact: true }).fill("Recruitment for Client A");
-  await dialog
-    .getByRole("textbox", { name: "Description / deliverables", exact: true })
-    .fill("Run campaign, create longlist and create shortlist.");
-  await dialog.getByRole("button", { name: "Add deliverable", exact: true }).click();
-  await dialog.getByLabel("Deliverables 1 title", { exact: true }).fill("Create shortlist");
-  const notes = dialog.getByRole("textbox", { name: "Deliverables 1 notes", exact: true });
-  await notes.fill("Review candidates");
-  const editor = notes.locator("..").locator("..");
-  await editor.getByRole("button", { name: "Bullet list", exact: true }).click();
-  await notes.press("End");
-  await notes.press("Enter");
-  await notes.pressSequentially("Check references");
-  await editor.getByRole("button", { name: "Indent list", exact: true }).click();
-  await expect(notes.locator("ul li ul li")).toHaveText("Check references");
-  await dialog.getByLabel("Deliverables 1 status", { exact: true }).selectOption("in_progress");
+  const description = dialog.getByRole("textbox", {
+    name: "Description / deliverables (optional)",
+    exact: true,
+  });
+  await description.fill("Run campaign");
+  await dialog.getByRole("button", { name: "Checklist", exact: true }).click();
+  await description.press("End");
+  await description.press("Enter");
+  await description.pressSequentially("Create shortlist");
+  await description.press("Enter");
+  await description.pressSequentially("Check references");
+  await dialog.getByRole("button", { name: "Indent list", exact: true }).click();
+  await expect(description.locator("ul li ul li > div > p")).toHaveText("Check references");
+  await expect(dialog.getByRole("button", { name: "Add deliverable", exact: true })).toHaveCount(0);
   await save(page);
   await page.reload();
   await page.getByText("Details", { exact: true }).last().click();
-  await expect(
-    page.getByLabel("Status for deliverable Create shortlist", { exact: true }),
-  ).toHaveValue("in_progress");
-  await page
-    .getByLabel("Status for deliverable Create shortlist", { exact: true })
-    .selectOption("completed");
+  await page.getByRole("checkbox", { name: "Check references", exact: true }).check();
+  await expect(page.getByText("Progress updated", { exact: true })).toBeVisible();
   await page.reload();
   await page.getByText("Details", { exact: true }).last().click();
-  await expect(
-    page.getByLabel("Status for deliverable Create shortlist", { exact: true }),
-  ).toHaveValue("completed");
-  await expect(page.locator("main ul li ul li")).toContainText("Check references");
+  await expect(page.getByRole("checkbox", { name: "Check references", exact: true })).toBeChecked();
+  await expect(page.getByText("1/3 completed", { exact: true })).toBeVisible();
+  await page.getByRole("checkbox", { name: "Create shortlist", exact: true }).check();
+  await expect(page.getByText("2/3 completed", { exact: true })).toBeVisible();
+  await page.getByRole("checkbox", { name: "Run campaign", exact: true }).check();
+  await expect(page.getByText("3/3 completed", { exact: true })).toBeVisible();
+  await page.getByRole("checkbox", { name: "Check references", exact: true }).uncheck();
+  await expect(page.getByText("2/3 completed", { exact: true })).toBeVisible();
   await expect(page.getByRole("main")).not.toContainText("<p>");
+  await page.getByRole("button", { name: "New task", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByLabel("Task title", { exact: true })
+    .fill("Task without deliverables");
+  await save(page);
+  await page
+    .getByLabel("Status for Task without deliverables", { exact: true })
+    .selectOption("Done");
+  await page.reload();
+  await expect(
+    page.getByLabel("Status for Task without deliverables", { exact: true }),
+  ).toHaveValue("Done");
   await page.getByLabel("Task view", { exact: true }).selectOption("staff");
   await expect(page.getByLabel("Task staff", { exact: true })).toBeVisible();
   await expect(page.getByText("Recruitment for Client A", { exact: true })).toHaveCount(0);

@@ -22,6 +22,7 @@ export type Field<T extends Values> = {
   max?: number;
   step?: number;
   help?: React.ReactNode;
+  checklist?: boolean;
 };
 
 export function RecordDialog<T extends Values>({
@@ -30,7 +31,6 @@ export function RecordDialog<T extends Values>({
   initial,
   fields,
   extra,
-  afterFields,
   onSave,
   onClose,
 }: {
@@ -39,7 +39,6 @@ export function RecordDialog<T extends Values>({
   initial: T;
   fields: Field<T>[] | ((values: T) => Field<T>[]);
   extra?: React.ReactNode;
-  afterFields?: React.ReactNode;
   onSave: (values: T) => void | boolean | Promise<void | boolean>;
   onClose: () => void;
 }) {
@@ -138,6 +137,7 @@ export function RecordDialog<T extends Values>({
                 {field.type === "richtext" ? (
                   <RichTextEditor
                     value={String(value ?? "")}
+                    checklist={field.checklist}
                     ariaLabel={field.label}
                     disabled={busy}
                     onChange={(next) => change(next)}
@@ -212,7 +212,6 @@ export function RecordDialog<T extends Values>({
               </label>
             );
           })}
-          {afterFields}
           {error && (
             <p role="alert" className="text-sm text-destructive">
               {error}

@@ -80,22 +80,23 @@ test("weekly work and subtasks flow into a scheduled monthly draft and the CEO r
   await page.getByPlaceholder("Search tasks").fill(taskName);
   await page.getByText("Details", { exact: true }).click();
   await page.getByRole("button", { name: `Edit ${taskName}`, exact: true }).click();
-  for (const [index, title] of ["Check input", "Send results"].entries()) {
-    await dialog.getByRole("button", { name: "Add deliverable", exact: true }).click();
-    await dialog.getByLabel(`Deliverables ${index + 1} title`, { exact: true }).fill(title);
-  }
+  const description = dialog.getByRole("textbox", {
+    name: "Description / deliverables (optional)",
+    exact: true,
+  });
+  await description.fill("Check input");
+  await dialog.getByRole("button", { name: "Checklist", exact: true }).click();
+  await description.press("End");
+  await description.press("Enter");
+  await description.pressSequentially("Send results");
   await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(dialog).not.toBeVisible();
-  await page
-    .getByLabel("Status for deliverable Check input", { exact: true })
-    .selectOption("completed");
-  await expect(page.getByText("Deliverable updated", { exact: true })).toBeVisible();
+  await page.getByRole("checkbox", { name: "Check input", exact: true }).check();
+  await expect(page.getByText("Progress updated", { exact: true })).toBeVisible();
   await page.reload();
   await page.getByPlaceholder("Search tasks").fill(taskName);
   await page.getByText("Details", { exact: true }).click();
-  await expect(page.getByLabel("Status for deliverable Check input", { exact: true })).toHaveValue(
-    "completed",
-  );
+  await expect(page.getByRole("checkbox", { name: "Check input", exact: true })).toBeChecked();
   await page.goto("/reports");
   await page.getByRole("button", { name: "Submit report", exact: true }).click();
   dialog = page.getByRole("dialog");
@@ -134,12 +135,10 @@ test("weekly work and subtasks flow into a scheduled monthly draft and the CEO r
   await expect(ceo.getByText("Medium", { exact: true }).first()).toBeVisible();
   const outcomes = ceo.locator("details").filter({ has: ceo.getByText(taskName, { exact: true }) });
   await expect(outcomes).not.toContainText(/\bdue\b/i);
-  await expect(outcomes.getByLabel("Deliverables 1 status", { exact: true })).toHaveValue(
-    "completed",
-  );
-  await expect(outcomes.getByLabel("Deliverables 2 status", { exact: true })).toHaveValue(
-    "pending",
-  );
+  await expect(outcomes.getByRole("checkbox", { name: "Check input", exact: true })).toBeChecked();
+  await expect(
+    outcomes.getByRole("checkbox", { name: "Send results", exact: true }),
+  ).not.toBeChecked();
   const download = ceo.waitForEvent("download");
   await ceo.getByRole("button", { name: fileName, exact: true }).click();
   const file = await download;

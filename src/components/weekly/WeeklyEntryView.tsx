@@ -3,12 +3,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card, Pill } from "@/components/kit";
 import { Button } from "@/components/ui/button";
-import { SafeHtml } from "@/production/components/safe-html";
 import { api } from "@/lib/api";
 import { useWorkspace } from "@/lib/workspace";
 import { documentBlob, downloadBlob } from "@/lib/file-storage";
 import { useAccount } from "@/lib/account";
-import { TaskDeliverables } from "@/components/TaskDeliverables";
+import { TaskDescription } from "@/components/TaskDescription";
 import { plainText } from "@/lib/text";
 import {
   useWeekly,
@@ -28,13 +27,13 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
       {submission.summary && (
         <div>
           <strong>Objective / executive summary</strong>
-          <SafeHtml html={submission.summary} className="blog-content mt-1 text-sm" />
+          <p className="whitespace-pre-wrap font-normal">{plainText(submission.summary)}</p>
         </div>
       )}
       {submission.note && (
         <div>
           <strong>Notes</strong>
-          <SafeHtml html={submission.note} className="blog-content mt-1 text-sm" />
+          <p className="whitespace-pre-wrap font-normal">{plainText(submission.note)}</p>
         </div>
       )}
       {!!submission.leave?.length && (
@@ -57,7 +56,6 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
                 <th className="p-2">Status</th>
                 <th className="p-2">Due day</th>
                 <th className="p-2">Priority</th>
-                {submission.items.some((item) => item.detail) && <th className="p-2">Notes</th>}
               </tr>
             </thead>
             <tbody>
@@ -65,11 +63,11 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
                 <tr key={item.id} className="border-b">
                   <td className="p-2 align-top font-medium">
                     {plainText(item.title)}
-                    {!!item.subtasks?.length && <TaskDeliverables items={item.subtasks} />}
+                    <TaskDescription description={item.detail} items={item.subtasks} />
                     {item.outcome && (
                       <div className="mt-3">
                         <strong>Outcome</strong>
-                        <SafeHtml html={item.outcome} className="blog-content font-normal" />
+                        <p className="whitespace-pre-wrap font-normal">{plainText(item.outcome)}</p>
                       </div>
                     )}
                   </td>
@@ -84,15 +82,6 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
                       : "Not set"}
                   </td>
                   <td className="p-2 align-top">{item.priority ?? "Medium"}</td>
-                  {submission.items.some((row) => row.detail) && (
-                    <td className="p-2 align-top">
-                      {item.detail ? (
-                        <SafeHtml html={item.detail} className="blog-content text-sm" />
-                      ) : (
-                        ""
-                      )}
-                    </td>
-                  )}
                 </tr>
               ))}
             </tbody>
@@ -102,19 +91,19 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
       {submission.noWorkReason && (
         <div className="whitespace-pre-wrap">
           <strong>No work / absence: </strong>
-          <SafeHtml html={submission.noWorkReason} className="blog-content" />
+          <p className="whitespace-pre-wrap font-normal">{plainText(submission.noWorkReason)}</p>
         </div>
       )}
       {submission.blockers && (
         <div className="whitespace-pre-wrap">
           <strong>Blockers and support: </strong>
-          <SafeHtml html={submission.blockers} className="blog-content" />
+          <p className="whitespace-pre-wrap font-normal">{plainText(submission.blockers)}</p>
         </div>
       )}
       {submission.nextWeek && (
         <div className="whitespace-pre-wrap">
           <strong>Next week: </strong>
-          <SafeHtml html={submission.nextWeek} className="blog-content" />
+          <p className="whitespace-pre-wrap font-normal">{plainText(submission.nextWeek)}</p>
         </div>
       )}
       {!!submission.attachments?.length && (

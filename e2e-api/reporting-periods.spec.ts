@@ -62,7 +62,7 @@ test("restores readable full-width reporting, prototype hints and optional task-
   await expect(page.getByLabel("Plan title", { exact: true })).toHaveCSS("font-size", "14px");
   await expect(
     page.getByRole("textbox", { name: "Weekly objective", exact: true }),
-  ).toHaveAttribute("contenteditable", "true");
+  ).toHaveJSProperty("tagName", "TEXTAREA");
   await page.getByLabel("Week to prepare", { exact: true }).fill("2026-11-23");
   await page.getByRole("button", { name: "Apply week", exact: true }).click();
   await expect(page.getByLabel("Plan title", { exact: true })).toHaveValue(
@@ -106,16 +106,16 @@ test("restores readable full-width reporting, prototype hints and optional task-
   await page.screenshot({ path: test.info().outputPath("wide-plan.png"), fullPage: true });
   await page.goto("/reporting?view=weekly-report&week=2026-11-23");
   for (const name of ["Executive summary", "Challenges and blockers", "Next week's priorities"])
-    await expect(page.getByRole("textbox", { name, exact: true })).toHaveAttribute(
-      "contenteditable",
-      "true",
+    await expect(page.getByRole("textbox", { name, exact: true })).toHaveJSProperty(
+      "tagName",
+      "TEXTAREA",
     );
   const status = page.getByLabel("Status: Task waiting for next week's plan", { exact: true });
   await status.selectOption("completed");
   await expect(status).toHaveCSS("background-color", "rgb(229, 231, 235)");
   await expect(
     page.getByLabel("Outcome: Task waiting for next week's plan", { exact: true }),
-  ).toHaveAttribute("contenteditable", "true");
+  ).toHaveJSProperty("tagName", "INPUT");
   await page.screenshot({ path: test.info().outputPath("wide-report.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(

@@ -1,4 +1,5 @@
 import { UploadField } from "@/components/UploadField";
+import { checklistProgress, taskDescription } from "@/lib/task-content";
 import { SubtaskChecklist } from "@/components/SubtaskChecklist";
 import { reportingWeek } from "@/lib/weekly";
 import { useBusinessAccess } from "@/lib/access";
@@ -32,7 +33,6 @@ import {
 import { isDemo } from "@/lib/api";
 import { meta } from "@/lib/meta";
 import { departmentTasks } from "@/lib/department";
-import { SafeHtml } from "@/production/components/safe-html";
 import { plainText, validDate } from "@/lib/text";
 import { ReportingPagination } from "@/components/reporting/ReportingUI";
 
@@ -54,6 +54,7 @@ function Tasks() {
       (grant) => grant.business === (task.business ?? "b0") && grant.manage,
     );
   const [edit, setEdit] = useState<Task | "new" | null>(null);
+  const [expanded, setExpanded] = useState<string[]>([]);
   const [commenting, setCommenting] = useState<Task | null>(null);
   const [search, setSearch] = useState("");
   const [week, setWeek] = useState("");
@@ -268,33 +269,57 @@ function Tasks() {
                       <div className="text-sm font-medium">{plainText(task.title)}</div>
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                         <span>{person(task.assignee).name}</span>
-                        {!!task.subtasks?.length && (
+                        {!!checklistProgress(taskDescription(task.description, task.subtasks))
+                          .total && (
                           <span>
-                            {task.subtasks.filter((item) => item.done).length}/
-                            {task.subtasks.length} deliverables
+                            {
+                              checklistProgress(taskDescription(task.description, task.subtasks))
+                                .done
+                            }
+                            /
+                            {
+                              checklistProgress(taskDescription(task.description, task.subtasks))
+                                .total
+                            }{" "}
+                            deliverables
                           </span>
                         )}
                       </div>
-                      {editable && (
-                        <select
-                          aria-label={`Status for ${task.title}`}
-                          className="field-input mt-2 w-full py-1 text-xs"
-                          value={task.status}
-                          onChange={(event) =>
-                            perform(() =>
-                              saveRecord("tasks", {
-                                ...task,
-                                status: event.target.value as Task["status"],
-                              }),
-                            )
-                          }
-                        >
-                          {cols.map((value) => (
-                            <option key={value}>{value}</option>
-                          ))}
-                        </select>
-                      )}
-                      <details className="mt-2 text-sm">
+                      {editable &&
+                        !checklistProgress(taskDescription(task.description, task.subtasks))
+                          .total && (
+                          <select
+                            aria-label={`Status for ${task.title}`}
+                            className="field-input mt-2 w-full py-1 text-xs"
+                            value={task.status}
+                            onChange={(event) =>
+                              perform(() =>
+                                saveRecord("tasks", {
+                                  ...task,
+                                  status: event.target.value as Task["status"],
+                                }),
+                              )
+                            }
+                          >
+                            {cols.map((value) => (
+                              <option key={value}>{value}</option>
+                            ))}
+                          </select>
+                        )}
+                      <details
+                        className="mt-2 text-sm"
+                        open={expanded.includes(task.id)}
+                        onToggle={(event) => {
+                          const open = event.currentTarget.open;
+                          setExpanded((current) =>
+                            open
+                              ? current.includes(task.id)
+                                ? current
+                                : [...current, task.id]
+                              : current.filter((id) => id !== task.id),
+                          );
+                        }}
+                      >
                         <summary className="cursor-pointer text-xs font-medium text-primary">
                           Details{attachments.length ? ` (${attachments.length} files)` : ""}
                           {task.ceoComment ? " / CEO comment" : ""}
@@ -313,14 +338,7 @@ function Tasks() {
                             {task.weekStart ? ` | Week of ${task.weekStart}` : ""}
                           </p>
                         )}
-                        {task.description && (
-                          <SafeHtml html={task.description} className="blog-content mt-2 text-sm" />
-                        )}
-                        <SubtaskChecklist
-                          key={`${task.id}:${JSON.stringify(task.subtasks)}`}
-                          task={task}
-                          editable={editable}
-                        />
+                        <SubtaskChecklist task={task} editable={editable} />
                         {task.ceoComment && (
                           <div className="mt-3 rounded-md border-l-2 border-primary bg-muted/50 p-3 text-sm">
                             <div className="mb-1 text-xs font-semibold text-muted-foreground">

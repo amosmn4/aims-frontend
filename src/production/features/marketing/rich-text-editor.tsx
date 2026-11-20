@@ -1,3 +1,5 @@
+import { TaskItem, TaskList } from "@tiptap/extension-list";
+import ChecklistOutlined from "@mui/icons-material/ChecklistOutlined";
 import { useEffect, useState, type ReactNode } from "react";
 import { useEditor, useEditorState, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -396,11 +398,13 @@ export function RichTextEditor({
   onChange,
   disabled,
   ariaLabel = "Formatted content",
+  checklist = false,
 }: {
   value: string;
   onChange: (html: string) => void;
   disabled?: boolean | undefined;
   ariaLabel?: string | undefined;
+  checklist?: boolean | undefined;
 }) {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -408,7 +412,13 @@ export function RichTextEditor({
   const [linkNewTab, setLinkNewTab] = useState(true);
   const [linkNeedsText, setLinkNeedsText] = useState(false);
   const editor = useEditor({
-    extensions: EXTENSIONS,
+    extensions: checklist
+      ? [
+          ...EXTENSIONS,
+          TaskList,
+          TaskItem.configure({ nested: true, HTMLAttributes: { "data-type": "taskItem" } }),
+        ]
+      : EXTENSIONS,
     content: value,
     editable: !disabled,
     immediatelyRender: false,
@@ -440,6 +450,7 @@ export function RichTextEditor({
       blockquote: e.isActive("blockquote"),
       bulletList: e.isActive("bulletList"),
       orderedList: e.isActive("orderedList"),
+      taskList: e.isActive("taskList"),
       alignLeft: e.isActive({ textAlign: "left" }),
       alignCenter: e.isActive({ textAlign: "center" }),
       alignRight: e.isActive({ textAlign: "right" }),
@@ -452,8 +463,8 @@ export function RichTextEditor({
       fontSize: (textStyle["fontSize"] as string | null) ?? null,
       canUndo: e.can().undo(),
       canRedo: e.can().redo(),
-      canIndent: e.can().sinkListItem("listItem"),
-      canOutdent: e.can().liftListItem("listItem"),
+      canIndent: e.can().sinkListItem(e.isActive("taskItem") ? "taskItem" : "listItem"),
+      canOutdent: e.can().liftListItem(e.isActive("taskItem") ? "taskItem" : "listItem"),
     };
   };
   const state = useEditorState({ editor, selector: currentState }) ?? currentState({ editor });
@@ -725,6 +736,16 @@ export function RichTextEditor({
         >
           <TextQuote className="h-4 w-4" />
         </ToolbarButton>
+        {checklist && (
+          <ToolbarButton
+            label="Checklist"
+            active={state.taskList}
+            disabled={disabled}
+            onClick={() => editor.chain().focus().toggleTaskList().run()}
+          >
+            <ChecklistOutlined className="h-4 w-4" />
+          </ToolbarButton>
+        )}
         <ToolbarButton
           label="Bullet list"
           active={state.bulletList}
@@ -736,14 +757,26 @@ export function RichTextEditor({
         <ToolbarButton
           label="Indent list"
           disabled={disabled || !state.canIndent}
-          onClick={() => editor.chain().focus().sinkListItem("listItem").run()}
+          onClick={() =>
+            editor
+              .chain()
+              .focus()
+              .sinkListItem(editor.isActive("taskItem") ? "taskItem" : "listItem")
+              .run()
+          }
         >
           <FormatIndentIncrease className="h-4 w-4" />
         </ToolbarButton>
         <ToolbarButton
           label="Outdent list"
           disabled={disabled || !state.canOutdent}
-          onClick={() => editor.chain().focus().liftListItem("listItem").run()}
+          onClick={() =>
+            editor
+              .chain()
+              .focus()
+              .liftListItem(editor.isActive("taskItem") ? "taskItem" : "listItem")
+              .run()
+          }
         >
           <FormatIndentDecrease className="h-4 w-4" />
         </ToolbarButton>

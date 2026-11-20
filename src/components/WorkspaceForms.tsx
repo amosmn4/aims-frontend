@@ -1,6 +1,6 @@
 import { RecordDialog, type Field } from "./RecordDialog";
 import { useState } from "react";
-import { TaskDeliverables } from "./TaskDeliverables";
+import { taskDescription, checklistStatus, checklistProgress } from "@/lib/task-content";
 import { mutateApi, saveRecord, useWorkspace } from "@/lib/workspace";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -168,7 +168,6 @@ export function TaskForm({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [deliverables, setDeliverables] = useState(record?.subtasks ?? []);
   const { projects, people, businesses } = useWorkspace();
   const { mode, me } = useRole();
   const businessAccess = useBusinessAccess();
@@ -190,7 +189,7 @@ export function TaskForm({
     .slice(0, 10);
   const initial = {
     title: record?.title ?? "",
-    description: record?.description ?? "",
+    description: taskDescription(record?.description, record?.subtasks),
     project: selected,
     assignee:
       record?.assignee ??
@@ -214,19 +213,27 @@ export function TaskForm({
       }
       onClose={onClose}
       initial={initial}
-      afterFields={<TaskDeliverables items={deliverables} onChange={setDeliverables} />}
       fields={(values): Field<typeof values>[] => [
         { name: "title", label: "Task title", required: true },
-        { name: "description", label: "Description / deliverables", type: "richtext" },
         {
-          name: "status",
-          label: "Task status",
-          type: "select",
-          options: ["To do", "In progress", "Done", "Blocked", "Cancelled"].map((value) => ({
-            value,
-            label: value,
-          })),
+          name: "description",
+          label: "Description / deliverables (optional)",
+          type: "richtext",
+          checklist: true,
         },
+        ...(!checklistProgress(values.description).total
+          ? [
+              {
+                name: "status" as const,
+                label: "Task status",
+                type: "select" as const,
+                options: ["To do", "In progress", "Done", "Blocked", "Cancelled"].map((value) => ({
+                  value,
+                  label: value,
+                })),
+              },
+            ]
+          : []),
         {
           name: "weekStart",
           label: "Reporting period (optional)",
@@ -275,8 +282,9 @@ export function TaskForm({
             ? reportingWeek(new Date(`${values.weekStart}T12:00:00Z`))
             : undefined,
           description: values.description,
+          status: checklistStatus(values.description, values.status),
           id: record?.id ?? crypto.randomUUID(),
-          subtasks: deliverables,
+          subtasks: [],
         });
         if (isDemo) await saveRecord("tasks", task);
         else {

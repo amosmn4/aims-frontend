@@ -1,44 +1,55 @@
 import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { TaskDeliverables } from "@/components/TaskDeliverables";
-import type { Deliverable } from "@/lib/task-content";
+import { TaskDescription } from "@/components/TaskDescription";
+import { checklistProgress, checklistStatus, taskDescription } from "@/lib/task-content";
 
 afterEach(cleanup);
+const html =
+  '<p>Recruitment <strong>for Client A</strong></p><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Create shortlist</p><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Check references</p></div></li></ul></div></li><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked></label><div><p>Run campaign</p></div></li></ul>';
 
-describe("Deliverable editing", () => {
-  it("keeps the deliverable identity, nested notes and typed spaces while its status changes", async () => {
-    const detail = "<ul><li>Review candidates<ul><li>Check references</li></ul></li></ul>";
+describe("Single task description", () => {
+  it("checks and unchecks nested todos without losing content or changing other todos", async () => {
     function Form() {
-      const [items, setItems] = useState<Deliverable[]>([
-        { id: "stable-shortlist-id", title: "Shortlist", done: false, detail },
-      ]);
+      const [description, setDescription] = useState(html);
       return (
         <>
-          <TaskDeliverables items={items} onChange={setItems} />
-          <output data-testid="saved">{JSON.stringify(items)}</output>
+          <TaskDescription description={description} onChange={setDescription} />
+          <output data-testid="saved">{description}</output>
         </>
       );
     }
     render(<Form />);
-    const editor = await screen.findByRole("textbox", { name: "Deliverables 1 notes" });
-    expect(editor.querySelector("ul li ul li")).toHaveTextContent("Check references");
-    expect(editor).not.toHaveTextContent("<ul>");
-    fireEvent.change(screen.getByLabelText("Deliverables 1 title"), {
-      target: { value: "Create shortlist " },
-    });
-    expect(screen.getByLabelText("Deliverables 1 title")).toHaveValue("Create shortlist ");
-    fireEvent.change(screen.getByLabelText("Deliverables 1 status"), {
-      target: { value: "completed" },
-    });
+    const checkbox = await screen.findByRole("checkbox", { name: "Check references" });
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
     await waitFor(() =>
-      expect(JSON.parse(screen.getByTestId("saved").textContent!)[0]).toEqual({
-        id: "stable-shortlist-id",
-        title: "Create shortlist ",
-        done: true,
-        status: "completed",
-        detail,
-      }),
+      expect(screen.getByRole("checkbox", { name: "Check references" })).toBeChecked(),
     );
+    expect(screen.getByText("2/3 completed")).toBeVisible();
+    const saved = screen.getByTestId("saved").textContent!;
+    expect(saved).toContain("<strong>for Client A</strong>");
+    expect(checklistStatus(saved, "To do")).toBe("In progress");
+    expect(document.querySelector("ul li ul li")).toHaveTextContent("Check references");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Check references" }));
+    await waitFor(() => expect(screen.getByText("1/3 completed")).toBeVisible());
+    expect(screen.getByRole("checkbox", { name: "Run campaign" })).toBeChecked();
+  });
+  it("shows saved checkboxes as read only in submissions and CEO views", async () => {
+    render(<TaskDescription description={html} />);
+    expect(await screen.findByRole("checkbox", { name: "Run campaign" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Run campaign" })).toBeDisabled();
+  });
+  it("carries legacy deliverables into the one field once and keeps manual status without todos", () => {
+    const description = taskDescription("<p>Recruitment</p>", [
+      { id: "old", title: "Shortlist", done: true, detail: "<ul><li>References</li></ul>" },
+    ]);
+    expect(checklistProgress(description)).toEqual({ total: 1, done: 1 });
+    expect(checklistStatus(description, "To do")).toBe("Done");
+    expect(taskDescription(description, [{ id: "old", title: "Shortlist", done: true }])).toBe(
+      description,
+    );
+    expect(checklistStatus("", "Done")).toBe("Done");
+    expect(checklistStatus("", "Blocked")).toBe("Blocked");
   });
 });

@@ -12,7 +12,7 @@ import { documentBlob, downloadBlob } from "@/lib/file-storage";
 import { meta } from "@/lib/meta";
 import { ReportingPagination } from "@/components/reporting/ReportingUI";
 import { SafeHtml } from "@/production/components/safe-html";
-import { TaskDeliverables } from "@/components/TaskDeliverables";
+import { TaskDescription } from "@/components/TaskDescription";
 
 export const Route = createFileRoute("/reports")({
   head: () => ({
@@ -282,7 +282,7 @@ function Reports() {
                           <p className="text-xs text-muted-foreground">
                             {task.source.replaceAll("_", " ")}
                           </p>
-                          {!!task.subtasks?.length && <TaskDeliverables items={task.subtasks} />}
+                          <TaskDescription description={task.description} items={task.subtasks} />
                         </div>
                       ))}
                     </div>

@@ -14,7 +14,12 @@ import { uploadDocument } from "@/lib/file-storage";
 import { SubmissionSchedule } from "@/components/SubmissionSchedule";
 import { UploadField } from "@/components/UploadField";
 import { RichTextEditor } from "@/production/features/marketing/rich-text-editor";
-import { TaskDeliverables } from "@/components/TaskDeliverables";
+import {
+  taskDescription,
+  checklistProgress,
+  checklistStatus,
+  taskOutcome,
+} from "@/lib/task-content";
 import { plainText, validDate } from "@/lib/text";
 import {
   Dialog,
@@ -79,8 +84,14 @@ export function WeeklyEditor({
   initial.items = initial.items.map((item) => ({
     ...item,
     title: plainText(item.title),
-    subtasks: item.subtasks?.map((part) => ({ ...part, title: plainText(part.title) })),
+    detail: taskDescription(item.detail, item.subtasks),
+    outcome: plainText(item.outcome),
+    subtasks: [],
   }));
+  initial.summary = plainText(initial.summary);
+  initial.note = plainText(initial.note);
+  initial.blockers = plainText(initial.blockers);
+  initial.nextWeek = plainText(initial.nextWeek);
   const [form, setForm] = useState<WeeklySubmission>(initial);
   const [saved, setSaved] = useState(JSON.stringify(initial));
   const dirty = JSON.stringify(form) !== saved;
@@ -224,11 +235,12 @@ export function WeeklyEditor({
         </div>
         <label className="field-label">
           {phase === "plan" ? "Weekly objective" : "Executive summary"}
-          <RichTextEditor
-            ariaLabel={phase === "plan" ? "Weekly objective" : "Executive summary"}
+          <textarea
+            className="field-input min-h-20"
+            maxLength={5000}
             value={form.summary}
             disabled={busy}
-            onChange={(summary) => setForm({ ...form, summary })}
+            onChange={(event) => setForm({ ...form, summary: event.target.value })}
           />
         </label>
         {entry?.returnComment && (
@@ -371,43 +383,55 @@ export function WeeklyEditor({
                   <label className="field-label">
                     Description / deliverables
                     <RichTextEditor
+                      checklist
                       ariaLabel={`Description for task ${index + 1}`}
                       value={item.detail}
                       disabled={busy}
-                      onChange={(detail) => updateItem(item.id, { detail })}
+                      onChange={(detail) =>
+                        updateItem(item.id, {
+                          detail,
+                          subtasks: [],
+                          status: checklistProgress(detail).total
+                            ? taskOutcome(checklistStatus(detail, "To do"))
+                            : item.status,
+                        })
+                      }
                     />
                   </label>
-                  <TaskDeliverables
-                    label={`Task ${index + 1} deliverables`}
-                    items={item.subtasks ?? []}
-                    disabled={busy}
-                    onChange={(subtasks) => updateItem(item.id, { subtasks })}
-                  />
-                  <select
-                    className="report-status"
-                    data-status={item.status}
-                    aria-label={`Status: ${item.title}`}
-                    value={item.status}
-                    disabled={busy}
-                    onChange={(event) =>
-                      updateItem(item.id, { status: event.target.value as WeeklyItem["status"] })
-                    }
-                  >
-                    {phase === "plan" && <option value="planned">Planned</option>}
-                    <option value="pending">Not started</option>
-                    <option value="in_progress">In progress</option>
-                    <option value="completed">Completed</option>
-                    <option value="blocked">Blocked</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
+                  {checklistProgress(item.detail).total > 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      {checklistProgress(item.detail).done}/{checklistProgress(item.detail).total}{" "}
+                      completed
+                    </p>
+                  ) : (
+                    <select
+                      className="report-status"
+                      data-status={item.status}
+                      aria-label={`Status: ${item.title}`}
+                      value={item.status}
+                      disabled={busy}
+                      onChange={(event) =>
+                        updateItem(item.id, { status: event.target.value as WeeklyItem["status"] })
+                      }
+                    >
+                      {phase === "plan" && <option value="planned">Planned</option>}
+                      <option value="pending">Not started</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="completed">Completed</option>
+                      <option value="blocked">Blocked</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  )}
                   {phase === "report" && (
                     <label className="field-label">
                       Outcome / explanation
-                      <RichTextEditor
-                        ariaLabel={`Outcome: ${plainText(item.title)}`}
+                      <input
+                        className="field-input"
+                        aria-label={"Outcome: " + plainText(item.title)}
                         value={item.outcome ?? ""}
+                        maxLength={2000}
                         disabled={busy}
-                        onChange={(outcome) => updateItem(item.id, { outcome })}
+                        onChange={(event) => updateItem(item.id, { outcome: event.target.value })}
                       />
                     </label>
                   )}
@@ -419,32 +443,35 @@ export function WeeklyEditor({
         {phase === "report" && (
           <label className="field-label">
             Challenges and blockers
-            <RichTextEditor
-              ariaLabel="Challenges and blockers"
-              value={form.blockers}
+            <textarea
+              className="field-input min-h-20"
+              maxLength={5000}
+              value={form.blockers ?? ""}
               disabled={busy}
-              onChange={(blockers) => setForm({ ...form, blockers })}
+              onChange={(event) => setForm({ ...form, blockers: event.target.value })}
             />
           </label>
         )}
         {phase === "report" && (
           <label className="field-label">
             Next week's priorities
-            <RichTextEditor
-              ariaLabel="Next week's priorities"
-              value={form.nextWeek}
+            <textarea
+              className="field-input min-h-20"
+              maxLength={5000}
+              value={form.nextWeek ?? ""}
               disabled={busy}
-              onChange={(nextWeek) => setForm({ ...form, nextWeek })}
+              onChange={(event) => setForm({ ...form, nextWeek: event.target.value })}
             />
           </label>
         )}
         <label className="field-label">
           Notes (optional)
-          <RichTextEditor
-            ariaLabel="Notes (optional)"
+          <textarea
+            className="field-input min-h-20"
+            maxLength={5000}
             value={form.note ?? ""}
             disabled={busy}
-            onChange={(note) => setForm({ ...form, note })}
+            onChange={(event) => setForm({ ...form, note: event.target.value })}
           />
         </label>
         <details className="rounded-lg border p-3 text-sm">
