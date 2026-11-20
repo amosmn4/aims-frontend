@@ -1,4 +1,4 @@
-import { RecordDialog } from "./RecordDialog";
+import { RecordDialog, type Field } from "./RecordDialog";
 import { saveRecord, useWorkspace } from "@/lib/workspace";
 import { useRole } from "@/lib/role";
 import { today } from "@/lib/access";
@@ -168,94 +168,90 @@ export function TaskForm({
     !!businessAccess.permissions?.some(
       (grant) => grant.business === (business ?? "b0") && grant.manage,
     );
-  const available = projects.filter(
-    (project) => mode === "ceo" || project.members.includes(me.id) || manages(project.business),
-  );
   const selected = record?.project ?? projectId ?? "";
+  const parent = projects.find((project) => project.id === selected);
+  const availableBusinesses = businesses.filter(
+    (business) =>
+      mode === "ceo" ||
+      business.id === "b0" ||
+      businessAccess.permissions?.some((grant) => grant.business === business.id),
+  );
+  const currentWeek = reportingWeek();
+  const weekEnd = new Date(new Date(currentWeek + "T12:00:00Z").getTime() + 6 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const initial = {
+    title: record?.title ?? "",
+    description: record?.description
+      ? (new DOMParser()
+          .parseFromString(
+            record.description.replace(/<\/(p|div|li|h[1-6])>|<br\s*\/?>/gi, "\n"),
+            "text/html",
+          )
+          .body.textContent?.trim() ?? "")
+      : "",
+    project: selected,
+    assignee:
+      record?.assignee ??
+      (selected && (mode === "ceo" || parent?.lead === me.id)
+        ? (parent?.members[0] ?? me.id)
+        : me.id),
+    due: record?.due ?? weekEnd,
+    priority: record?.priority ?? "Medium",
+    status: record?.status ?? "To do",
+    business: record?.business ?? parent?.business ?? "b0",
+    weekStart: record?.weekStart ?? currentWeek,
+    source: record?.source ?? (selected ? "project" : "ad_hoc"),
+    subtasksText: record?.subtasks?.map((item) => item.title).join("\n") ?? "",
+  };
   return (
-    <RecordDialog
+    <RecordDialog<typeof initial>
       title={record ? "Edit task" : "New task"}
+      description={
+        selected
+          ? "Add a task to this project."
+          : "Add a task for this week. A weekly plan is optional."
+      }
       onClose={onClose}
-      initial={{
-        title: record?.title ?? "",
-        description: record?.description ?? "",
-        project: selected,
-        assignee:
-          record?.assignee ??
-          (mode === "ceo" || projects.find((project) => project.id === selected)?.lead === me.id
-            ? (projects.find((project) => project.id === selected)?.members[0] ?? "")
-            : me.id),
-        due: record?.due ?? today(),
-        priority: record?.priority ?? "Medium",
-        status: record?.status ?? "To do",
-        business: record?.business ?? "b0",
-        weekStart: record?.weekStart ?? reportingWeek(),
-        source: record?.source ?? (selected ? "project" : "ad_hoc"),
-        subtasksText: record?.subtasks?.map((item) => item.title).join("\n") ?? "",
-      }}
-      fields={(values) => [
-        { name: "title", label: "Task title", required: true },
-        { name: "description", label: "Task details", type: "richtext" },
-        {
-          name: "project",
-          label: "Project",
-          type: "select",
-          options: [
-            { value: "", label: "Weekly or standalone task" },
-            ...available.map((project) => ({ value: project.id, label: project.name })),
-          ],
-        },
-        {
-          name: "assignee",
-          label: "Assignee",
-          type: "select",
-          required: true,
-          options: [
-            { value: "", label: "Select a team member" },
-            ...people
-              .filter((person) =>
-                !values.project
-                  ? mode === "ceo" || person.id === me.id
-                  : projects
-                      .find((project) => project.id === values.project)
-                      ?.members.includes(person.id) &&
-                    (mode === "ceo" ||
-                      manages(
-                        projects.find((project) => project.id === values.project)?.business,
-                      ) ||
-                      projects.find((project) => project.id === values.project)?.lead === me.id ||
-                      person.id === me.id),
-              )
-              .map((person) => ({ value: person.id, label: person.name })),
-          ],
-        },
-        { name: "due", label: "Due date", type: "date", required: true },
-        {
-          name: "priority",
-          label: "Priority",
-          type: "select",
-          options: options(["Urgent", "High", "Medium", "Low"]),
-        },
-        {
-          name: "status",
-          label: "Status",
-          type: "select",
-          options: options(["To do", "In progress", "Done"]),
-        },
-        {
-          name: "business",
-          label: "Business",
-          type: "select",
-          options: businesses.map((business) => ({ value: business.id, label: business.name })),
-        },
-        { name: "weekStart", label: "Reporting week (Monday)", type: "date" },
-        {
-          name: "source",
-          label: "Work type",
-          type: "select",
-          options: options(["project", "planned", "ad_hoc", "contingency"]),
-        },
-        { name: "subtasksText", label: "Subtasks (one per line)", type: "textarea" },
+      initial={initial}
+      fields={(values): Field<typeof values>[] => [
+        { name: "title", label: "Task name", required: true },
+        { name: "description", label: "Notes (optional)", type: "textarea" },
+        ...(!selected && availableBusinesses.length > 1
+          ? [
+              {
+                name: "business" as const,
+                label: "Business",
+                type: "select" as const,
+                options: availableBusinesses.map((business) => ({
+                  value: business.id,
+                  label: business.name,
+                })),
+              },
+            ]
+          : []),
+        ...(mode === "ceo" || manages(values.business) || parent?.lead === me.id
+          ? [
+              {
+                name: "assignee" as const,
+                label: "Assignee",
+                type: "select" as const,
+                required: true,
+                options: people
+                  .filter((person) => !selected || parent?.members.includes(person.id))
+                  .map((person) => ({ value: person.id, label: person.name })),
+              },
+            ]
+          : []),
+        ...(record
+          ? [
+              {
+                name: "subtasksText" as const,
+                label: "Subtasks (optional, one per line)",
+                type: "textarea" as const,
+              },
+            ]
+          : []),
       ]}
       onSave={(values) =>
         saveRecord(
@@ -263,23 +259,24 @@ export function TaskForm({
           taskSchema.parse({
             ...record,
             ...values,
+            description:
+              record && values.description === initial.description
+                ? record.description
+                : values.description,
             id: record?.id ?? crypto.randomUUID(),
-            weekStart: values.weekStart
-              ? reportingWeek(new Date(`${values.weekStart}T12:00:00Z`))
-              : undefined,
             subtasks: values.subtasksText
               .split("\n")
               .map((title) => title.trim())
               .filter(Boolean)
-              .map((title, index) => ({
-                id:
-                  record?.subtasks?.[index]?.title === title
-                    ? record.subtasks[index]!.id
-                    : crypto.randomUUID(),
-                title,
-                done:
-                  record?.subtasks?.[index]?.title === title ? record.subtasks[index]!.done : false,
-              })),
+              .map((title, index) => {
+                const previous =
+                  record?.subtasks?.[index]?.title === title ? record.subtasks[index] : undefined;
+                return {
+                  id: previous?.id ?? crypto.randomUUID(),
+                  title,
+                  done: previous?.done ?? false,
+                };
+              }),
           }),
         )
       }

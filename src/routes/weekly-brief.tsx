@@ -178,7 +178,7 @@ function WeeklyBriefPage() {
                   <tr className="border-b">
                     <th className="p-3">Staff</th>
                     <th className="p-3">Submission</th>
-                    <th className="p-3">Brief</th>
+                    <th className="p-3">Tasks</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -198,7 +198,9 @@ function WeeklyBriefPage() {
                       </td>
                       <td className="max-w-lg whitespace-pre-wrap p-3 align-top">
                         {row[phase]?.submittedAt
-                          ? row[phase]?.submission.summary
+                          ? row[phase]?.submission.items.map((item) => item.title).join(" | ") ||
+                            row[phase]?.submission.note ||
+                            "No tasks recorded."
                           : "No submitted brief available."}
                       </td>
                     </tr>

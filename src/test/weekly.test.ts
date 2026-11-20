@@ -40,7 +40,7 @@ describe("Weekly reporting", () => {
     const detail = {
       weekStart: "2026-11-16",
       weekEnd: "2026-11-22",
-      plan: { submission: { items: [original, added] } },
+      plan: { submittedAt: "2026-11-16", submission: { items: [original, added] } },
       report: {
         submission: {
           items: [
@@ -56,5 +56,36 @@ describe("Weekly reporting", () => {
     expect(items).toHaveLength(2);
     expect(items[0]).toMatchObject({ taskId: "task", status: "blocked", detail: "Saved notes" });
     expect(items[1]).toMatchObject({ id: "added", status: "completed" });
+  });
+  it("scopes automatic task inclusion to the reporting week and excludes unsubmitted plan tasks", () => {
+    const detail = {
+      weekStart: "2026-11-16",
+      weekEnd: "2026-11-22",
+      plan: {
+        submittedAt: null,
+        submission: {
+          items: [{ id: "draft", title: "Draft only", status: "planned", detail: "" }],
+        },
+      },
+      report: null,
+      tasks: [
+        {
+          id: "current",
+          title: "This week",
+          status: "Done",
+          weekStart: "2026-11-16",
+          due: "2026-12-01",
+        },
+        { id: "legacy", title: "Legacy dated task", status: "To do", due: "2026-11-20" },
+        {
+          id: "other",
+          title: "Another week",
+          status: "To do",
+          weekStart: "2026-11-09",
+          due: "2026-11-20",
+        },
+      ],
+    } as unknown as WeeklyDetail;
+    expect(reportItems(detail).map((item) => item.taskId)).toEqual(["current", "legacy"]);
   });
 });

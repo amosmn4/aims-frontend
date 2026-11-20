@@ -18,6 +18,7 @@ export type WeeklyItem = {
 export type WeeklySubmission = {
   leave?: { start: string; end: string; note?: string | null }[];
   summary: string;
+  note?: string;
   attachments?: string[];
   items: WeeklyItem[];
   blockers: string;
@@ -38,6 +39,7 @@ export type WeeklyEntry = {
   returnComment: string | null;
   updatedAt: string;
   late: boolean;
+  editable?: boolean;
   counts: Record<string, number>;
 };
 export type WeeklyHistory = { items: WeeklyEntry[]; total: number; page: number; limit: number };
@@ -46,10 +48,11 @@ export function reportItems(detail: WeeklyDetail): WeeklyItem[] {
   const outcome = (status?: string): WeeklyItem["status"] =>
     status === "Done" ? "completed" : status === "In progress" ? "in_progress" : "pending";
   const planned =
-    detail.plan?.submission.items.map((item) => {
+    (detail.plan?.submittedAt ? detail.plan.submission.items : []).map((item) => {
       const task = detail.tasks.find((row) => row.id === (item.taskId ?? item.id));
       return {
         ...item,
+        title: task?.title ?? item.title,
         status: outcome(task?.status),
         subtasks: task?.subtasks ?? item.subtasks,
         priority: task?.priority ?? item.priority,
@@ -60,7 +63,7 @@ export function reportItems(detail: WeeklyDetail): WeeklyItem[] {
     .filter(
       (task) =>
         (task.weekStart === detail.weekStart ||
-          (task.due >= detail.weekStart && task.due <= detail.weekEnd)) &&
+          (!task.weekStart && task.due >= detail.weekStart && task.due <= detail.weekEnd)) &&
         !planned.some((item) => (item.taskId ?? item.id) === task.id),
     )
     .map((task) => ({
@@ -77,7 +80,15 @@ export function reportItems(detail: WeeklyDetail): WeeklyItem[] {
     }));
   const saved = detail.report?.submission.items ?? [];
   return [
-    ...saved,
+    ...saved.map((item) => {
+      const task = detail.tasks.find((row) => row.id === (item.taskId ?? item.id));
+      const plan = planned.find((row) => (row.taskId ?? row.id) === (item.taskId ?? item.id));
+      return {
+        ...item,
+        title: task?.title ?? plan?.title ?? item.title,
+        subtasks: task?.subtasks ?? item.subtasks,
+      };
+    }),
     ...[...planned, ...additional].filter(
       (item) => !saved.some((row) => (row.taskId ?? row.id) === (item.taskId ?? item.id)),
     ),

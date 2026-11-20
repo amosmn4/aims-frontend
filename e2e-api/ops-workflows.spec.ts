@@ -74,17 +74,22 @@ test("weekly work and subtasks flow into a scheduled monthly draft and the CEO r
   await page.goto("/tasks");
   await page.getByRole("button", { name: "New task", exact: true }).click();
   let dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Task title", { exact: true }).fill(taskName);
-  await dialog.getByLabel("Priority", { exact: true }).selectOption("Urgent");
-  await dialog.getByLabel("Work type", { exact: true }).selectOption("contingency");
-  await dialog.getByLabel("Subtasks (one per line)").fill("Check input\nSend results");
+  await dialog.getByLabel("Task name", { exact: true }).fill(taskName);
   await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await page.getByPlaceholder("Search tasks").fill(taskName);
+  await page.getByText("Details", { exact: true }).click();
+  await page.getByRole("button", { name: `Edit ${taskName}`, exact: true }).click();
+  await dialog
+    .getByLabel("Subtasks (optional, one per line)", { exact: true })
+    .fill("Check input\nSend results");
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
   await page.getByLabel("Check input", { exact: true }).check();
   await expect(page.getByText("Subtask updated", { exact: true })).toBeVisible();
   await page.reload();
   await page.getByPlaceholder("Search tasks").fill(taskName);
+  await page.getByText("Details", { exact: true }).click();
   await expect(page.getByLabel("Check input", { exact: true })).toBeChecked();
   await page.goto("/reports");
   await page.getByRole("button", { name: "Submit report", exact: true }).click();
@@ -121,7 +126,11 @@ test("weekly work and subtasks flow into a scheduled monthly draft and the CEO r
   await ceo.getByPlaceholder("Search reports within these filters").fill(reportName);
   await expect(ceo.getByRole("heading", { name: reportName, exact: true })).toBeVisible();
   await expect(ceo.getByText(taskName, { exact: true })).toBeVisible();
-  await expect(ceo.getByText("Urgent", { exact: true }).first()).toBeVisible();
+  await expect(ceo.getByText("Medium", { exact: true }).first()).toBeVisible();
+  const outcomes = ceo.locator("details").filter({ has: ceo.getByText(taskName, { exact: true }) });
+  await expect(outcomes).not.toContainText(/\bdue\b/i);
+  await expect(outcomes.getByLabel("Check input", { exact: true })).toBeChecked();
+  await expect(outcomes.getByLabel("Send results", { exact: true })).not.toBeChecked();
   const download = ceo.waitForEvent("download");
   await ceo.getByRole("button", { name: fileName, exact: true }).click();
   const file = await download;

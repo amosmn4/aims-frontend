@@ -22,7 +22,12 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
   const { documents } = useWorkspace();
   return (
     <div className="space-y-4 text-sm">
-      <SafeHtml html={submission.summary} className="blog-content text-sm" />
+      {submission.note && (
+        <div>
+          <strong>Notes</strong>
+          <SafeHtml html={submission.note} className="blog-content mt-1 text-sm" />
+        </div>
+      )}
       {!!submission.leave?.length && (
         <div className="rounded-lg border bg-muted/20 p-3">
           <strong>Recorded leave | {leaveDays(submission.leave)} calendar days</strong>
@@ -41,7 +46,7 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
               <tr className="border-b">
                 <th className="p-2">Task</th>
                 <th className="p-2">Status</th>
-                <th className="p-2">Details</th>
+                {submission.items.some((item) => item.detail) && <th className="p-2">Notes</th>}
               </tr>
             </thead>
             <tbody>
@@ -49,16 +54,6 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
                 <tr key={item.id} className="border-b">
                   <td className="p-2 align-top font-medium">
                     {item.title}
-                    {item.priority && (
-                      <div className="mt-1">
-                        <Pill>{item.priority}</Pill>
-                      </div>
-                    )}
-                    {item.source && (
-                      <p className="mt-1 text-xs font-normal text-muted-foreground">
-                        {item.source.replaceAll("_", " ")}
-                      </p>
-                    )}
                     {item.subtasks?.map((task) => (
                       <label key={task.id} className="mt-1 flex gap-2 text-xs font-normal">
                         <input type="checkbox" checked={task.done} readOnly disabled />
@@ -67,13 +62,15 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
                     ))}
                   </td>
                   <td className="p-2 align-top">{weeklyLabels[item.status]}</td>
-                  <td className="p-2 align-top">
-                    {item.detail ? (
-                      <SafeHtml html={item.detail} className="blog-content text-sm" />
-                    ) : (
-                      "No additional notes"
-                    )}
-                  </td>
+                  {submission.items.some((row) => row.detail) && (
+                    <td className="p-2 align-top">
+                      {item.detail ? (
+                        <SafeHtml html={item.detail} className="blog-content text-sm" />
+                      ) : (
+                        ""
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

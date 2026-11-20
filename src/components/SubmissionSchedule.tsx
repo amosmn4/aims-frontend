@@ -5,7 +5,7 @@ import { api, isDemo } from "@/lib/api";
 import { mutateApi, perform } from "@/lib/workspace";
 import { Button } from "./ui/button";
 
-type Schedule = {
+export type SubmissionScheduleRecord = {
   id: string;
   kind: string;
   target: string;
@@ -18,16 +18,20 @@ export function SubmissionSchedule({
   target,
   saveDraft,
   disabled = false,
+  onScheduled,
+  onBusyChange,
 }: {
   kind: "plan" | "report" | "monthly";
   target: string;
   saveDraft: () => Promise<unknown>;
   disabled?: boolean;
+  onScheduled?: () => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const client = useQueryClient();
   const query = useQuery({
     queryKey: ["submission-schedules"],
-    queryFn: () => api<Schedule[]>("/submission-schedules"),
+    queryFn: () => api<SubmissionScheduleRecord[]>("/submission-schedules"),
     enabled: !isDemo,
     refetchInterval: 30000,
   });
@@ -74,6 +78,7 @@ export function SubmissionSchedule({
           disabled={busy || disabled || !when}
           onClick={async () => {
             setBusy(true);
+            onBusyChange?.(true);
             await perform(async () => {
               const date = new Date(`${when}:00+03:00`);
               if (!Number.isFinite(date.getTime()) || date.getTime() <= Date.now())
@@ -84,8 +89,10 @@ export function SubmissionSchedule({
                 body: JSON.stringify({ kind, target, runAt: date.toISOString() }),
               });
               await client.invalidateQueries({ queryKey: ["submission-schedules"] });
+              onScheduled?.();
             }, "Submission scheduled");
             setBusy(false);
+            onBusyChange?.(false);
           }}
         >
           Save and schedule
@@ -97,11 +104,13 @@ export function SubmissionSchedule({
             disabled={busy || disabled}
             onClick={async () => {
               setBusy(true);
+              onBusyChange?.(true);
               await perform(async () => {
                 await mutateApi(`/submission-schedules/${schedule.id}`, { method: "DELETE" });
                 await client.invalidateQueries({ queryKey: ["submission-schedules"] });
               }, "Schedule cancelled");
               setBusy(false);
+              onBusyChange?.(false);
             }}
           >
             Cancel schedule

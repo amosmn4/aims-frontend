@@ -26,13 +26,6 @@ async function staffId(request: APIRequestContext) {
     (account: { email: string }) => account.email === "staff@ops-verify.local",
   ).id as string;
 }
-async function rich(page: Page, label: string, text: string) {
-  await page
-    .locator("label.field-label")
-    .filter({ hasText: label })
-    .locator('[contenteditable="true"]')
-    .fill(text);
-}
 test.beforeAll(async ({ request }) => {
   expect((await request.post(mail + "/reset", { data: {} })).ok()).toBeTruthy();
 });
@@ -63,100 +56,84 @@ test("lets the CEO set independent submission and email schedules", async ({ pag
   await expect(page.getByLabel("Reports email time", { exact: true })).toHaveValue("08:00");
 });
 
-test("saves a staff draft, protects unsaved changes and submits the week's plan and outcomes", async ({
+test("keeps weekly forms simple, edits submitted plans and reports all weekly work", async ({
   page,
 }) => {
+  await page.clock.setFixedTime(new Date("2026-11-20T16:00:00Z"));
   await login(page, "staff@ops-verify.local");
   await page.goto(`/weekly-reports?week=${week}`);
-  await expect(page.locator('[contenteditable="true"]')).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "New plan", exact: true }).click();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await page.getByRole("button", { name: "Close form", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Week to prepare")).toBeVisible();
+  await expect(dialog.getByText("Plan summary", { exact: true })).toHaveCount(0);
+  await expect(dialog.locator('input[type="date"]')).toHaveCount(1);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await page.getByRole("button", { name: "New plan", exact: true }).click();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await rich(
-    page,
-    "Plan summary",
-    "Complete payroll summaries and update recruitment records this week.",
-  );
   for (const [index, title] of [
     [1, "Prepare payroll summaries"],
     [2, "Update recruitment pipeline"],
   ] as const) {
-    await page.getByRole("button", { name: "Add task", exact: true }).click();
-    await page.getByLabel(`Task title ${index}`, { exact: true }).fill(title);
-    await rich(page, `Expected result ${index}`, "Reviewed and shared with the team");
+    await dialog.getByRole("button", { name: "Add task", exact: true }).click();
+    await dialog.getByLabel(`Task ${index}`, { exact: true }).fill(title);
   }
   await page.screenshot({ path: "test-results/weekly-plan-modal.png", fullPage: true });
-  await page.getByRole("button", { name: "Close form", exact: true }).click();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByRole("alertdialog")).toBeVisible();
   await page.getByRole("alertdialog").getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(page.getByLabel("Task title 1", { exact: true })).toHaveValue(
-    "Prepare payroll summaries",
-  );
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
-  await expect(page.getByText("Weekly record saved", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Close form", exact: true }).click();
-  await page.getByRole("link", { name: "Monthly Reports", exact: true }).click();
-  await expect(page).toHaveURL(/\/reports$/);
-  await expect(page.getByRole("alertdialog")).toHaveCount(0);
-  await page.goto(`/weekly-reports?week=${week}`);
-  await expect(page.locator('[contenteditable="true"]')).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   await page.getByRole("button", { name: "Resume draft", exact: true }).click();
-  await page.getByRole("button", { name: "Close form", exact: true }).click();
-  await page.reload();
-  await page.getByRole("button", { name: "Resume draft", exact: true }).click();
-  await expect(page.getByLabel("Task title 2", { exact: true })).toHaveValue(
+  await expect(dialog.getByLabel("Task 2", { exact: true })).toHaveValue(
     "Update recruitment pipeline",
   );
-  await page.getByRole("button", { name: "Submit weekly plan", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("button", { name: "Add tasks", exact: true }).click();
-  await page.getByRole("button", { name: "Add task", exact: true }).click();
-  await page.getByLabel("Task title 1", { exact: true }).fill("Urgent follow-up");
-  await page.getByRole("combobox", { name: "Priority", exact: true }).selectOption("Urgent");
-  await page.getByRole("button", { name: "Add tasks to plan", exact: true }).click();
-  await expect(page.getByText("Tasks added to weekly plan", { exact: true })).toBeVisible();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Submit plan", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit / add tasks", exact: true }).click();
+  await dialog.getByLabel("Task 1", { exact: true }).fill("Prepare payroll summaries");
+  await dialog.getByRole("button", { name: "Add task", exact: true }).click();
+  await dialog.getByLabel("Task 3", { exact: true }).fill("Urgent follow-up");
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   await page.screenshot({ path: "test-results/weekly-staff-plans.png", fullPage: true });
-  await page.getByRole("button", { name: "View plan", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Weekly plan", exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("dialog").getByRole("row", { name: /Urgent follow-up/ }),
-  ).toBeVisible();
-  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
   await page.goto("/tasks");
-  await page.getByPlaceholder("Search tasks").fill("Urgent follow-up");
-  await expect(page.getByText("Urgent follow-up", { exact: true })).toBeVisible();
-  await page.goto(`/weekly-reports?week=${week}`);
-  await page.getByRole("button", { name: "Weekly reports", exact: true }).click();
-  await expect(page.locator('[contenteditable="true"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "New task", exact: true }).click();
+  await dialog.getByLabel("Task name", { exact: true }).fill("Standalone weekly work");
+  await expect(dialog.getByLabel("Due date", { exact: true })).toHaveCount(0);
+  await expect(dialog.getByLabel("Project", { exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByPlaceholder("Search tasks").fill("Standalone weekly work");
+  await expect(page.getByText("Standalone weekly work", { exact: true })).toBeVisible();
+  await page.screenshot({ path: "test-results/weekly-compact-tasks.png", fullPage: true });
+  await page.goto(`/weekly-reports?week=${week}&phase=report`);
   await page.getByRole("button", { name: "New report", exact: true }).click();
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await expect(page.getByLabel("Task title 1", { exact: true })).toHaveValue(
-    "Prepare payroll summaries",
-  );
-  await rich(page, "Week summary", "Payroll was completed. Recruitment updates need client input.");
-  await page.getByLabel("Outcome 1", { exact: true }).selectOption("completed");
-  await page.getByLabel("Outcome 2", { exact: true }).selectOption("blocked");
-  await rich(page, "Outcome notes 1", "Payroll summaries reviewed and delivered.");
-  await rich(page, "Outcome notes 2", "Waiting for the client shortlist.");
-  await expect(page.getByLabel("Task title 3", { exact: true })).toHaveValue("Urgent follow-up");
-  await page
-    .getByLabel("Blockers and support needed", { exact: true })
+  await expect(
+    dialog.getByRole("checkbox", { name: "Done: Standalone weekly work", exact: true }),
+  ).toBeVisible();
+  await dialog
+    .getByRole("checkbox", { name: "Done: Prepare payroll summaries", exact: true })
+    .check();
+  await dialog
+    .getByLabel("Blockers (optional)", { exact: true })
     .fill("Client shortlist is pending.");
-  await page
-    .getByLabel("Carry forward / next week", { exact: true })
-    .fill("Complete recruitment records after client feedback.");
-  await page.getByRole("button", { name: "Submit weekly report", exact: true }).click();
+  await dialog
+    .getByLabel("Notes (optional)", { exact: true })
+    .fill("Payroll was completed. Recruitment updates need client input.");
+  await page.screenshot({ path: "test-results/weekly-simple-report.png", fullPage: true });
+  await dialog.getByRole("button", { name: "Submit report", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit report", exact: true }).click();
+  await expect(
+    dialog.getByRole("checkbox", { name: "Done: Prepare payroll summaries", exact: true }),
+  ).toBeChecked();
+  await dialog.getByRole("checkbox", { name: "Done: Urgent follow-up", exact: true }).check();
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   await page.getByRole("button", { name: "View report", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Weekly report", exact: true })).toBeVisible();
-  await expect(page.getByText("Completed", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Blocked", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Submit weekly report", exact: true })).toHaveCount(
-    0,
-  );
+  await expect(dialog.getByText("Completed", { exact: true }).first()).toBeVisible();
+  await expect(dialog.getByText("Pending", { exact: true }).first()).toBeVisible();
 });
 
 test("lets the CEO return a report, preserves its history and reviews the correction", async ({
@@ -181,8 +158,10 @@ test("lets the CEO return a report, preserves its history and reviews the correc
       staff.getByText("Explain who is following up on the client shortlist.", { exact: false }),
     ).toBeVisible();
     await staff.getByRole("button", { name: "Update and resubmit", exact: true }).click();
-    await rich(staff, "Outcome notes 2", "Amos is following up with the client on Monday.");
-    await staff.getByRole("button", { name: "Submit weekly report", exact: true }).click();
+    await staff
+      .getByLabel("Notes (optional)", { exact: true })
+      .fill("Amos is following up with the client on Monday.");
+    await staff.getByRole("button", { name: "Submit report", exact: true }).click();
     await staff.getByRole("button", { name: "View report", exact: true }).click();
     await expect(staff.getByRole("heading", { name: "Weekly report", exact: true })).toBeVisible();
   } finally {
@@ -218,6 +197,12 @@ test("sends two distinct consolidated emails and returns email links through sig
       .frameLocator('iframe[title="Weekly email preview"]')
       .getByRole("heading", { name: "Weekly staff plans", exact: true }),
   ).toBeVisible();
+  const planEmail = page
+    .frameLocator('iframe[title="Weekly email preview"]')
+    .locator("section")
+    .filter({ hasText: "Browser Staff" });
+  await expect(planEmail.getByRole("columnheader")).toHaveText(["Task", "Status"]);
+  await expect(planEmail).not.toContainText("No additional notes");
   await page.getByRole("button", { name: "Send brief to me now", exact: true }).click();
   await page
     .getByRole("alertdialog")
@@ -236,7 +221,7 @@ test("sends two distinct consolidated emails and returns email links through sig
   expect((await (await request.get(mail + "/messages")).json()).messages).toHaveLength(1);
   await page.getByLabel("Brief type", { exact: true }).selectOption("report");
   await expect(page.getByRole("row").filter({ hasText: "Browser Staff" })).toContainText(
-    "Payroll was completed",
+    "Prepare payroll summaries",
   );
   await page.getByRole("button", { name: "Send brief to me now", exact: true }).click();
   await page
@@ -251,6 +236,14 @@ test("sends two distinct consolidated emails and returns email links through sig
       .frameLocator('iframe[title="Weekly email preview"]')
       .getByRole("heading", { name: "Weekly staff reports", exact: true }),
   ).toBeVisible();
+  const reportEmail = page
+    .frameLocator('iframe[title="Weekly email preview"]')
+    .locator("section")
+    .filter({ hasText: "Browser Staff" });
+  await expect(reportEmail.getByRole("columnheader")).toHaveText(["Task", "Status"]);
+  await expect(reportEmail).toContainText("Amos is following up with the client on Monday.");
+  await expect(reportEmail).toContainText("Client shortlist is pending.");
+  await expect(reportEmail).not.toContainText("Medium");
   const href = await page
     .frameLocator('iframe[title="Weekly email preview"]')
     .getByRole("link", { name: "Browser Staff", exact: true })
@@ -295,4 +288,29 @@ test("shows unconfirmed email delivery and retries only after CEO confirmation",
   await expect
     .poll(async () => (await (await request.get(mail + "/messages")).json()).messages.length)
     .toBe(3);
+});
+
+test("schedules a plan draft and deletes it together with its pending schedule", async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date("2026-11-20T16:00:00Z"));
+  await login(page, "staff@ops-verify.local");
+  await page.goto("/weekly-reports?week=2026-11-23&phase=plan");
+  await page.getByRole("button", { name: "New plan", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Add task", exact: true }).click();
+  await dialog.getByLabel("Task 1", { exact: true }).fill("Next week preparation");
+  await dialog.getByRole("button", { name: "Schedule", exact: true }).click();
+  await dialog.getByLabel("Submission time (EAT)").fill("2026-11-23T10:00");
+  await dialog.getByRole("button", { name: "Save and schedule", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("Scheduled", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Delete draft", exact: true }).click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: "Delete draft", exact: true })
+    .click();
+  await expect(page.getByText("No weekly plans match this view.", { exact: false })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Next week preparation", { exact: true })).toHaveCount(0);
 });

@@ -239,7 +239,7 @@ function Reports() {
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {task.source.replaceAll("_", " ")} | due {task.due}
+                          {task.source.replaceAll("_", " ")}
                         </p>
                         {task.subtasks?.map((item) => (
                           <label key={item.id} className="mt-1 flex gap-2 text-xs">

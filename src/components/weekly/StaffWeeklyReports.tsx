@@ -10,6 +10,11 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useAccount } from "@/lib/account";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { SubmissionScheduleRecord } from "@/components/SubmissionSchedule";
+import { api } from "@/lib/api";
+import { loadWorkspace, perform } from "@/lib/workspace";
+import { confirmDialog } from "@/production/components/confirm-dialog";
 import {
   reportingWeek,
   useWeekly,
@@ -60,13 +65,16 @@ export function StaffWeeklyReports({
   onFilter: (phase: WeeklyPhase, week?: string) => void;
 }) {
   const { account } = useAccount();
+  const client = useQueryClient();
+  const schedules = useQuery({
+    queryKey: ["submission-schedules"],
+    queryFn: () => api<SubmissionScheduleRecord[]>("/submission-schedules"),
+  });
+  const [deleting, setDeleting] = useState(false);
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [view, setView] = useState<WeeklyEntry | null>(null);
-  const [action, setAction] = useState<{ kind: "new" | "edit" | "append"; week: string } | null>(
-    null,
-  );
-  const [reload, setReload] = useState(0);
+  const [action, setAction] = useState<{ kind: "new" | "edit"; week: string } | null>(null);
   const params = new URLSearchParams({
     phase,
     page: String(page),
@@ -76,7 +84,7 @@ export function StaffWeeklyReports({
   const listing = useWeekly<WeeklyHistory>(`submissions?${params}`);
   const detail = useWeekly<WeeklyDetail>(
     `reports/${action?.week ?? reportingWeek()}/${account?.id ?? ""}`,
-    !!action && action.kind !== "new",
+    !!action,
   );
   const close = () => setAction(null);
   const noun = phase === "plan" ? "plan" : "report";
@@ -180,7 +188,16 @@ export function StaffWeeklyReports({
                     | {entry.submission.items.length} tasks
                   </p>
                 </div>
-                <Pill>{weeklyStatus(entry)}</Pill>
+                <Pill>
+                  {schedules.data?.some(
+                    (schedule) =>
+                      schedule.kind === phase &&
+                      schedule.target === entry.weekStart &&
+                      schedule.status === "pending",
+                  )
+                    ? "Scheduled"
+                    : weeklyStatus(entry)}
+                </Pill>
               </div>
               <p className="my-3 text-sm text-muted-foreground">
                 {entry.submission.items
@@ -204,9 +221,40 @@ export function StaffWeeklyReports({
                     {entry.returnedAt ? "Update and resubmit" : "Resume draft"}
                   </Button>
                 )}
-                {phase === "plan" && entry.submittedAt && (
-                  <Button onClick={() => setAction({ kind: "append", week: entry.weekStart })}>
-                    Add tasks
+                {entry.submittedAt && entry.editable && (
+                  <Button onClick={() => setAction({ kind: "edit", week: entry.weekStart })}>
+                    {phase === "plan" ? "Edit / add tasks" : "Edit report"}
+                  </Button>
+                )}
+                {!entry.submittedAt && !entry.returnedAt && (
+                  <Button
+                    variant="ghost"
+                    disabled={deleting}
+                    onClick={async () => {
+                      if (
+                        !(await confirmDialog({
+                          title: `Delete draft ${noun}?`,
+                          description:
+                            "This removes the draft, its attachments and any pending schedule.",
+                          confirmLabel: "Delete draft",
+                          destructive: true,
+                        }))
+                      )
+                        return;
+                      setDeleting(true);
+                      await perform(async () => {
+                        await api(`/weekly/submissions/${entry.id}`, {
+                          method: "DELETE",
+                          body: JSON.stringify({ version: entry.version }),
+                        });
+                        await client.invalidateQueries({ queryKey: ["weekly"] });
+                        await client.invalidateQueries({ queryKey: ["submission-schedules"] });
+                        await loadWorkspace();
+                      }, "Draft deleted");
+                      setDeleting(false);
+                    }}
+                  >
+                    Delete draft
                   </Button>
                 )}
               </div>
@@ -239,38 +287,7 @@ export function StaffWeeklyReports({
           <WeeklyEntryView entry={view} />
         </WeeklyModal>
       )}
-      {action?.kind === "new" && (
-        <WeeklyModal title={`New weekly ${noun}`} onClose={close}>
-          <label className="field-label">
-            Week to prepare
-            <input
-              aria-label="Week to prepare"
-              className="field-input"
-              type="date"
-              value={action.week}
-              onChange={(event) => {
-                if (event.target.value)
-                  setAction({
-                    ...action,
-                    week: reportingWeek(new Date(`${event.target.value}T12:00:00Z`)),
-                  });
-              }}
-            />
-          </label>
-          <p className="text-sm text-muted-foreground">
-            Each reporting week has one plan and one report. Existing drafts can be resumed.
-          </p>
-          <Button onClick={() => setAction({ ...action, kind: "edit" })}>Continue</Button>
-        </WeeklyModal>
-      )}
-      {action &&
-      action.kind !== "new" &&
-      (detail.isPending ||
-        detail.error ||
-        !detail.data?.configured ||
-        (action.kind === "edit" && detail.data[phase]?.submittedAt) ||
-        (action.kind === "append" &&
-          (!detail.data.plan?.submittedAt || detail.data.report?.submittedAt))) ? (
+      {action && (detail.isPending || detail.error || !detail.data?.configured) ? (
         <WeeklyModal title={`Weekly ${noun} | ${action.week}`} onClose={close}>
           {detail.isPending ? (
             <p role="status">Loading submission...</p>
@@ -278,27 +295,19 @@ export function StaffWeeklyReports({
             <p role="alert">{detail.error.message}</p>
           ) : !detail.data?.configured ? (
             <p>The CEO has not configured weekly reporting yet.</p>
-          ) : (
-            <p>
-              {action.kind === "append"
-                ? "Tasks can be added to a submitted plan before its weekly report is submitted."
-                : `This week's ${noun} is already submitted. Open it from the list${phase === "plan" ? " or use Add tasks" : ""}.`}
-            </p>
-          )}
+          ) : null}
         </WeeklyModal>
       ) : (
         action &&
-        action.kind !== "new" &&
         detail.data && (
           <WeeklyEditor
-            key={`${action.week}:${phase}:${action.kind}:${reload}`}
+            key={`${action.week}:${phase}:${action.kind}`}
             detail={detail.data}
             phase={phase}
-            append={action.kind === "append"}
             onClose={close}
-            onReload={() => {
-              void detail.refetch().then(() => setReload((value) => value + 1));
-            }}
+            {...(action.kind === "new"
+              ? { onWeekChange: (value: string) => setAction({ ...action, week: value }) }
+              : {})}
           />
         )
       )}
