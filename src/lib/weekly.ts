@@ -16,6 +16,7 @@ export type WeeklyItem = {
   status: "planned" | "completed" | "in_progress" | "pending" | "blocked" | "cancelled";
 };
 export type WeeklySubmission = {
+  title?: string;
   leave?: { start: string; end: string; note?: string | null }[];
   summary: string;
   note?: string;
@@ -33,6 +34,7 @@ export type WeeklyEntry = {
   version: number;
   submission: WeeklySubmission;
   submittedAt: string | null;
+  recalledAt?: string | null;
   reviewedAt: string | null;
   reviewComment: string | null;
   returnedAt: string | null;
@@ -214,9 +216,11 @@ export function weeklyStatus(entry: WeeklyEntry | null, expected = true) {
         : "Submitted"
       : entry?.returnedAt
         ? "Returned for correction"
-        : entry
-          ? "Draft, not submitted"
-          : "Not submitted";
+        : entry?.recalledAt
+          ? "Recalled"
+          : entry
+            ? "Draft, not submitted"
+            : "Not submitted";
 }
 export function useWeekly<T>(path: string, enabled = true) {
   const { account } = useAccount();

@@ -1,5 +1,5 @@
 import { useBlocker } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import AddOutlined from "@mui/icons-material/AddOutlined";
 import CloseOutlined from "@mui/icons-material/CloseOutlined";
@@ -36,7 +36,11 @@ export function WeeklyEditor({
   phase,
   onClose,
   onWeekChange,
+  inline = false,
+  startActions,
 }: {
+  inline?: boolean;
+  startActions?: ReactNode;
   detail: WeeklyDetail;
   phase: WeeklyPhase;
   onClose: () => void;
@@ -51,7 +55,19 @@ export function WeeklyEditor({
   const [schedulePending, setSchedulePending] = useState(false);
   const initial = {
     ...(entry?.submission ?? emptyWeeklySubmission()),
-    items: phase === "report" ? reportItems(detail) : (entry?.submission.items ?? []),
+    items:
+      phase === "report"
+        ? reportItems(detail)
+        : (entry?.submission.items ?? []).map((item) => ({
+            ...item,
+            due:
+              item.due ??
+              detail.tasks.find((task) => task.id === (item.taskId ?? item.id))?.due ??
+              new Date(new Date(`${detail.weekStart}T12:00:00Z`).getTime() + 4 * 86400000)
+                .toISOString()
+                .slice(0, 10),
+            priority: item.priority ?? ("Medium" as const),
+          })),
   };
   const [form, setForm] = useState<WeeklySubmission>(initial);
   const [saved, setSaved] = useState(JSON.stringify(initial));
@@ -81,7 +97,13 @@ export function WeeklyEditor({
     });
   useBlocker({ shouldBlockFn: async () => dirty && !(await discard()), enableBeforeUnload: dirty });
   const requestClose = async () => {
-    if (!busy && (!dirty || (await discard()))) onClose();
+    if (!busy && (!dirty || (await discard()))) {
+      if (inline) {
+        setForm(initial);
+        setSaved(JSON.stringify(initial));
+      }
+      onClose();
+    }
   };
   const updateItem = (id: string, value: Partial<WeeklyItem>) =>
     setForm((current) => ({
@@ -105,25 +127,61 @@ export function WeeklyEditor({
   };
   const reportOpen = phase !== "report" || new Date(detail.now) >= new Date(detail.reportOpensAt);
   const completed = form.items.filter((item) => item.status === "completed").length;
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) void requestClose();
-      }}
+  const addTaskButton = (
+    <Button
+      type="button"
+      variant="outline"
+      className="btn soft sm"
+      size="sm"
+      disabled={busy || form.items.length >= 100}
+      onClick={() =>
+        setForm({
+          ...form,
+          items: [
+            ...form.items,
+            {
+              id: crypto.randomUUID(),
+              title: "",
+              detail: "",
+              due: new Date(new Date(`${detail.weekStart}T12:00:00Z`).getTime() + 4 * 86400000)
+                .toISOString()
+                .slice(0, 10),
+              priority: "Medium",
+              status: phase === "plan" ? "planned" : "pending",
+            },
+          ],
+        })
+      }
     >
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <AddOutlined fontSize="small" /> Add task
+    </Button>
+  );
+  const content = (
+    <>
+      {!inline && (
         <DialogHeader>
           <DialogTitle>
             {entry?.submittedAt ? "Edit" : entry ? "Continue" : "New"} weekly {phase}
           </DialogTitle>
           <DialogDescription>
-            {phase === "plan"
-              ? "Add your tasks, then save, schedule or submit."
-              : "Tick what is done. Add blockers or a note if needed."}
+            Prepare your tasks and outcomes, then save, schedule or submit.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="space-y-4">
+      )}
+      <form onSubmit={submit} className="space-y-4">
+        <div className="formgrid">
+          <label className="field-label">
+            {phase === "plan" ? "Plan title" : "Report title"}
+            <input
+              aria-label={phase === "plan" ? "Plan title" : "Report title"}
+              className="field-input"
+              maxLength={200}
+              value={form.title ?? ""}
+              placeholder={`Weekly ${phase}`}
+              disabled={busy}
+              onChange={(event) => setForm({ ...form, title: event.target.value })}
+            />
+          </label>
           {onWeekChange ? (
             <label className="field-label w-fit">
               Week to prepare
@@ -143,213 +201,315 @@ export function WeeklyEditor({
           ) : (
             <p className="text-sm text-muted-foreground">Week of {detail.weekStart}</p>
           )}
-          {entry?.returnComment && (
-            <p className="rounded-lg border bg-muted p-3 text-sm">
-              Correction requested: {entry.returnComment}
-            </p>
-          )}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm font-medium">
-              <span>{phase === "plan" ? "Tasks" : "This week's tasks"}</span>
+        </div>
+        <label className="field-label">
+          {phase === "plan" ? "Weekly objective" : "Executive summary"}
+          <textarea
+            aria-label={phase === "plan" ? "Weekly objective" : "Executive summary"}
+            className="field-input min-h-20"
+            maxLength={5000}
+            value={form.summary}
+            disabled={busy}
+            onChange={(event) => setForm({ ...form, summary: event.target.value })}
+          />
+        </label>
+        {entry?.returnComment && (
+          <p className="rounded-lg border bg-muted p-3 text-sm">
+            Correction requested: {entry.returnComment}
+          </p>
+        )}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm font-medium">
+            <div>
+              <h3>{phase === "plan" ? "Tasks for this week" : "Task results"}</h3>
+              <span className="tiny muted">
+                {phase === "plan"
+                  ? "Each task has a due day and priority."
+                  : "Status and outcome for each weekly task."}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {addTaskButton}
               {phase === "report" && (
                 <span className="text-muted-foreground">
                   {completed} of {form.items.length} done
                 </span>
               )}
             </div>
-            {!form.items.length && (
-              <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                {phase === "plan"
-                  ? "Add your first task below."
-                  : "No tasks for this week yet. You can add work you did below."}
-              </p>
-            )}
-            {form.items.map((item, index) => {
-              const editableTitle =
-                phase === "plan" ||
-                (!item.taskId &&
-                  !detail.tasks.some((task) => task.id === item.id) &&
-                  !detail.plan?.submission.items.some((task) => task.id === item.id));
-              return (
-                <div key={item.id} className="flex items-center gap-3 rounded-lg border px-3 py-2">
-                  {phase === "report" && (
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 shrink-0 accent-primary"
-                      aria-label={`Done: ${item.title}`}
-                      checked={item.status === "completed"}
-                      disabled={busy}
-                      onChange={(event) =>
-                        updateItem(item.id, {
-                          status: event.target.checked ? "completed" : "pending",
-                        })
-                      }
-                    />
-                  )}
-                  {editableTitle ? (
-                    <input
-                      className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none focus:ring-2 focus:ring-ring"
-                      aria-label={`Task ${index + 1}`}
-                      placeholder="Task name"
-                      required
-                      maxLength={200}
-                      value={item.title}
-                      disabled={busy}
-                      onChange={(event) => updateItem(item.id, { title: event.target.value })}
-                    />
-                  ) : (
-                    <span
-                      className={`min-w-0 flex-1 break-words text-sm ${item.status === "completed" ? "text-muted-foreground line-through" : ""}`}
-                    >
-                      {item.title}
-                    </span>
-                  )}
-                  {editableTitle && (
-                    <Button
+          </div>
+          {!form.items.length && (
+            <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+              {phase === "plan"
+                ? "Add your first task below."
+                : "No tasks for this week yet. You can add work you did below."}
+            </p>
+          )}
+          {form.items.map((item, index) => {
+            const editableTitle =
+              phase === "plan" ||
+              (!item.taskId &&
+                !detail.tasks.some((task) => task.id === item.id) &&
+                !detail.plan?.submission.items.some((task) => task.id === item.id));
+            return (
+              <div key={item.id} className={phase === "plan" ? "taskedit" : "reportrow"}>
+                {phase === "plan" && (
+                  <div className="taskedithead">
+                    <span>Task {index + 1}</span>
+                    <button
                       type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0"
+                      className="btn danger sm"
                       aria-label={`Remove task ${index + 1}`}
                       disabled={busy}
                       onClick={() =>
                         setForm({ ...form, items: form.items.filter((row) => row.id !== item.id) })
                       }
                     >
-                      <CloseOutlined fontSize="small" />
-                    </Button>
+                      <CloseOutlined fontSize="inherit" /> Remove
+                    </button>
+                  </div>
+                )}
+                <div className={phase === "plan" ? "taskeditgrid" : "report-task-title"}>
+                  <div className="field">
+                    <label htmlFor={`weekly-task-${item.id}`}>
+                      {phase === "plan" ? "Task description" : "Task"}
+                    </label>
+                    {editableTitle ? (
+                      <input
+                        id={`weekly-task-${item.id}`}
+                        className="field-input"
+                        aria-label={`Task ${index + 1}`}
+                        placeholder="Task name"
+                        required
+                        maxLength={200}
+                        value={item.title}
+                        disabled={busy}
+                        onChange={(event) => updateItem(item.id, { title: event.target.value })}
+                      />
+                    ) : (
+                      <strong>{item.title}</strong>
+                    )}
+                    {phase === "report" && (
+                      <small>
+                        {item.priority ?? "Medium"} priority{item.due ? ` | Due ${item.due}` : ""}
+                      </small>
+                    )}
+                  </div>
+                  {phase === "plan" && (
+                    <>
+                      <div className="field">
+                        <label htmlFor={`due-${item.id}`}>Due day</label>
+                        <select
+                          id={`due-${item.id}`}
+                          aria-label={`Due day for task ${index + 1}`}
+                          disabled={busy}
+                          value={
+                            item.due ??
+                            new Date(
+                              new Date(`${detail.weekStart}T12:00:00Z`).getTime() + 4 * 86400000,
+                            )
+                              .toISOString()
+                              .slice(0, 10)
+                          }
+                          onChange={(event) => updateItem(item.id, { due: event.target.value })}
+                        >
+                          {[
+                            "Monday",
+                            "Tuesday",
+                            "Wednesday",
+                            "Thursday",
+                            "Friday",
+                            "Saturday",
+                            "Sunday",
+                          ].map((day, offset) => {
+                            const date = new Date(
+                              new Date(`${detail.weekStart}T12:00:00Z`).getTime() +
+                                offset * 86400000,
+                            )
+                              .toISOString()
+                              .slice(0, 10);
+                            return (
+                              <option key={day} value={date}>
+                                {day}
+                              </option>
+                            );
+                          })}
+                          {item.due &&
+                            (item.due < detail.weekStart || item.due > detail.weekEnd) && (
+                              <option value={item.due}>{item.due}</option>
+                            )}
+                        </select>
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`priority-${item.id}`}>Priority</label>
+                        <select
+                          id={`priority-${item.id}`}
+                          aria-label={`Priority for task ${index + 1}`}
+                          value={item.priority ?? "Medium"}
+                          disabled={busy}
+                          onChange={(event) =>
+                            updateItem(item.id, {
+                              priority: event.target.value as WeeklyItem["priority"],
+                            })
+                          }
+                        >
+                          {["High", "Medium", "Low", "Urgent"].map((value) => (
+                            <option key={value}>{value}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
                   )}
                 </div>
-              );
-            })}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={busy || form.items.length >= 100}
-              onClick={() =>
-                setForm({
-                  ...form,
-                  items: [
-                    ...form.items,
-                    {
-                      id: crypto.randomUUID(),
-                      title: "",
-                      detail: "",
-                      status: phase === "plan" ? "planned" : "pending",
-                    },
-                  ],
-                })
-              }
-            >
-              <AddOutlined fontSize="small" /> Add task
-            </Button>
-          </div>
-          {phase === "report" && (
-            <label className="field-label">
-              Blockers (optional)
-              <textarea
-                aria-label="Blockers (optional)"
-                className="field-input min-h-20"
-                maxLength={5000}
-                value={form.blockers}
-                disabled={busy}
-                onChange={(event) => setForm({ ...form, blockers: event.target.value })}
-              />
-            </label>
-          )}
+                {phase === "report" && (
+                  <>
+                    <select
+                      aria-label={`Status: ${item.title}`}
+                      value={item.status}
+                      disabled={busy}
+                      onChange={(event) =>
+                        updateItem(item.id, { status: event.target.value as WeeklyItem["status"] })
+                      }
+                    >
+                      <option value="pending">Not started</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="completed">Completed</option>
+                      <option value="blocked">Blocked</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                    <input
+                      aria-label={`Outcome: ${item.title}`}
+                      placeholder="What was achieved?"
+                      value={item.detail}
+                      maxLength={2000}
+                      disabled={busy}
+                      onChange={(event) => updateItem(item.id, { detail: event.target.value })}
+                    />
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {phase === "report" && (
           <label className="field-label">
-            Notes (optional)
+            Challenges and blockers
             <textarea
-              aria-label="Notes (optional)"
+              aria-label="Challenges and blockers"
               className="field-input min-h-20"
               maxLength={5000}
-              value={form.note ?? ""}
+              value={form.blockers}
               disabled={busy}
-              onChange={(event) => setForm({ ...form, note: event.target.value })}
+              onChange={(event) => setForm({ ...form, blockers: event.target.value })}
             />
           </label>
-          <details className="rounded-lg border p-3 text-sm">
-            <summary className="cursor-pointer font-medium">
-              Attachments
-              {form.attachments?.length ? ` (${form.attachments.length})` : " (optional)"}
-            </summary>
-            <div className="mt-3 space-y-2">
-              {(form.attachments ?? []).map((id) => (
-                <div key={id} className="flex items-center justify-between gap-2">
-                  <span className="truncate">
-                    {documents.find((document) => document.id === id)?.name ??
-                      "Attachment unavailable"}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() =>
-                      setForm({
-                        ...form,
-                        attachments: form.attachments?.filter((value) => value !== id) ?? [],
-                      })
-                    }
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ))}
-              <UploadField
-                aria-label="Upload weekly attachment"
-                disabled={busy || (form.attachments?.length ?? 0) >= 10}
-                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                onChange={async (event) => {
-                  const input = event.currentTarget;
-                  const file = input.files?.[0];
-                  input.value = "";
-                  if (!file) return;
-                  if (file.size > 25 * 1024 * 1024) {
-                    toast.error("Choose a file no larger than 25 MB.");
-                    return;
+        )}
+        {phase === "report" && (
+          <label className="field-label">
+            Next week's priorities
+            <textarea
+              aria-label="Next week's priorities"
+              className="field-input min-h-20"
+              maxLength={5000}
+              value={form.nextWeek}
+              disabled={busy}
+              onChange={(event) => setForm({ ...form, nextWeek: event.target.value })}
+            />
+          </label>
+        )}
+        <label className="field-label">
+          Notes (optional)
+          <textarea
+            aria-label="Notes (optional)"
+            className="field-input min-h-20"
+            maxLength={5000}
+            value={form.note ?? ""}
+            disabled={busy}
+            onChange={(event) => setForm({ ...form, note: event.target.value })}
+          />
+        </label>
+        <details className="rounded-lg border p-3 text-sm">
+          <summary className="cursor-pointer font-medium">
+            Attachments
+            {form.attachments?.length ? ` (${form.attachments.length})` : " (optional)"}
+          </summary>
+          <div className="mt-3 space-y-2">
+            {(form.attachments ?? []).map((id) => (
+              <div key={id} className="flex items-center justify-between gap-2">
+                <span className="truncate">
+                  {documents.find((document) => document.id === id)?.name ??
+                    "Attachment unavailable"}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      attachments: form.attachments?.filter((value) => value !== id) ?? [],
+                    })
                   }
-                  const document = documentSchema.parse({
-                    id: crypto.randomUUID(),
-                    name: file.name,
-                    folder: "Weekly submissions",
-                    access: "restricted",
-                    owner: detail.person.id,
-                    allowed: [detail.person.id],
-                    updated: today(),
-                    weeklyRef: `weekly:${detail.person.id}:${detail.weekStart}:${phase}`,
-                    mime: file.type || "application/octet-stream",
-                  });
-                  setUploading(true);
-                  try {
-                    if (await perform(() => uploadDocument(document, file), "Attachment uploaded"))
-                      setForm((current) => ({
-                        ...current,
-                        attachments: [...(current.attachments ?? []), document.id],
-                      }));
-                  } finally {
-                    setUploading(false);
-                  }
-                }}
-              />
-              <p className="text-xs text-muted-foreground">
-                Up to 10 files, 25 MB each. Shared with the CEO.
-              </p>
-            </div>
-          </details>
-          {!!detail.leave?.length && (
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
+            <UploadField
+              aria-label="Upload weekly attachment"
+              disabled={busy || (form.attachments?.length ?? 0) >= 10}
+              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+              onChange={async (event) => {
+                const input = event.currentTarget;
+                const file = input.files?.[0];
+                input.value = "";
+                if (!file) return;
+                if (file.size > 25 * 1024 * 1024) {
+                  toast.error("Choose a file no larger than 25 MB.");
+                  return;
+                }
+                const document = documentSchema.parse({
+                  id: crypto.randomUUID(),
+                  name: file.name,
+                  folder: "Weekly submissions",
+                  access: "restricted",
+                  owner: detail.person.id,
+                  allowed: [detail.person.id],
+                  updated: today(),
+                  weeklyRef: `weekly:${detail.person.id}:${detail.weekStart}:${phase}`,
+                  mime: file.type || "application/octet-stream",
+                });
+                setUploading(true);
+                try {
+                  if (await perform(() => uploadDocument(document, file), "Attachment uploaded"))
+                    setForm((current) => ({
+                      ...current,
+                      attachments: [...(current.attachments ?? []), document.id],
+                    }));
+                } finally {
+                  setUploading(false);
+                }
+              }}
+            />
             <p className="text-xs text-muted-foreground">
-              Recorded leave: {detail.leave.map((row) => `${row.start} to ${row.end}`).join(", ")}
+              Up to 10 files, 25 MB each. Shared with the CEO.
             </p>
-          )}
-          {!reportOpen && (
-            <p className="text-sm text-muted-foreground">
-              Report submission opens {weeklyTime(detail.reportOpensAt)}. You can save or schedule
-              it now.
-            </p>
-          )}
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+          </div>
+        </details>
+        {!!detail.leave?.length && (
+          <p className="text-xs text-muted-foreground">
+            Recorded leave: {detail.leave.map((row) => `${row.start} to ${row.end}`).join(", ")}
+          </p>
+        )}
+        {!reportOpen && (
+          <p className="text-sm text-muted-foreground">
+            Report submission opens {weeklyTime(detail.reportOpensAt)}. You can save or schedule it
+            now.
+          </p>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+          <div>{startActions}</div>
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="ghost"
@@ -382,21 +542,35 @@ export function WeeklyEditor({
               {mutation.isPending
                 ? "Saving..."
                 : entry?.submittedAt
-                  ? "Save changes"
-                  : `Submit ${phase}`}
+                  ? `Submit ${phase} update`
+                  : `Submit ${phase} to CEO`}
             </Button>
           </div>
-        </form>
-        {scheduling && (
-          <SubmissionSchedule
-            kind={phase}
-            target={detail.weekStart}
-            saveDraft={() => mutation.mutateAsync(false)}
-            disabled={busy}
-            onScheduled={onClose}
-            onBusyChange={setSchedulePending}
-          />
-        )}
+        </div>
+      </form>
+      {scheduling && (
+        <SubmissionSchedule
+          kind={phase}
+          target={detail.weekStart}
+          saveDraft={() => mutation.mutateAsync(false)}
+          disabled={busy}
+          onScheduled={onClose}
+          onBusyChange={setSchedulePending}
+        />
+      )}
+    </>
+  );
+  return inline ? (
+    <section className="panel reporting-editor">{content}</section>
+  ) : (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) void requestClose();
+      }}
+    >
+      <DialogContent className="reporting max-h-[90vh] max-w-3xl overflow-y-auto">
+        {content}
       </DialogContent>
     </Dialog>
   );

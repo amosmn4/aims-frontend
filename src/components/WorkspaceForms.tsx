@@ -217,6 +217,13 @@ export function TaskForm({
       fields={(values): Field<typeof values>[] => [
         { name: "title", label: "Task name", required: true },
         { name: "description", label: "Notes (optional)", type: "textarea" },
+        { name: "due", label: "Due date", type: "date", required: true },
+        {
+          name: "priority",
+          label: "Priority",
+          type: "select",
+          options: ["High", "Medium", "Low", "Urgent"].map((value) => ({ value, label: value })),
+        },
         ...(!selected && availableBusinesses.length > 1
           ? [
               {

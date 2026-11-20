@@ -17,6 +17,7 @@ import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PaymentLedgerRouteImport } from './routes/payment-ledger'
 import { Route as PeopleRouteImport } from './routes/people'
+import { Route as ReportingRouteImport } from './routes/reporting'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SystemAdminRouteImport } from './routes/system-admin'
@@ -100,6 +101,11 @@ const PaymentLedgerRoute = PaymentLedgerRouteImport.update({
 const PeopleRoute = PeopleRouteImport.update({
   id: '/people',
   path: '/people',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportingRoute = ReportingRouteImport.update({
+  id: '/reporting',
+  path: '/reporting',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReportsRoute = ReportsRouteImport.update({
@@ -287,6 +293,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/payment-ledger': typeof PaymentLedgerRouteWithChildren
   '/people': typeof PeopleRoute
+  '/reporting': typeof ReportingRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/system-admin': typeof SystemAdminRoute
@@ -332,6 +339,7 @@ export interface FileRoutesByTo {
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
   '/people': typeof PeopleRoute
+  '/reporting': typeof ReportingRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/system-admin': typeof SystemAdminRoute
@@ -377,6 +385,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/payment-ledger': typeof PaymentLedgerRouteWithChildren
   '/people': typeof PeopleRoute
+  '/reporting': typeof ReportingRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/system-admin': typeof SystemAdminRoute
@@ -425,6 +434,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/payment-ledger'
     | '/people'
+    | '/reporting'
     | '/reports'
     | '/settings'
     | '/system-admin'
@@ -470,6 +480,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/login'
     | '/people'
+    | '/reporting'
     | '/reports'
     | '/settings'
     | '/system-admin'
@@ -514,6 +525,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/payment-ledger'
     | '/people'
+    | '/reporting'
     | '/reports'
     | '/settings'
     | '/system-admin'
@@ -561,6 +573,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PaymentLedgerRoute: typeof PaymentLedgerRouteWithChildren
   PeopleRoute: typeof PeopleRoute
+  ReportingRoute: typeof ReportingRoute
   ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
   SystemAdminRoute: typeof SystemAdminRoute
@@ -647,6 +660,13 @@ declare module '@tanstack/react-router' {
       path: '/people'
       fullPath: '/people'
       preLoaderRoute: typeof PeopleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reporting': {
+      id: '/reporting'
+      path: '/reporting'
+      fullPath: '/reporting'
+      preLoaderRoute: typeof ReportingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reports': {
@@ -969,6 +989,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PaymentLedgerRoute: PaymentLedgerRouteWithChildren,
   PeopleRoute: PeopleRoute,
+  ReportingRoute: ReportingRoute,
   ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,
   SystemAdminRoute: SystemAdminRoute,

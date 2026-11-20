@@ -22,6 +22,13 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
   const { documents } = useWorkspace();
   return (
     <div className="space-y-4 text-sm">
+      {submission.title && <h3 className="font-semibold">{submission.title}</h3>}
+      {submission.summary && (
+        <div>
+          <strong>Objective / executive summary</strong>
+          <SafeHtml html={submission.summary} className="blog-content mt-1 text-sm" />
+        </div>
+      )}
       {submission.note && (
         <div>
           <strong>Notes</strong>
@@ -46,6 +53,8 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
               <tr className="border-b">
                 <th className="p-2">Task</th>
                 <th className="p-2">Status</th>
+                <th className="p-2">Due day</th>
+                <th className="p-2">Priority</th>
                 {submission.items.some((item) => item.detail) && <th className="p-2">Notes</th>}
               </tr>
             </thead>
@@ -62,6 +71,16 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
                     ))}
                   </td>
                   <td className="p-2 align-top">{weeklyLabels[item.status]}</td>
+                  <td className="p-2 align-top">
+                    {item.due
+                      ? new Date(`${item.due}T12:00:00Z`).toLocaleDateString("en-GB", {
+                          weekday: "long",
+                          day: "numeric",
+                          month: "short",
+                        })
+                      : "Not set"}
+                  </td>
+                  <td className="p-2 align-top">{item.priority ?? "Medium"}</td>
                   {submission.items.some((row) => row.detail) && (
                     <td className="p-2 align-top">
                       {item.detail ? (

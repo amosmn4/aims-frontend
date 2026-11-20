@@ -1,18 +1,13 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import ScheduleOutlined from "@mui/icons-material/ScheduleOutlined";
-import { api, isDemo } from "@/lib/api";
+import { isDemo } from "@/lib/api";
+import { useSubmissionSchedules } from "@/lib/reporting";
 import { mutateApi, perform } from "@/lib/workspace";
 import { Button } from "./ui/button";
 
-export type SubmissionScheduleRecord = {
-  id: string;
-  kind: string;
-  target: string;
-  runAt: string;
-  status: string;
-  lastError: string | null;
-};
+export type { SubmissionScheduleRecord } from "@/lib/reporting";
+
 export function SubmissionSchedule({
   kind,
   target,
@@ -29,12 +24,7 @@ export function SubmissionSchedule({
   onBusyChange?: (busy: boolean) => void;
 }) {
   const client = useQueryClient();
-  const query = useQuery({
-    queryKey: ["submission-schedules"],
-    queryFn: () => api<SubmissionScheduleRecord[]>("/submission-schedules"),
-    enabled: !isDemo,
-    refetchInterval: 30000,
-  });
+  const query = useSubmissionSchedules();
   const [when, setWhen] = useState("");
   const [busy, setBusy] = useState(false);
   const schedule = query.data?.find((row) => row.kind === kind && row.target === target);

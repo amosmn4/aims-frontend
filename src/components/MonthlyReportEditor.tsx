@@ -77,7 +77,7 @@ export function MonthlyReportEditor({
         if (!open && !busy) onClose();
       }}
     >
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+      <DialogContent className="reporting max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{record ? "Edit report" : "Monthly report"}</DialogTitle>
           <DialogDescription>
