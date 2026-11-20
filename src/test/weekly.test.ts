@@ -2,12 +2,39 @@ import { describe, expect, it } from "vitest";
 import {
   reportingWeek,
   reportItems,
+  planItems,
+  weeklyTitle,
   weeklyStatus,
   type WeeklyEntry,
   type WeeklyDetail,
 } from "@/lib/weekly";
 
 describe("Weekly reporting", () => {
+  it("names plans and reports using the selected ISO week, including year boundaries", () => {
+    expect(weeklyTitle("plan", "2026-11-16")).toBe("Weekly Work Plan \u2013 Week 47");
+    expect(weeklyTitle("plan", "2026-11-23")).toBe("Weekly Work Plan \u2013 Week 48");
+    expect(weeklyTitle("report", "2025-12-29")).toBe("Weekly Progress Report \u2013 Week 1");
+  });
+  it("imports tasks assigned to a plan period without duplicates or tasks from other periods", () => {
+    const detail = {
+      weekStart: "2026-11-16",
+      plan: {
+        submission: {
+          items: [
+            { id: "item", taskId: "known", title: "Saved task", status: "planned", detail: "" },
+          ],
+        },
+      },
+      tasks: [
+        { id: "known", title: "Saved task", weekStart: "2026-11-16" },
+        { id: "pending", title: "Waiting for a plan", weekStart: "2026-11-16" },
+        { id: "none", title: "No period", due: "2026-11-20" },
+        { id: "other", title: "Other week", weekStart: "2026-11-23" },
+      ],
+    } as unknown as WeeklyDetail;
+    expect(planItems(detail).map((item) => item.taskId)).toEqual(["known", "pending"]);
+    expect(planItems(detail)[1]?.status).toBe("planned");
+  });
   it("changes reporting week at Nairobi midnight", () => {
     expect(reportingWeek(new Date("2026-11-15T20:59:59Z"))).toBe("2026-11-09");
     expect(reportingWeek(new Date("2026-11-15T21:00:00Z"))).toBe("2026-11-16");

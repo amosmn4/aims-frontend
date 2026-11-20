@@ -46,6 +46,39 @@ export type WeeklyEntry = {
 };
 export type WeeklyHistory = { items: WeeklyEntry[]; total: number; page: number; limit: number };
 
+export function weeklyTitle(phase: WeeklyPhase, week: string) {
+  const date = new Date(`${week}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 3 - ((date.getUTCDay() + 6) % 7));
+  const number = Math.ceil(
+    ((date.getTime() - Date.UTC(date.getUTCFullYear(), 0, 1, 12)) / 86400000 + 1) / 7,
+  );
+  return `${phase === "plan" ? "Weekly Work Plan" : "Weekly Progress Report"} \u2013 Week ${number}`;
+}
+
+export function planItems(detail: WeeklyDetail): WeeklyItem[] {
+  const existing = detail.plan?.submission.items ?? [];
+  const additional = detail.tasks.filter(
+    (task) =>
+      task.weekStart === detail.weekStart &&
+      !existing.some((item) => (item.taskId ?? item.id) === task.id),
+  );
+  return [
+    ...existing,
+    ...additional.map((task) => ({
+      id: task.id,
+      taskId: task.id,
+      title: task.title,
+      detail: "",
+      status: "planned" as const,
+      due: task.due,
+      priority: task.priority,
+      business: task.business,
+      source: task.source,
+      subtasks: task.subtasks,
+    })),
+  ];
+}
+
 export function reportItems(detail: WeeklyDetail): WeeklyItem[] {
   const outcome = (status?: string): WeeklyItem["status"] =>
     status === "Done" ? "completed" : status === "In progress" ? "in_progress" : "pending";

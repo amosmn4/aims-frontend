@@ -20,7 +20,7 @@ export type Field<T extends Values> = {
   min?: number;
   max?: number;
   step?: number;
-  help?: string;
+  help?: React.ReactNode;
 };
 
 export function RecordDialog<T extends Values>({

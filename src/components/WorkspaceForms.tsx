@@ -1,5 +1,9 @@
 import { RecordDialog, type Field } from "./RecordDialog";
-import { saveRecord, useWorkspace } from "@/lib/workspace";
+import { mutateApi, saveRecord, useWorkspace } from "@/lib/workspace";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { isDemo } from "@/lib/api";
+import { TaskPeriodNotice } from "./reporting/TaskPeriodNotice";
 import { useRole } from "@/lib/role";
 import { today } from "@/lib/access";
 import { useBusinessAccess } from "@/lib/access";
@@ -161,6 +165,7 @@ export function TaskForm({
   projectId?: string | undefined;
   onClose: () => void;
 }) {
+  const queryClient = useQueryClient();
   const { projects, people, businesses } = useWorkspace();
   const { mode, me } = useRole();
   const businessAccess = useBusinessAccess();
@@ -200,7 +205,7 @@ export function TaskForm({
     priority: record?.priority ?? "Medium",
     status: record?.status ?? "To do",
     business: record?.business ?? parent?.business ?? "b0",
-    weekStart: record?.weekStart ?? currentWeek,
+    weekStart: record?.weekStart ?? "",
     source: record?.source ?? (selected ? "project" : "ad_hoc"),
     subtasksText: record?.subtasks?.map((item) => item.title).join("\n") ?? "",
   };
@@ -217,6 +222,12 @@ export function TaskForm({
       fields={(values): Field<typeof values>[] => [
         { name: "title", label: "Task name", required: true },
         { name: "description", label: "Notes (optional)", type: "textarea" },
+        {
+          name: "weekStart",
+          label: "Reporting period (optional)",
+          type: "date",
+          help: <TaskPeriodNotice period={values.weekStart} staff={values.assignee} />,
+        },
         { name: "due", label: "Due date", type: "date", required: true },
         {
           name: "priority",
@@ -260,33 +271,46 @@ export function TaskForm({
             ]
           : []),
       ]}
-      onSave={(values) =>
-        saveRecord(
-          "tasks",
-          taskSchema.parse({
-            ...record,
-            ...values,
-            description:
-              record && values.description === initial.description
-                ? record.description
-                : values.description,
-            id: record?.id ?? crypto.randomUUID(),
-            subtasks: values.subtasksText
-              .split("\n")
-              .map((title) => title.trim())
-              .filter(Boolean)
-              .map((title, index) => {
-                const previous =
-                  record?.subtasks?.[index]?.title === title ? record.subtasks[index] : undefined;
-                return {
-                  id: previous?.id ?? crypto.randomUUID(),
-                  title,
-                  done: previous?.done ?? false,
-                };
-              }),
-          }),
-        )
-      }
+      onSave={async (values) => {
+        const task = taskSchema.parse({
+          ...record,
+          ...values,
+          weekStart: values.weekStart
+            ? reportingWeek(new Date(`${values.weekStart}T12:00:00Z`))
+            : undefined,
+          description:
+            record && values.description === initial.description
+              ? record.description
+              : values.description,
+          id: record?.id ?? crypto.randomUUID(),
+          subtasks: values.subtasksText
+            .split("\n")
+            .map((title) => title.trim())
+            .filter(Boolean)
+            .map((title, index) => {
+              const previous =
+                record?.subtasks?.[index]?.title === title ? record.subtasks[index] : undefined;
+              return {
+                id: previous?.id ?? crypto.randomUUID(),
+                title,
+                done: previous?.done ?? false,
+              };
+            }),
+        });
+        if (isDemo) await saveRecord("tasks", task);
+        else {
+          const result = await mutateApi<{ planLink?: "waiting" | "added" | "linked" }>(
+            `/records/tasks/${encodeURIComponent(task.id)}`,
+            { method: "PUT", body: JSON.stringify(task) },
+          );
+          await queryClient.invalidateQueries({ queryKey: ["weekly"] });
+          if (result.planLink === "waiting")
+            toast.info(
+              "No plan exists for this period. Task saved; it will be included automatically when the plan is created.",
+            );
+          else if (result.planLink === "added") toast.success("Task added to the weekly plan");
+        }
+      }}
     />
   );
 }

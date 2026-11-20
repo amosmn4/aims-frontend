@@ -8,7 +8,11 @@ import { useWorkspace } from "@/lib/workspace";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 
-export function CeoImpersonationControl() {
+export function CeoImpersonationControl({
+  placement = "sidebar",
+}: {
+  placement?: "sidebar" | "topbar";
+}) {
   const { account, startImpersonation, stopImpersonation } = useAccount();
   const { accounts, people } = useWorkspace();
   const navigate = useNavigate();
@@ -38,9 +42,11 @@ export function CeoImpersonationControl() {
         variant="ghost"
         size="icon"
         className={
-          acting
-            ? "shrink-0 border border-sidebar-foreground/40 text-sidebar-foreground hover:bg-sidebar-accent"
-            : "shrink-0 text-sidebar-foreground hover:bg-sidebar-accent"
+          placement === "topbar"
+            ? "shrink-0 text-[#1557a4] hover:bg-[#edf4fd] border border-transparent aria-pressed:border-[#1557a4]/30"
+            : acting
+              ? "shrink-0 border border-sidebar-foreground/40 text-sidebar-foreground hover:bg-sidebar-accent"
+              : "shrink-0 text-sidebar-foreground hover:bg-sidebar-accent"
         }
         disabled={busy || (!acting && ceos.length === 0)}
         aria-label={label}

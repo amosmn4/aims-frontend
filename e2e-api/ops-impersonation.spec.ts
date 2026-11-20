@@ -16,9 +16,37 @@ test("System Admin uses the profile icon to correct staff email and resend an in
   await expect(
     page.getByRole("heading", { name: "System administration", exact: true }),
   ).toBeVisible();
+  const header = page.locator("header").first();
+  const logo = page.getByRole("link", { name: "Amsol Ops home", exact: true }).getByRole("img");
+  await expect(logo).toHaveAttribute("src", "/favicon.png");
+  await expect
+    .poll(() => logo.evaluate((element) => (element as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+  await expect(header).not.toContainText(/Weekly Plan|Staff workspace|CEO workspace/);
+  await expect(page.getByText("Staff workspace", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("WORKFORCE REPORTING", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("main").first()).not.toHaveClass(/reporting-active/);
+  await expect(page.locator("aside").first()).toHaveCSS("width", "224px");
   const enter = page.getByRole("button", { name: "Open CEO workspace", exact: true });
   await expect(enter).toBeVisible();
   await expect(enter).toHaveText("");
+  await expect(enter).not.toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(
+    header.getByRole("button", { name: "Open CEO workspace", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Collapse navigation", exact: true }).click();
+  await expect(enter).toBeVisible();
+  await expect(page.locator("aside").first()).toHaveCSS("width", "64px");
+  await page.getByRole("button", { name: "Expand navigation", exact: true }).click();
+  await page.goto("/settings");
+  await expect(header).not.toContainText(/Weekly Plan|Staff workspace|CEO workspace/);
+  await expect(page.getByRole("main").first()).not.toHaveClass(/reporting-active/);
+  await expect(logo).toBeVisible();
+  await page.goto("/system-admin");
+  await expect(
+    page.getByRole("heading", { name: "System administration", exact: true }),
+  ).toBeVisible();
+  await expect(enter).toBeVisible();
   await page.screenshot({ path: test.info().outputPath("system-admin-icon.png") });
   await expect(page.getByRole("link", { name: "Staff", exact: true })).toHaveCount(0);
   await enter.click();
@@ -29,6 +57,9 @@ test("System Admin uses the profile icon to correct staff email and resend an in
   if (await chooser.isVisible())
     await chooser.getByRole("button", { name: /ceo@ops-verify.local/ }).click();
   await expect(page).toHaveURL(/\/$/);
+  await expect(header).not.toContainText(/Weekly Plan|Staff workspace|CEO workspace/);
+  await expect(page.getByRole("main").first()).not.toHaveClass(/reporting-active/);
+  await expect(logo).toBeVisible();
   await expect(
     page.getByText("System administration is restricted to the System Admin account.", {
       exact: true,
@@ -38,6 +69,7 @@ test("System Admin uses the profile icon to correct staff email and resend an in
   const exit = page.getByRole("button", { name: "Return to System Admin", exact: true });
   await expect(exit).toHaveAttribute("aria-pressed", "true");
   await expect(exit).toHaveText("");
+  await expect(exit).not.toHaveCSS("color", "rgb(255, 255, 255)");
   await exit.scrollIntoViewIfNeeded();
   await page.screenshot({ path: test.info().outputPath("ceo-session-icon.png") });
   await page.reload();

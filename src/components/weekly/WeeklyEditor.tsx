@@ -23,6 +23,8 @@ import {
 import {
   emptyWeeklySubmission,
   reportItems,
+  planItems,
+  weeklyTitle,
   reportingWeek,
   weeklyTime,
   type WeeklyDetail,
@@ -55,10 +57,11 @@ export function WeeklyEditor({
   const [schedulePending, setSchedulePending] = useState(false);
   const initial = {
     ...(entry?.submission ?? emptyWeeklySubmission()),
+    title: entry?.submission.title || weeklyTitle(phase, detail.weekStart),
     items:
       phase === "report"
         ? reportItems(detail)
-        : (entry?.submission.items ?? []).map((item) => ({
+        : planItems(detail).map((item) => ({
             ...item,
             due:
               item.due ??
@@ -177,7 +180,7 @@ export function WeeklyEditor({
               className="field-input"
               maxLength={200}
               value={form.title ?? ""}
-              placeholder={`Weekly ${phase}`}
+              placeholder={weeklyTitle(phase, detail.weekStart)}
               disabled={busy}
               onChange={(event) => setForm({ ...form, title: event.target.value })}
             />
@@ -209,6 +212,11 @@ export function WeeklyEditor({
             className="field-input min-h-20"
             maxLength={5000}
             value={form.summary}
+            placeholder={
+              phase === "plan"
+                ? "Complete priority system improvements, support operations and provide timely updates to management."
+                : "Summarise key progress and outcomes..."
+            }
             disabled={busy}
             onChange={(event) => setForm({ ...form, summary: event.target.value })}
           />
@@ -219,7 +227,7 @@ export function WeeklyEditor({
           </p>
         )}
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm font-medium">
+          <div className="weekly-task-heading flex items-center justify-between text-sm font-medium">
             <div>
               <h3>{phase === "plan" ? "Tasks for this week" : "Task results"}</h3>
               <span className="tiny muted">
@@ -278,7 +286,7 @@ export function WeeklyEditor({
                         id={`weekly-task-${item.id}`}
                         className="field-input"
                         aria-label={`Task ${index + 1}`}
-                        placeholder="Task name"
+                        placeholder="Describe the task..."
                         required
                         maxLength={200}
                         value={item.title}
@@ -363,6 +371,8 @@ export function WeeklyEditor({
                 {phase === "report" && (
                   <>
                     <select
+                      className="report-status"
+                      data-status={item.status}
                       aria-label={`Status: ${item.title}`}
                       value={item.status}
                       disabled={busy}
@@ -378,7 +388,7 @@ export function WeeklyEditor({
                     </select>
                     <input
                       aria-label={`Outcome: ${item.title}`}
-                      placeholder="What was achieved?"
+                      placeholder="Outcome / explanation"
                       value={item.detail}
                       maxLength={2000}
                       disabled={busy}
@@ -398,6 +408,7 @@ export function WeeklyEditor({
               className="field-input min-h-20"
               maxLength={5000}
               value={form.blockers}
+              placeholder="What slowed you down? What support do you need?"
               disabled={busy}
               onChange={(event) => setForm({ ...form, blockers: event.target.value })}
             />
@@ -411,6 +422,7 @@ export function WeeklyEditor({
               className="field-input min-h-20"
               maxLength={5000}
               value={form.nextWeek}
+              placeholder="What will you focus on next week?"
               disabled={busy}
               onChange={(event) => setForm({ ...form, nextWeek: event.target.value })}
             />
@@ -423,6 +435,7 @@ export function WeeklyEditor({
             className="field-input min-h-20"
             maxLength={5000}
             value={form.note ?? ""}
+            placeholder="Add any additional notes..."
             disabled={busy}
             onChange={(event) => setForm({ ...form, note: event.target.value })}
           />

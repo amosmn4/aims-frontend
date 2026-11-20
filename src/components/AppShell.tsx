@@ -87,10 +87,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           { view: "submissions", label: "My Submissions" },
         ] as const);
   const reportingPage =
-    pathname === "/reporting" ||
-    pathname === "/reports" ||
-    pathname === "/weekly-reports" ||
-    (pathname === "/" && mode === "staff");
+    account?.role !== "system_admin" &&
+    (pathname === "/reporting" ||
+      pathname === "/reports" ||
+      pathname === "/weekly-reports" ||
+      (pathname === "/" && mode === "staff"));
   const visible = (account?.role === "system_admin" ? systemAdminNav : nav).filter(
     (item) =>
       (item.to !== "/payment-ledger" || !!moduleAccess(account, "ledger")) &&
@@ -125,12 +126,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     (pathname.startsWith("/departments") && !canViewDepartments(mode)) ||
     (pathname === "/admin" && mode !== "ceo");
   return (
-    <div
-      className={cn(
-        "reporting-shell flex min-h-screen bg-background text-foreground",
-        reportingPage && "reporting-active",
-      )}
-    >
+    <div className="flex min-h-screen bg-background text-foreground">
       {mobileOpen && (
         <button
           aria-label="Close navigation"
@@ -142,7 +138,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         className={cn(
           "top-0 z-40 h-screen shrink-0 flex-col overflow-y-auto bg-sidebar text-sidebar-foreground md:sticky md:flex",
           mobileOpen ? "fixed left-0 flex w-60" : "hidden",
-          compact ? "md:w-16" : "report-sidebar-expanded",
+          compact ? "md:w-16" : "md:w-56",
         )}
       >
         <div className={cn("pb-6 pt-6", compact ? "px-2" : "px-5")}>
@@ -152,14 +148,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                 to="/"
                 onClick={() => setMobileOpen(false)}
                 aria-label="Amsol Ops home"
-                className="report-brand"
+                className="inline-flex items-center rounded-md bg-white px-3 py-1.5"
               >
-                <span className="report-brandmark">A</span>
-                <span>
-                  <b>{settings.company.split(" ")[0]?.toUpperCase() || "AMSOL"}</b>
-                  <small>WORKFORCE REPORTING</small>
-                </span>
+                <img src="/favicon.png" alt="Amsol" className="h-8 w-auto object-contain" />
               </Link>
+              <div className="mt-3 text-xs text-sidebar-foreground/70">{settings.company}</div>
             </>
           ) : (
             <Link
@@ -172,9 +165,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </div>
         <nav aria-label="Main navigation" className="flex-1 space-y-0.5 px-3">
-          <div className="report-nav-label">
-            {mode === "ceo" ? "CEO workspace" : "Staff workspace"}
-          </div>
           {visible.map((item) =>
             item.to === "/reporting" ? (
               <div key="reporting">
@@ -189,12 +179,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </Link>
                 ) : (
                   <button
-                    className="report-nav-group"
+                    className="nav-link w-full text-left"
                     aria-expanded={reportingOpen}
                     onClick={() => setReportingOpen(!reportingOpen)}
                   >
                     <AssignmentOutlined className="h-4 w-4" />
-                    <span>Reporting</span>
+                    <span className="flex-1">Reporting</span>
                     <ExpandMoreOutlined
                       className={reportingOpen ? "rotate-180" : ""}
                       fontSize="small"
@@ -309,7 +299,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <div className="min-w-0 flex-1">
-        <header className="report-topbar flex flex-wrap items-center justify-between gap-3 border-b bg-card px-5 py-3">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-card px-5 py-3">
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -329,32 +319,19 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
             </Button>
-            <div className="report-crumb">
-              AMSOL <span>/</span>{" "}
-              <strong>
-                {pathname === "/"
-                  ? "My dashboard"
-                  : pathname === "/reports"
-                    ? "Monthly reporting"
-                    : (reportingLinks.find((link) => link.view === reportingView)?.label ??
-                      "Workspace")}
-              </strong>
-            </div>
           </div>
           <div className="flex items-center gap-3">
             {account?.role !== "system_admin" && <ReportingNotifications />}
-            <span className="report-rolebox">
-              {account?.role === "system_admin"
-                ? "System administration"
-                : mode === "ceo"
-                  ? "CEO workspace"
-                  : "Staff workspace"}
-            </span>
             <Avatar name={me.name} size="sm" />
-            <CeoImpersonationControl />
+            <CeoImpersonationControl placement="topbar" />
           </div>
         </header>
-        <main className={cn("min-w-0 px-5 py-7 lg:px-8", reportingPage && "report-content")}>
+        <main
+          className={cn(
+            "min-w-0 px-5 py-7 lg:px-8",
+            reportingPage && "report-content reporting-active",
+          )}
+        >
           {accountError && (
             <div role="alert" className="mb-5 rounded-lg border p-4 text-sm">
               <p>{accountError}</p>
