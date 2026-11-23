@@ -72,6 +72,7 @@ export function RecordDialog<T extends Values>({
           className="space-y-4"
           onSubmit={async (event) => {
             event.preventDefault();
+            if (busy) return;
             setError("");
             setBusy(true);
             try {
@@ -112,6 +113,7 @@ export function RecordDialog<T extends Values>({
                       <label key={option.value} className="flex items-center gap-2 text-sm">
                         <input
                           type="checkbox"
+                          disabled={busy}
                           checked={Array.isArray(value) && value.includes(option.value)}
                           onChange={(event) =>
                             change(
@@ -130,11 +132,13 @@ export function RecordDialog<T extends Values>({
                   {field.help && <p className="mt-2 text-xs text-muted-foreground">{field.help}</p>}
                 </fieldset>
               );
-            return (
-              <label className="field-label" key={field.name}>
-                {field.label}
-                {field.required ? " *" : ""}
-                {field.type === "richtext" ? (
+            if (field.type === "richtext")
+              return (
+                <div className="field-label" key={field.name}>
+                  <span>
+                    {field.label}
+                    {field.required ? " *" : ""}
+                  </span>
                   <RichTextEditor
                     value={String(value ?? "")}
                     checklist={field.checklist}
@@ -142,12 +146,22 @@ export function RecordDialog<T extends Values>({
                     disabled={busy}
                     onChange={(next) => change(next)}
                   />
-                ) : field.type === "textarea" ? (
+                  {field.help && (
+                    <span className="text-xs font-normal text-muted-foreground">{field.help}</span>
+                  )}
+                </div>
+              );
+            return (
+              <label className="field-label" key={field.name}>
+                {field.label}
+                {field.required ? " *" : ""}
+                {field.type === "textarea" ? (
                   <textarea
                     aria-label={field.label}
                     className="field-input"
                     rows={3}
                     required={field.required}
+                    disabled={busy}
                     maxLength={10000}
                     value={String(value ?? "")}
                     onChange={(event) => change(event.target.value)}
@@ -157,6 +171,7 @@ export function RecordDialog<T extends Values>({
                     aria-label={field.label}
                     className="field-input"
                     required={field.required}
+                    disabled={busy}
                     value={String(value ?? "")}
                     onChange={(event) => change(event.target.value)}
                   >
@@ -192,6 +207,7 @@ export function RecordDialog<T extends Values>({
                     className="field-input"
                     type={field.type ?? "text"}
                     required={field.required}
+                    disabled={busy}
                     min={field.min}
                     max={field.max}
                     step={field.type === "number" ? (field.step ?? "any") : undefined}

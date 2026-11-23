@@ -342,7 +342,9 @@ export function ClientForm({
           options: [
             { value: "", label: "Selected staff only" },
             ...departments
-              .filter((dept) => mode === "ceo" || dept.id === me.dept)
+              .filter(
+                (dept) => mode === "ceo" || dept.id === me.dept || dept.id === record?.assignedDept,
+              )
               .map((dept) => ({ value: dept.id, label: dept.name })),
           ],
         },
@@ -504,7 +506,9 @@ export function RequestForm({
           options: [
             { value: "", label: "Assigned handler only" },
             ...departments
-              .filter((dept) => mode === "ceo" || dept.id === me.dept)
+              .filter(
+                (dept) => mode === "ceo" || dept.id === me.dept || dept.id === record?.assignedDept,
+              )
               .map((dept) => ({ value: dept.id, label: dept.name })),
           ],
         },
@@ -521,23 +525,27 @@ export function RequestForm({
           required: true,
           options: people
             .filter(
-              (person) => mode === "ceo" || person.id === me.id || person.dept === values.source,
+              (person) =>
+                mode === "ceo" ||
+                person.id === me.id ||
+                person.id === record?.handler ||
+                person.dept === values.source,
             )
             .map((person) => ({ value: person.id, label: person.name })),
         },
         { name: "status", label: "Status", type: "select", options: options(requestStatuses) },
         { name: "notes", label: "Notes", type: "textarea" },
       ]}
-      onSave={(values) =>
+      onSave={({ clientMode, ...values }) =>
         saveRecord(
           "clientRequests",
           requestSchema.parse({
             ...values,
             id: record?.id ?? crypto.randomUUID(),
-            client: values.clientMode === "existing" ? values.client : undefined,
+            client: clientMode === "existing" ? values.client : undefined,
             assignedDept: values.assignedDept || undefined,
             prospectClientName:
-              values.clientMode === "prospective" ? values.prospectClientName : undefined,
+              clientMode === "prospective" ? values.prospectClientName : undefined,
           }),
         )
       }

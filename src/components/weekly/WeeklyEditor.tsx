@@ -380,8 +380,8 @@ export function WeeklyEditor({
                   )}
                 </div>
                 <div className="mt-3 space-y-3 md:col-span-full">
-                  <label className="field-label">
-                    Description / deliverables
+                  <div className="field-label">
+                    <span>Description / deliverables</span>
                     <RichTextEditor
                       checklist
                       ariaLabel={`Description for task ${index + 1}`}
@@ -397,7 +397,7 @@ export function WeeklyEditor({
                         })
                       }
                     />
-                  </label>
+                  </div>
                   {checklistProgress(item.detail).total > 0 ? (
                     <p className="text-sm text-muted-foreground">
                       {checklistProgress(item.detail).done}/{checklistProgress(item.detail).total}{" "}

@@ -7,6 +7,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { useRole } from "@/lib/role";
 import type { Client } from "@/lib/data";
 import { meta } from "@/lib/meta";
+import { useBusinessAccess } from "@/lib/access";
 
 export const Route = createFileRoute("/clients")({
   head: () => ({ meta: meta("Clients", "Amsol clients, services and linked projects.") }),
@@ -19,7 +20,9 @@ function Clients() {
   const [search, setSearch] = useState("");
   const [business, setBusiness] = useState("");
   const [department, setDepartment] = useState("");
-  const canEdit = mode === "ceo" || me.dept === "operations" || me.dept === "hr";
+  const access = useBusinessAccess();
+  const managed =
+    access.permissions?.filter((grant) => grant.manage).map((grant) => grant.business) ?? [];
   const canCreate = mode !== "ceo" && (me.dept === "operations" || me.dept === "hr");
   const list = clients.filter(
     (client) =>
@@ -90,7 +93,8 @@ function Clients() {
               </div>
               {(mode === "ceo" ||
                 client.assignees?.includes(me.id) ||
-                client.assignedDept === me.dept) && (
+                (!!me.dept && client.assignedDept === me.dept) ||
+                managed.includes(client.business ?? "b0")) && (
                 <RecordActions
                   collection="clients"
                   id={client.id}

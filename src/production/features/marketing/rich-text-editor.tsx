@@ -225,6 +225,7 @@ function ToolbarButton({
       variant="ghost"
       size="icon"
       className={cn("h-8 w-8", active && "bg-secondary text-foreground")}
+      onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
@@ -471,7 +472,7 @@ export function RichTextEditor({
   useEffect(() => {
     if (!editor) return;
     if (value !== editor.getHTML()) {
-      editor.commands.setContent(value, { emitUpdate: false });
+      editor.chain().setMeta("addToHistory", false).setContent(value, { emitUpdate: false }).run();
     }
   }, [value, editor]);
   useEffect(() => {
@@ -534,7 +535,11 @@ export function RichTextEditor({
   };
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-0.5 rounded-t-md border border-b-0 bg-muted/40 p-1">
+      <div
+        role="group"
+        aria-label={`${ariaLabel} formatting`}
+        className="flex flex-wrap items-center gap-0.5 rounded-t-md border border-b-0 bg-muted/40 p-1"
+      >
         <ToolbarButton
           label="Undo"
           disabled={disabled || !state.canUndo}

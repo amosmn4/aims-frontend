@@ -41,7 +41,7 @@ function ClientRequests() {
   const list = visible.filter(
     (request) =>
       (status === "all" || request.status === status) &&
-      `${request.title} ${client(request.client ?? "")?.name ?? request.prospectClientName ?? ""}`
+      `${request.title} ${client(request.client ?? "")?.name ?? request.prospectClientName ?? ""} ${request.notes ?? ""} ${person(request.handler).name}`
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
@@ -137,7 +137,9 @@ function ClientRequests() {
                     <p className="mt-1 text-xs text-muted-foreground">{request.notes}</p>
                   </td>
                   <td className="px-5 py-3">
-                    {client(request.client ?? "")?.name ?? request.prospectClientName}
+                    {client(request.client ?? "")?.name ??
+                      request.prospectClientName ??
+                      "Client unavailable"}
                     {!request.client && <Pill tone="muted">Prospective</Pill>}
                   </td>
                   <td className="whitespace-nowrap px-5 py-3">{fmtDate(request.received)}</td>
@@ -147,7 +149,7 @@ function ClientRequests() {
                   </td>
                   <td className="px-5 py-3">
                     {(mode === "ceo" ||
-                      me.dept === request.assignedDept ||
+                      (!!me.dept && me.dept === request.assignedDept) ||
                       managed.includes(request.business ?? "b0") ||
                       request.handler === me.id) && (
                       <RecordActions
