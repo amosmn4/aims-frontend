@@ -4,6 +4,18 @@ import { useAccount } from "./account";
 import { taskOutcome, type Deliverable } from "./task-content";
 
 export type WeeklyPhase = "plan" | "report";
+export function forwardTaskPeriod(
+  task: { weekStart?: string | null | undefined; due: string },
+  now = new Date(),
+) {
+  const current = reportingWeek(now);
+  const original = task.weekStart ?? reportingWeek(new Date(`${task.due}T12:00:00Z`));
+  const next = new Date(`${original < current ? current : original}T12:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + 7);
+  const weekStart = next.toISOString().slice(0, 10);
+  next.setUTCDate(next.getUTCDate() + ((new Date(`${task.due}T12:00:00Z`).getUTCDay() + 6) % 7));
+  return { weekStart, due: next.toISOString().slice(0, 10) };
+}
 export type WeeklyItem = {
   due?: string | undefined;
   priority?: "Urgent" | "High" | "Medium" | "Low" | undefined;
@@ -36,6 +48,7 @@ export type WeeklyEntry = {
   version: number;
   submission: WeeklySubmission;
   submittedAt: string | null;
+  lateReason?: string | null;
   recalledAt?: string | null;
   reviewedAt: string | null;
   reviewComment: string | null;
@@ -66,6 +79,7 @@ export function planItems(detail: WeeklyDetail): WeeklyItem[] {
   );
   return [
     ...existing.map((item) => {
+      if (!detail.plan?.submittedAt) return item;
       const task = detail.tasks.find((task) => task.id === (item.taskId ?? item.id));
       return task
         ? {
@@ -136,6 +150,13 @@ export function reportItems(detail: WeeklyDetail): WeeklyItem[] {
     ...saved.map((item) => {
       const task = detail.tasks.find((row) => row.id === (item.taskId ?? item.id));
       const plan = planned.find((row) => (row.taskId ?? row.id) === (item.taskId ?? item.id));
+      if (!detail.report?.submittedAt)
+        return {
+          ...item,
+          detail:
+            item.outcome !== undefined ? item.detail : (task?.description ?? plan?.detail ?? ""),
+          outcome: item.outcome ?? item.detail,
+        };
       return {
         ...item,
         title: task?.title ?? plan?.title ?? item.title,

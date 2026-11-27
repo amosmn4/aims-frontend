@@ -107,7 +107,7 @@ export function ReportingWorkspacePage({
               {readableText(row.title)} | {row.period}
             </p>
             <div className="inboxmeta">
-              {row.taskCount} tasks | {weeklyTime(row.date)}
+              {row.taskCount} tasks | Updated on {weeklyTime(row.updatedAt ?? row.date)}
             </div>
           </div>
           <div className="inboxactions">
@@ -359,22 +359,6 @@ export function ReportingWorkspacePage({
                       <span>Overdue reports</span>
                       <b>{data.metrics.overdueReports}</b>
                     </div>
-                  </ReportingPanel>
-                  <ReportingPanel title="Latest management activity">
-                    {data.activity.map((event) => (
-                      <div className="activity" key={event.id}>
-                        <span className="dot" />
-                        <div>
-                          <strong>
-                            {event.name} | {event.action}
-                          </strong>
-                          <p>{weeklyTime(event.date)}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {!data.activity.length && (
-                      <p className="report-empty">No activity in this period.</p>
-                    )}
                   </ReportingPanel>
                 </div>
               </div>

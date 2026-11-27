@@ -11,6 +11,7 @@ node_modules
 dist
 .e2e-dist/
 .api-e2e-dist/
+.ui-test-dist/
 dist-ssr
 .tanstack/**
 *.local

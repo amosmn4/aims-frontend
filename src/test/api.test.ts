@@ -34,7 +34,7 @@ describe("Ops API transport", () => {
       "project team member",
     );
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
-    await expect(api("/workspace")).rejects.toThrow("Cannot reach");
+    await expect(api("/workspace")).rejects.toThrow("Your connection is temporarily unavailable");
   });
 
   it("signals session expiry when refreshing an invalidated session", async () => {

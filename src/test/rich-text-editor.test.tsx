@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { RichTextEditor } from "@/production/features/marketing/rich-text-editor";
 import { RecordDialog } from "@/components/RecordDialog";
+import { reportingWeek } from "@/lib/weekly";
 
 afterEach(cleanup);
 beforeAll(() => {
@@ -15,6 +16,35 @@ beforeAll(() => {
 });
 
 describe("Rich text draft tracking", () => {
+  it("uses a changed reporting period for forwarding without resetting editor history", async () => {
+    const changed = vi.fn();
+    const value =
+      '<ul data-type="taskList"><li data-type="taskItem" data-did="one" data-checked="false"><div><p>Follow up</p></div></li></ul>';
+    const futureMonday = reportingWeek(new Date(Date.now() + 14 * 86400000));
+    const day = new Date(`${futureMonday}T12:00:00Z`);
+    const futureWednesday = new Date(day.getTime() + 2 * 86400000).toISOString().slice(0, 10);
+    const nextFriday = new Date(day.getTime() + 11 * 86400000).toISOString().slice(0, 10);
+    const view = render(<RichTextEditor value={value} onChange={changed} checklist />);
+    await screen.findByRole("checkbox", { name: "Forward: Follow up" });
+    view.rerender(
+      <RichTextEditor
+        value={value}
+        onChange={changed}
+        checklist
+        deliverableWeek={futureWednesday}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+    expect(changed).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Forward: Follow up" }));
+    await waitFor(() => expect(changed).toHaveBeenCalled());
+    expect(changed.mock.calls.at(-1)![0]).toContain(`data-target-date="${nextFriday}"`);
+    expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "Forward: Follow up" })).not.toBeChecked(),
+    );
+  });
   it.each(["", "<p>Saved notes</p>"])(
     "renders %s without reporting changes on mount or editability changes",
     async (value) => {

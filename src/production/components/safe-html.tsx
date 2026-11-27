@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Config } from "dompurify";
 const CONFIG: Config = {
   ALLOWED_TAGS: [
@@ -78,13 +78,21 @@ export function SafeHtml({
   className,
   taskContent = false,
   checkboxEditable = false,
+  onContentReady,
 }: {
   html: string | null | undefined;
   className?: string | undefined;
   taskContent?: boolean;
   checkboxEditable?: boolean;
+  onContentReady?: ((container: HTMLDivElement) => void) | undefined;
 }) {
   const [clean, setClean] = useState("");
+  const container = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!container.current) return;
+    container.current.innerHTML = clean;
+    if (clean) onContentReady?.(container.current);
+  }, [clean, onContentReady]);
   useEffect(() => {
     let active = true;
     if (!html) {
@@ -99,7 +107,15 @@ export function SafeHtml({
           ? {
               ...CONFIG,
               ALLOWED_TAGS: [...(CONFIG.ALLOWED_TAGS ?? []), "label", "div"],
-              ALLOWED_ATTR: [...(CONFIG.ALLOWED_ATTR ?? []), "data-type", "data-checked"],
+              ALLOWED_ATTR: [
+                ...(CONFIG.ALLOWED_ATTR ?? []),
+                "data-type",
+                "data-checked",
+                "data-did",
+                "data-status",
+                "data-target-date",
+                "data-carry-key",
+              ],
             }
           : CONFIG,
       );
@@ -112,6 +128,7 @@ export function SafeHtml({
         Array.from(item.children)
           .filter((child) => child.tagName === "LABEL")
           .forEach((child) => child.remove());
+        if (onContentReady) return;
         const label = document.createElement("label");
         const input = document.createElement("input");
         input.type = "checkbox";
@@ -127,6 +144,6 @@ export function SafeHtml({
     return () => {
       active = false;
     };
-  }, [html, taskContent, checkboxEditable]);
-  return <div className={className} dangerouslySetInnerHTML={{ __html: clean }} />;
+  }, [html, taskContent, checkboxEditable, onContentReady]);
+  return <div ref={container} className={className} />;
 }

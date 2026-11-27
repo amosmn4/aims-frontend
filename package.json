@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
     "test:e2e": "playwright test",
-    "test:e2e:api": "playwright test --config playwright.api.config.ts"
+    "test:e2e:api": "playwright test --config playwright.api.config.ts",
+    "test:e2e:ui": "playwright test --config playwright.ui.config.ts"
   },
   "overrides": {
     "rolldown": "1.2.1",

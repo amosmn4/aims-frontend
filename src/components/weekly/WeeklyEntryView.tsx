@@ -153,7 +153,7 @@ export function WeeklyEntryView({ entry }: { entry: WeeklyEntry }) {
         previousSubmission?: WeeklySubmission;
       };
     }[]
-  >(`submissions/${entry.id}/history`, showHistory);
+  >(`submissions/${entry.id}/history`, showHistory && account?.role !== "ceo");
   const mutation = useMutation({
     mutationFn: (action: "review" | "return") =>
       api(`/weekly/submissions/${entry.id}/${action}`, {
@@ -176,7 +176,16 @@ export function WeeklyEntryView({ entry }: { entry: WeeklyEntry }) {
       </div>
       <p className="mb-4 text-xs text-muted-foreground">
         Submitted: {weeklyTime(entry.submittedAt)}
+        {account?.role === "ceo" && (
+          <span className="ml-3">Updated on {weeklyTime(entry.updatedAt)}</span>
+        )}
       </p>
+      {entry.late && entry.lateReason && (
+        <p className="mb-4 rounded-lg border p-3 text-sm">
+          <strong>Reason for late submission: </strong>
+          {entry.lateReason}
+        </p>
+      )}
       {entry.submittedAt ? (
         <WeeklySubmissionBody submission={entry.submission} />
       ) : (
@@ -230,15 +239,17 @@ export function WeeklyEntryView({ entry }: { entry: WeeklyEntry }) {
           )}
         </form>
       )}
-      <Button
-        type="button"
-        variant="link"
-        className="mt-3 px-0"
-        onClick={() => setShowHistory((value) => !value)}
-      >
-        {showHistory ? "Hide submission history" : "View submission history"}
-      </Button>
-      {showHistory && (
+      {account?.role !== "ceo" && (
+        <Button
+          type="button"
+          variant="link"
+          className="mt-3 px-0"
+          onClick={() => setShowHistory((value) => !value)}
+        >
+          {showHistory ? "Hide submission history" : "View submission history"}
+        </Button>
+      )}
+      {showHistory && account?.role !== "ceo" && (
         <div className="mt-3 space-y-3">
           {history.isPending && <p role="status">Loading history...</p>}
           {history.error && <p role="alert">{history.error.message}</p>}

@@ -46,7 +46,7 @@ export function ReportingDetail({ row, onBack }: { row: ReportingRow; onBack: ()
         previousSubmission?: WeeklySubmission;
       };
     }[]
-  >(`submissions/${entry?.id ?? ""}/history`, !!entry);
+  >(`submissions/${entry?.id ?? ""}/history`, !!entry && account?.role !== "ceo");
   const [decision, setDecision] = useState("review");
   const [comment, setComment] = useState("");
   const review = useMutation({
@@ -92,6 +92,10 @@ export function ReportingDetail({ row, onBack }: { row: ReportingRow; onBack: ()
               <div>
                 <small>Submitted</small>
                 <strong>{weeklyTime(row.date)}</strong>
+              </div>
+              <div>
+                <small>Updated on</small>
+                <strong>{weeklyTime(entry?.updatedAt ?? row.updatedAt ?? row.date)}</strong>
               </div>
             </div>
             {row.historical && (
@@ -185,25 +189,27 @@ export function ReportingDetail({ row, onBack }: { row: ReportingRow; onBack: ()
               <p>{entry.reviewComment ?? entry.returnComment}</p>
             </ReportingPanel>
           )}
-          <ReportingPanel title="Review history">
-            {history.isPending && entry && <p role="status">Loading history...</p>}
-            {history.error && <p role="alert">{history.error.message}</p>}
-            {history.data?.map((item) => (
-              <div className="comment" key={item.id}>
-                <strong>{item.action.replace("ops.weekly.", "").replaceAll("_", " ")}</strong>
-                {item.newValue.comment && <p>{item.newValue.comment}</p>}
-                <small>{weeklyTime(item.createdAt)}</small>
-                {(item.newValue.submission || item.newValue.previousSubmission) && (
-                  <details>
-                    <summary>Submitted snapshot</summary>
-                    <WeeklySubmissionBody
-                      submission={(item.newValue.submission ?? item.newValue.previousSubmission)!}
-                    />
-                  </details>
-                )}
-              </div>
-            ))}
-          </ReportingPanel>
+          {account?.role !== "ceo" && (
+            <ReportingPanel title="Review history">
+              {history.isPending && entry && <p role="status">Loading history...</p>}
+              {history.error && <p role="alert">{history.error.message}</p>}
+              {history.data?.map((item) => (
+                <div className="comment" key={item.id}>
+                  <strong>{item.action.replace("ops.weekly.", "").replaceAll("_", " ")}</strong>
+                  {item.newValue.comment && <p>{item.newValue.comment}</p>}
+                  <small>{weeklyTime(item.createdAt)}</small>
+                  {(item.newValue.submission || item.newValue.previousSubmission) && (
+                    <details>
+                      <summary>Submitted snapshot</summary>
+                      <WeeklySubmissionBody
+                        submission={(item.newValue.submission ?? item.newValue.previousSubmission)!}
+                      />
+                    </details>
+                  )}
+                </div>
+              ))}
+            </ReportingPanel>
+          )}
         </div>
       </div>
     </>

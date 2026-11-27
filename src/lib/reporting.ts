@@ -19,6 +19,7 @@ export type ReportingRow = {
   type: "plan" | "report" | "monthly";
   period: string;
   date: string;
+  updatedAt?: string;
   status: string;
   title: string;
   summary: string;

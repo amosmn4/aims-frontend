@@ -443,7 +443,7 @@
   color: var(--muted);
   font-size: 14px;
 }
-.reporting .reportrow input,
+.reporting .reportrow input:not([type="checkbox"]):not([type="color"]),
 .reporting .reportrow select {
   width: 100%;
   padding: 8px;
@@ -932,13 +932,13 @@
     padding-right: 32px;
   }
 }
-.reporting .reportrow input,
+.reporting .reportrow input:not([type="checkbox"]):not([type="color"]),
 .reporting .reportrow select {
   background: #fff;
   color: var(--ink);
   min-height: 42px;
 }
-.reporting .reportrow input:focus,
+.reporting .reportrow input:not([type="checkbox"]):not([type="color"]):focus,
 .reporting .reportrow select:focus {
   outline: none;
   border-color: #7ca5d4;
@@ -974,5 +974,31 @@
   }
   .reporting .weekly-task-heading > div:last-child > span {
     white-space: nowrap;
+  }
+}
+
+.weekly-task-card {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 14px;
+  background: var(--background);
+}
+.weekly-task-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.weekly-task-card-head p {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.weekly-task-composer {
+  background: var(--background);
+}
+@media (max-width: 680px) {
+  .weekly-task-card-head {
+    flex-direction: column;
   }
 }

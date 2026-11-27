@@ -43,7 +43,7 @@ test("description clicks preserve content and formatting, undo, redo and checkli
   await expect(description.locator("strong")).toHaveText("Prepare shortlist");
   await dialog.getByRole("button", { name: "Checklist", exact: true }).click();
   await expect(description.locator('ul[data-type="taskList"]')).toHaveCount(1);
-  const firstItem = description.locator('li[data-type="taskItem"] > div > p').first();
+  const firstItem = description.locator(".deliverable-content p").first();
   await expect(firstItem).toHaveText("Prepare shortlist");
   await firstItem.click();
   await description.press("End");
@@ -51,8 +51,10 @@ test("description clicks preserve content and formatting, undo, redo and checkli
   await expect(description.locator('li[data-type="taskItem"]')).toHaveCount(2);
   await description.pressSequentially("Check references");
   await dialog.getByRole("button", { name: "Indent list", exact: true }).click();
-  await expect(description.locator("ul li ul li > div > p")).toHaveText("Check references");
-  await description.getByRole("checkbox").last().check();
+  await expect(description.locator("li li .deliverable-content p").first()).toHaveText(
+    "Check references",
+  );
+  await description.getByRole("checkbox", { name: "Check references", exact: true }).check();
   await save(page);
   await page.reload();
   await page.getByLabel("Search tasks").fill("Editor regression task");

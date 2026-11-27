@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   reportingWeek,
+  forwardTaskPeriod,
   reportItems,
   planItems,
   weeklyTitle,
@@ -10,6 +11,38 @@ import {
 } from "@/lib/weekly";
 
 describe("Weekly reporting", () => {
+  it("preserves saved plan and report draft edits when linked tasks have different content", () => {
+    const item = {
+      id: "item",
+      taskId: "task",
+      title: "Edited draft title",
+      detail: "<p>Edited draft instructions</p>",
+      outcome: "Saved outcome",
+      due: "2026-11-20",
+      priority: "High",
+      status: "completed",
+      subtasks: [],
+    };
+    const detail = {
+      weekStart: "2026-11-16",
+      weekEnd: "2026-11-22",
+      plan: { submittedAt: null, submission: { items: [item] } },
+      report: { submittedAt: null, submission: { items: [item] } },
+      tasks: [
+        {
+          id: "task",
+          title: "Original task",
+          description: "Original instructions",
+          status: "To do",
+          weekStart: "2026-11-16",
+          due: "2026-11-19",
+          priority: "Low",
+        },
+      ],
+    } as unknown as WeeklyDetail;
+    expect(planItems(detail)).toEqual([item]);
+    expect(reportItems(detail)).toEqual([item]);
+  });
   it("names plans and reports using the selected ISO week, including year boundaries", () => {
     expect(weeklyTitle("plan", "2026-11-16")).toBe("Weekly Work Plan \u2013 Week 47");
     expect(weeklyTitle("plan", "2026-11-23")).toBe("Weekly Work Plan \u2013 Week 48");
@@ -39,6 +72,20 @@ describe("Weekly reporting", () => {
     expect(reportingWeek(new Date("2026-11-15T20:59:59Z"))).toBe("2026-11-09");
     expect(reportingWeek(new Date("2026-11-15T21:00:00Z"))).toBe("2026-11-16");
   });
+  it("forwards overdue work to next week's plan and keeps its due weekday", () => {
+    expect(
+      forwardTaskPeriod(
+        { weekStart: "2026-11-09", due: "2026-11-13" },
+        new Date("2026-11-27T10:00:00Z"),
+      ),
+    ).toEqual({ weekStart: "2026-11-30", due: "2026-12-04" });
+    expect(
+      forwardTaskPeriod(
+        { weekStart: "2026-12-07", due: "2026-12-09" },
+        new Date("2026-11-27T10:00:00Z"),
+      ),
+    ).toEqual({ weekStart: "2026-12-14", due: "2026-12-16" });
+  });
   it("keeps task descriptions, deliverable statuses and saved outcomes when work changes during the week", () => {
     const part = {
       id: "shortlist",
@@ -58,7 +105,10 @@ describe("Weekly reporting", () => {
       weekStart: "2026-11-16",
       weekEnd: "2026-11-22",
       plan: { submittedAt: "2026-11-16", submission: { items: [item] } },
-      report: { submission: { items: [{ ...item, outcome: "<p>Campaign launched</p>" }] } },
+      report: {
+        submittedAt: "2026-11-20",
+        submission: { items: [{ ...item, outcome: "<p>Campaign launched</p>" }] },
+      },
       tasks: [
         {
           id: "task",

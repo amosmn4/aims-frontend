@@ -35,6 +35,8 @@ type AccountContext = {
   account: Account | null;
   ready: boolean;
   error?: string;
+  sessionExpired?: boolean;
+  reconnecting?: boolean;
   retry?: () => void;
   signIn: (email: string, password: string, remember: boolean) => Promise<void>;
   signOut: () => void;
@@ -55,6 +57,8 @@ function ApiProvider({ children }: { children: ReactNode }) {
   const [identity, setIdentity] = useState<Account | null>(null);
   const [ready, setReady] = useState(true);
   const [error, setError] = useState("");
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const refreshFlight = useRef<Promise<void> | null>(null);
   const authGeneration = useRef(0);
   const account = useMemo(
@@ -76,6 +80,7 @@ function ApiProvider({ children }: { children: ReactNode }) {
       if (generation !== authGeneration.current) return;
       setIdentity(profile);
       setError("");
+      setSessionExpired(false);
     },
     [],
   );
@@ -103,10 +108,9 @@ function ApiProvider({ children }: { children: ReactNode }) {
     const expired = () => {
       authGeneration.current++;
       refreshFlight.current = null;
-      clearApiSessionHint();
-      setIdentity(null);
       setAccessToken(null);
-      clearWorkspace();
+      setSessionExpired(true);
+      setError("");
       setReady(true);
     };
     window.addEventListener("amsol-ops-session-expired", expired);
@@ -151,21 +155,29 @@ function ApiProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("amsol-ops-session-refreshed", refreshed);
   }, [identity, completeSignIn]);
   useEffect(() => {
-    if (!identity) return;
+    if (!identity || sessionExpired) return;
     const refresh = () => {
+      if (document.visibilityState === "hidden") return;
       void loadWorkspace()
         .then(() => setError(""))
-        .catch((error: unknown) =>
-          setError(error instanceof Error ? error.message : "The workspace could not refresh."),
-        );
+        .catch((error: unknown) => {
+          if (!(error instanceof ApiError && error.status === 401))
+            setError(
+              "Your connection is temporarily unavailable. We will reconnect automatically when you return.",
+            );
+        });
     };
     window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
     const timer = window.setInterval(refresh, 60_000);
     return () => {
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", refresh);
       window.clearInterval(timer);
     };
-  }, [identity]);
+  }, [identity, sessionExpired]);
   const signIn = async (email: string, password: string, remember: boolean) => {
     const generation = ++authGeneration.current;
     refreshFlight.current = null;
@@ -185,6 +197,16 @@ function ApiProvider({ children }: { children: ReactNode }) {
   const signOut = () => {
     const generation = ++authGeneration.current;
     refreshFlight.current = null;
+    if (sessionExpired) {
+      clearApiSessionHint();
+      setIdentity(null);
+      setSessionExpired(false);
+      setAccessToken(null);
+      clearWorkspace();
+      setReady(true);
+      void api("/auth/logout", { method: "POST" }, false).catch(() => {});
+      return;
+    }
     void api("/auth/logout", { method: "POST" })
       .then(() => {
         if (generation !== authGeneration.current) return;
@@ -252,7 +274,24 @@ function ApiProvider({ children }: { children: ReactNode }) {
         account,
         ready,
         error,
-        retry: () => void restore(),
+        sessionExpired,
+        reconnecting,
+        retry: () => {
+          if (!identity) {
+            void restore();
+            return;
+          }
+          setReconnecting(true);
+          void loadWorkspace()
+            .then(() => setError(""))
+            .catch((error: unknown) => {
+              if (!(error instanceof ApiError && error.status === 401))
+                setError(
+                  "Your connection is still unavailable. Your open work is here; reconnect when your connection returns.",
+                );
+            })
+            .finally(() => setReconnecting(false));
+        },
         signIn,
         signOut,
         acceptInvitation,

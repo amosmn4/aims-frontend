@@ -1,8 +1,9 @@
-import { StrictMode } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode, useState } from "react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { AccountProvider, useAccount } from "@/lib/account";
 import type { Account } from "@/lib/models";
+import { SessionRecovery } from "@/components/SessionRecovery";
 
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
@@ -179,4 +180,66 @@ it("preserves the current workspace and open forms during an ordinary token refr
   expect(screen.getByText("owner@ops.test")).toBeInTheDocument();
   expect(mocks.clearWorkspace).toHaveBeenCalledTimes(1);
   expect(mocks.loadWorkspace).toHaveBeenCalledTimes(1);
+});
+
+function OpenWork() {
+  const { ready, account, error, retry } = useAccount();
+  const [text, setText] = useState("");
+  if (!ready || !account) return <Status />;
+  return (
+    <>
+      <textarea
+        aria-label="Open report"
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+      />
+      {error && <p role="status">{error}</p>}
+      <button onClick={retry}>Reconnect</button>
+      <SessionRecovery />
+    </>
+  );
+}
+
+it("keeps open work mounted through session expiry, a failed password and successful sign-in", async () => {
+  sessionStorage.setItem("amsol-ops-api-session", "1");
+  render(
+    <AccountProvider>
+      <OpenWork />
+    </AccountProvider>,
+  );
+  const field = await screen.findByRole("textbox", { name: "Open report" });
+  fireEvent.change(field, { target: { value: "My unsaved report text" } });
+  act(() => window.dispatchEvent(new Event("amsol-ops-session-expired")));
+  expect(await screen.findByRole("dialog", { name: "Welcome back" })).toBeInTheDocument();
+  expect(field).toHaveValue("My unsaved report text");
+  expect(mocks.clearWorkspace).toHaveBeenCalledTimes(1);
+  mocks.api.mockRejectedValueOnce(new Error("Check your password."));
+  fireEvent.change(screen.getByLabelText("Password to continue"), { target: { value: "wrong" } });
+  fireEvent.click(screen.getByRole("button", { name: "Continue working" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Check your password.");
+  expect(field).toHaveValue("My unsaved report text");
+  fireEvent.change(screen.getByLabelText("Password to continue"), { target: { value: "correct" } });
+  fireEvent.click(screen.getByRole("button", { name: "Continue working" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(screen.getByRole("textbox", { name: "Open report" })).toBe(field);
+  expect(field).toHaveValue("My unsaved report text");
+  expect(mocks.loadWorkspace).toHaveBeenCalledTimes(2);
+});
+
+it("recovers a background connection failure without removing open work", async () => {
+  sessionStorage.setItem("amsol-ops-api-session", "1");
+  render(
+    <AccountProvider>
+      <OpenWork />
+    </AccountProvider>,
+  );
+  const field = await screen.findByRole("textbox", { name: "Open report" });
+  fireEvent.change(field, { target: { value: "Still working offline" } });
+  mocks.loadWorkspace.mockRejectedValueOnce(new Error("Network error"));
+  act(() => window.dispatchEvent(new Event("online")));
+  expect(await screen.findByRole("status")).toHaveTextContent("reconnect automatically");
+  fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+  await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+  expect(screen.getByRole("textbox", { name: "Open report" })).toBe(field);
+  expect(field).toHaveValue("Still working offline");
 });

@@ -15,13 +15,15 @@ import { plainText } from "@/lib/text";
 
 export function MonthlyReportEditor({
   record,
+  projectId,
   onClose,
 }: {
   record?: Report | undefined;
+  projectId?: string | undefined;
   onClose: () => void;
 }) {
   const { me } = useRole();
-  const { tasks, businesses, documents, templates } = useWorkspace();
+  const { tasks, businesses, documents, templates, projects } = useWorkspace();
   const [templateId, setTemplateId] = useState("");
   const template = templates.find((row) => row.id === templateId);
   const [id] = useState(record?.id ?? crypto.randomUUID());
@@ -29,8 +31,13 @@ export function MonthlyReportEditor({
     record?.month ?? record?.date.slice(0, 7) ?? today().slice(0, 7),
   );
   const [title, setTitle] = useState(record?.title ?? `Monthly report | ${month}`);
-  const [type, setType] = useState<Report["type"]>(record?.type ?? "Monthly");
-  const [business, setBusiness] = useState(record?.business ?? "b0");
+  const [type, setType] = useState<Report["type"]>(
+    record?.type ?? (projectId ? "Project update" : "Monthly"),
+  );
+  const [project, setProject] = useState(record?.project ?? projectId ?? "");
+  const [business, setBusiness] = useState(
+    record?.business ?? projects.find((row) => row.id === projectId)?.business ?? "b0",
+  );
   const [progress, setProgress] = useState(plainText(record?.progress));
   const [blockers, setBlockers] = useState(plainText(record?.blockers));
   const [next, setNext] = useState(plainText(record?.next));
@@ -59,6 +66,7 @@ export function MonthlyReportEditor({
         month,
         type,
         business,
+        project: project || undefined,
         dept: record?.dept ?? me.dept,
         author: me.id,
         date: record?.date ?? today(),
@@ -128,6 +136,7 @@ export function MonthlyReportEditor({
                 {[
                   "Monthly",
                   "Ad-hoc",
+                  "Project update",
                   ...(record && !["Monthly", "Ad-hoc"].includes(record.type) ? [record.type] : []),
                 ].map((value) => (
                   <option key={value}>{value}</option>
@@ -149,6 +158,24 @@ export function MonthlyReportEditor({
               </select>
             </label>
           </div>
+          <label className="field-label">
+            Project (optional)
+            <select
+              className="field-input"
+              value={project}
+              disabled={!!projectId}
+              onChange={(event) => setProject(event.target.value)}
+            >
+              <option value="">Not linked to a project</option>
+              {projects
+                .filter((row) => row.members.includes(me.id))
+                .map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.name}
+                  </option>
+                ))}
+            </select>
+          </label>
           <label className="field-label">
             Report title
             <input

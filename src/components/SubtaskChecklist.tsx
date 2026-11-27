@@ -13,6 +13,7 @@ export function SubtaskChecklist({ task, editable }: { task: Task; editable: boo
       <TaskDescription
         description={task.description}
         items={task.subtasks}
+        week={task.weekStart}
         disabled={busy}
         onChange={
           editable

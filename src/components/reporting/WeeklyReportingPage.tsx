@@ -1,15 +1,16 @@
 import { useState } from "react";
+import { TaskDelegationsPanel } from "@/components/TaskDelegations";
 import { Link } from "@tanstack/react-router";
 import { plainText, validDate } from "@/lib/text";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import UndoOutlined from "@mui/icons-material/UndoOutlined";
 import DeleteOutline from "@mui/icons-material/DeleteOutline";
 import { useSubmissionSchedules } from "@/lib/reporting";
 import { WeeklyEditor } from "@/components/weekly/WeeklyEditor";
 import { WeeklyEntryView } from "@/components/weekly/WeeklyEntryView";
 import { useAccount } from "@/lib/account";
-import { api } from "@/lib/api";
-import { loadWorkspace, perform } from "@/lib/workspace";
+import { api, isDemo } from "@/lib/api";
+import { loadWorkspace, mutateApi, perform } from "@/lib/workspace";
 import {
   useWeekly,
   weeklyTime,
@@ -32,6 +33,12 @@ export function WeeklyReportingPage({
 }) {
   const { account } = useAccount();
   const client = useQueryClient();
+  const reminder = useQuery({
+    queryKey: ["submission-reminder"],
+    queryFn: () => api<{ minutes: number }>("/submission-reminder"),
+    enabled: !isDemo && account?.role === "staff",
+    retry: false,
+  });
   const query = useWeekly<WeeklyDetail>(`reports/${week}/${account?.id ?? ""}`);
   const data = query.data;
   const entry = data?.[phase];
@@ -102,10 +109,38 @@ export function WeeklyReportingPage({
       {query.error && <p role="alert">{query.error.message}</p>}
       {data && (
         <>
+          {phase === "plan" && <TaskDelegationsPanel />}
+          {account?.role === "staff" && (
+            <label className="field-label mb-4 max-w-sm">
+              Reminder before weekly submission deadline
+              <select
+                className="field-input"
+                aria-label="Reminder before weekly submission deadline"
+                value={reminder.data?.minutes ?? 60}
+                disabled={reminder.isPending || reminder.isError}
+                onChange={(event) => {
+                  const minutes = Number(event.target.value);
+                  void perform(async () => {
+                    const saved = await mutateApi<{ minutes: number }>("/submission-reminder", {
+                      method: "PUT",
+                      body: JSON.stringify({ minutes }),
+                    });
+                    client.setQueryData(["submission-reminder"], saved);
+                  }, "Submission reminder preference saved");
+                }}
+              >
+                <option value={0}>No reminder</option>
+                <option value={20}>20 minutes before</option>
+                <option value={60}>1 hour before</option>
+                <option value={120}>2 hours before</option>
+              </select>
+              {reminder.error && <span role="alert">{reminder.error.message}</span>}
+            </label>
+          )}
           {schedule && (
             <p className="notice" role="status">
               Scheduled for {weeklyTime(schedule.runAt)} EAT. Your latest saved draft will submit
-              automatically, with a reminder one hour before.
+              automatically. Reminders follow your selected preference.
             </p>
           )}
           {!data.configured && (
@@ -137,7 +172,7 @@ export function WeeklyReportingPage({
             </>
           ) : (
             <WeeklyEditor
-              key={`${week}-${phase}-${entry?.version ?? 0}`}
+              key={`${week}-${phase}-${entry?.id ?? "new"}`}
               inline
               startActions={
                 <div className="flex flex-wrap gap-2">

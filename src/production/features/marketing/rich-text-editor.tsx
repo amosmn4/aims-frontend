@@ -1,6 +1,10 @@
-import { TaskItem, TaskList } from "@tiptap/extension-list";
+import { TaskList } from "@tiptap/extension-list";
+import { DeliverableItem } from "./deliverable-item";
+import { DeliverableWeek } from "./deliverable-week";
+import { ensureChecklistIds } from "@/lib/task-content";
+import { Extension } from "@tiptap/core";
 import ChecklistOutlined from "@mui/icons-material/ChecklistOutlined";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useEditor, useEditorState, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TiptapParagraph from "@tiptap/extension-paragraph";
@@ -163,6 +167,22 @@ const Paragraph = TiptapParagraph.extend({
   },
 });
 const EXTENSIONS = [
+  Extension.create({
+    name: "listNavigation",
+    priority: 1000,
+    addKeyboardShortcuts() {
+      return {
+        Tab: () => {
+          const type = this.editor.isActive("taskItem") ? "taskItem" : "listItem";
+          return this.editor.isActive(type) && this.editor.commands.sinkListItem(type);
+        },
+        "Shift-Tab": () => {
+          const type = this.editor.isActive("taskItem") ? "taskItem" : "listItem";
+          return this.editor.isActive(type) && this.editor.commands.liftListItem(type);
+        },
+      };
+    },
+  }),
   StarterKit.configure({
     paragraph: false,
     heading: { levels: HEADING_LEVELS },
@@ -400,27 +420,36 @@ export function RichTextEditor({
   disabled,
   ariaLabel = "Formatted content",
   checklist = false,
+  deliverableWeek,
 }: {
   value: string;
   onChange: (html: string) => void;
   disabled?: boolean | undefined;
   ariaLabel?: string | undefined;
   checklist?: boolean | undefined;
+  deliverableWeek?: string | undefined;
 }) {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkText, setLinkText] = useState("");
   const [linkNewTab, setLinkNewTab] = useState(true);
   const [linkNeedsText, setLinkNeedsText] = useState(false);
+  const content = useMemo(
+    () => (checklist ? ensureChecklistIds(value) : value),
+    [value, checklist],
+  );
   const editor = useEditor({
     extensions: checklist
       ? [
           ...EXTENSIONS,
           TaskList,
-          TaskItem.configure({ nested: true, HTMLAttributes: { "data-type": "taskItem" } }),
+          DeliverableItem.configure({
+            nested: true,
+            HTMLAttributes: { "data-type": "taskItem" },
+          }),
         ]
       : EXTENSIONS,
-    content: value,
+    content,
     editable: !disabled,
     immediatelyRender: false,
     onUpdate: ({ editor: e }) => onChange(e.getHTML()),
@@ -471,10 +500,14 @@ export function RichTextEditor({
   const state = useEditorState({ editor, selector: currentState }) ?? currentState({ editor });
   useEffect(() => {
     if (!editor) return;
-    if (value !== editor.getHTML()) {
-      editor.chain().setMeta("addToHistory", false).setContent(value, { emitUpdate: false }).run();
+    if (content !== editor.getHTML()) {
+      editor
+        .chain()
+        .setMeta("addToHistory", false)
+        .setContent(content, { emitUpdate: false })
+        .run();
     }
-  }, [value, editor]);
+  }, [content, editor]);
   useEffect(() => {
     editor?.setEditable(!disabled, false);
   }, [disabled, editor]);
@@ -854,7 +887,13 @@ export function RichTextEditor({
           <RemoveFormatting className="h-4 w-4" /> Clear formatting
         </Button>
       </div>
-      <EditorContent editor={editor} />
+      <DeliverableWeek.Provider value={deliverableWeek ?? null}>
+        <EditorContent editor={editor} />
+      </DeliverableWeek.Provider>
+      <p className="mt-1 text-xs font-normal text-muted-foreground">
+        Within a list, Enter adds an item. Shift+Enter adds a line within the item. Tab and
+        Shift+Tab change the nesting.
+      </p>
 
       <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
         <DialogContent className="sm:max-w-md" onCloseAutoFocus={keepEditorFocus}>

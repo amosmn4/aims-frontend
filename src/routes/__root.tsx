@@ -16,6 +16,7 @@ import { AccountProvider, useAccount } from "@/lib/account";
 import { RoleProvider } from "@/lib/role";
 import { AppShell } from "@/components/AppShell";
 import { Toaster } from "@/components/ui/sonner";
+import { SessionRecovery } from "@/components/SessionRecovery";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({ meta: [{ title: "Amsol Ops" }] }),
@@ -32,13 +33,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
-function ErrorComponent({ error, reset }: ErrorComponentProps) {
+function ErrorComponent({ reset }: ErrorComponentProps) {
   const router = useRouter();
   return (
     <div className="mx-auto max-w-md p-8">
-      <h1 className="text-xl font-semibold">This page could not load</h1>
+      <h1 className="text-xl font-semibold">Let’s get you back to your workspace</h1>
       <p role="alert" className="my-4 text-muted-foreground">
-        {error instanceof Error ? error.message : "An unexpected error occurred."}
+        The page needs to reconnect. Reload it to continue, or return to your dashboard.
       </p>
       <button
         className="action-button"
@@ -47,7 +48,7 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
           reset();
         }}
       >
-        Try again
+        Reload page
       </button>
       <a href="/" className="ml-4 text-primary underline">
         Go home
@@ -65,6 +66,7 @@ function RootComponent() {
           <HeadContent />
           <ModuleCacheLifecycle />
           <AuthenticatedContent />
+          <SessionRecovery />
           <ConfirmDialogHost />
           <Toaster position="bottom-right" richColors={false} />
         </RoleProvider>
@@ -86,12 +88,16 @@ function AuthenticatedContent() {
   if (error && !account)
     return (
       <div className="mx-auto max-w-md p-8">
+        <h1 className="mb-3 text-xl font-semibold">Reconnect to your workspace</h1>
         <p role="alert" className="mb-4">
-          {error}
+          Your connection is temporarily unavailable. Reconnect to continue, or sign in again.
         </p>
         <button className="action-button" onClick={retry}>
-          Try again
+          Reconnect
         </button>
+        <Link to="/login" className="ml-4 text-primary underline">
+          Sign in
+        </Link>
       </div>
     );
   if (!account) return <Navigate to="/login" search={{ redirect: href }} replace />;

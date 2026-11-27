@@ -1,10 +1,12 @@
+import { TaskDelegateDialog, TaskDelegationsPanel } from "@/components/TaskDelegations";
 import { UploadField } from "@/components/UploadField";
 import { checklistProgress, taskDescription } from "@/lib/task-content";
 import { SubtaskChecklist } from "@/components/SubtaskChecklist";
-import { reportingWeek } from "@/lib/weekly";
+import { reportingWeek, forwardTaskPeriod } from "@/lib/weekly";
 import { useBusinessAccess } from "@/lib/access";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, PageHeader, Pill } from "@/components/kit";
 import { EmptyState, RecordActions, SearchField } from "@/components/RecordDialog";
 import { toast } from "sonner";
@@ -19,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { TaskForm } from "@/components/WorkspaceForms";
 import { useRole } from "@/lib/role";
-import { commentTask, perform, saveRecord, useWorkspace } from "@/lib/workspace";
+import { commentTask, mutateApi, perform, saveRecord, useWorkspace } from "@/lib/workspace";
 import type { Task } from "@/lib/data";
 import { documentSchema } from "@/lib/models";
 import { today } from "@/lib/access";
@@ -46,6 +48,7 @@ const cols = ["To do", "In progress", "Done", "Blocked", "Cancelled"] as const;
 
 function Tasks() {
   const { mode, me } = useRole();
+  const queryClient = useQueryClient();
   const routeSearch = Route.useSearch();
   const { tasks, projects, people, documents, businesses, person, project } = useWorkspace();
   const access = useBusinessAccess();
@@ -56,6 +59,7 @@ function Tasks() {
   const [edit, setEdit] = useState<Task | "new" | null>(null);
   const [expanded, setExpanded] = useState<string[]>([]);
   const [commenting, setCommenting] = useState<Task | null>(null);
+  const [delegating, setDelegating] = useState<Task | null>(null);
   const [search, setSearch] = useState("");
   const [week, setWeek] = useState("");
   const [weekInput, setWeekInput] = useState("");
@@ -103,6 +107,7 @@ function Tasks() {
   const canCreate = true;
   return (
     <div>
+      <TaskDelegationsPanel />
       <PageHeader
         title={
           mode === "ceo"
@@ -306,6 +311,44 @@ function Tasks() {
                             ))}
                           </select>
                         )}
+                      {(mode === "ceo" || task.assignee === me.id) &&
+                        task.status !== "Done" &&
+                        task.status !== "Cancelled" && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                void perform(async () => {
+                                  if (isDemo) {
+                                    await saveRecord("tasks", {
+                                      ...task,
+                                      ...forwardTaskPeriod(task),
+                                    });
+                                  } else {
+                                    await mutateApi(`/tasks/${task.id}/forward`, {
+                                      method: "POST",
+                                    });
+                                  }
+                                  await queryClient.invalidateQueries({ queryKey: ["weekly"] });
+                                }, "Task moved to next week's plan")
+                              }
+                            >
+                              Forward to next week
+                            </Button>
+                            {!isDemo && mode !== "ceo" && task.assignee === me.id && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setDelegating(task)}
+                              >
+                                Delegate task
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       <details
                         className="mt-2 text-sm"
                         open={expanded.includes(task.id)}
@@ -455,6 +498,7 @@ function Tasks() {
         <TaskForm record={edit === "new" ? undefined : edit} onClose={() => setEdit(null)} />
       )}
       {commenting && <TaskCommentDialog task={commenting} onClose={() => setCommenting(null)} />}
+      {delegating && <TaskDelegateDialog task={delegating} onClose={() => setDelegating(null)} />}
     </div>
   );
 }

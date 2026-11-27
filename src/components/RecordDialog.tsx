@@ -142,6 +142,9 @@ export function RecordDialog<T extends Values>({
                   <RichTextEditor
                     value={String(value ?? "")}
                     checklist={field.checklist}
+                    deliverableWeek={
+                      typeof values["weekStart"] === "string" ? values["weekStart"] : undefined
+                    }
                     ariaLabel={field.label}
                     disabled={busy}
                     onChange={(next) => change(next)}

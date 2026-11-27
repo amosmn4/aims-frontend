@@ -11,6 +11,7 @@ export default tseslint.config(
       "dist",
       ".e2e-dist",
       ".api-e2e-dist",
+      ".ui-test-dist",
       "node_modules",
       ".npm-cache",
       ".tanstack",

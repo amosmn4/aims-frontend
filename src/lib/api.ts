@@ -81,7 +81,7 @@ export async function apiFetch(
       throw error;
     }
     throw new Error(
-      "Cannot reach the Amsol Ops server. Check that the backend is running and try again.",
+      "Your connection is temporarily unavailable. Your open work is still here. Reconnect when you are ready.",
     );
   }
   if (!response.ok) {

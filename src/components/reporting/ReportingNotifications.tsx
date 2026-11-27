@@ -5,12 +5,22 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useWeekly, weeklyTime } from "@/lib/weekly";
 import { api } from "@/lib/api";
 import { perform } from "@/lib/workspace";
+import { useTaskDelegations } from "@/lib/task-delegations";
+import { DelegationActions } from "@/components/TaskDelegations";
 
 export function ReportingNotifications() {
-  const query =
-    useWeekly<
-      { id: string; title: string; body: string | null; isRead: boolean; createdAt: string }[]
-    >("notifications");
+  const delegations = useTaskDelegations();
+  const query = useWeekly<
+    {
+      id: string;
+      title: string;
+      body: string | null;
+      isRead: boolean;
+      createdAt: string;
+      resourceType: string;
+      resourceId: string;
+    }[]
+  >("notifications");
   const client = useQueryClient();
   const unread = query.data?.filter((item) => !item.isRead).length ?? 0;
   return (
@@ -32,6 +42,12 @@ export function ReportingNotifications() {
             <p className="font-semibold">{item.title}</p>
             <p className="my-1 whitespace-pre-wrap">{item.body}</p>
             <p className="text-muted-foreground">{weeklyTime(item.createdAt)}</p>
+            {item.resourceType === "ops-delegation" &&
+              delegations.data?.find((row) => row.id === item.resourceId) && (
+                <DelegationActions
+                  request={delegations.data.find((row) => row.id === item.resourceId)!}
+                />
+              )}
             {!item.isRead && (
               <button
                 className="mt-2 text-primary underline"

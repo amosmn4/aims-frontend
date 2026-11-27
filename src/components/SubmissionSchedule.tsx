@@ -36,8 +36,8 @@ export function SubmissionSchedule({
         Schedule submission
       </h3>
       <p className="text-muted-foreground">
-        Your latest saved draft will submit automatically. You will receive a reminder one hour
-        before. Email to the CEO follows the normal reporting schedule.
+        Your latest saved draft will submit automatically at this time. Reminder timing follows your
+        submission reminder preference. Email to the CEO follows the normal reporting schedule.
       </p>
       {query.error && <p role="alert">{query.error.message}</p>}
       {schedule && (

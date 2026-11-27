@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { getWorkspace, useWorkspace } from "@/lib/workspace";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getWorkspace, mutateApi, perform, useWorkspace } from "@/lib/workspace";
 import { ProjectForm, TaskForm } from "@/components/WorkspaceForms";
+import { MonthlyReportEditor } from "@/components/MonthlyReportEditor";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { Download, FileText, Lock } from "@/components/icons";
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,7 @@ import type { Stage } from "@/lib/data";
 import { canOpenDoc, useRole } from "@/lib/role";
 import { SafeHtml } from "@/production/components/safe-html";
 import { useBusinessAccess } from "@/lib/access";
+import { api } from "@/lib/api";
 
 export const Route = createFileRoute("/projects/$id")({
   loader: ({ params }) => {
@@ -51,11 +54,26 @@ const stages: Stage[] = ["Planning", "In progress", "Review", "Completed"];
 
 function ProjectPage() {
   const { id } = Route.useParams();
+  const queryClient = useQueryClient();
   const workspace = useWorkspace();
   const { project, client, deptName, person, tasks, documents: allDocs, projects } = workspace;
   const p = project(id);
   const [edit, setEdit] = useState(false);
   const [newTask, setNewTask] = useState(false);
+  const [newReport, setNewReport] = useState(false);
+  const notes = useQuery({
+    queryKey: ["ops-project-notes", id],
+    queryFn: () =>
+      api<
+        {
+          id: string;
+          note: string;
+          createdAt: string;
+          author: { id: string; name: string };
+        }[]
+      >(`/projects/${encodeURIComponent(id)}/notes`),
+    retry: false,
+  });
   const { mode, me, reports } = useRole();
   const access = useBusinessAccess();
   const managesBusiness = !!access.permissions?.some(
@@ -99,12 +117,18 @@ function ProjectPage() {
                 Download progress PDF
               </Button>
             )}
+            {mode !== "ceo" && p.members.includes(me.id) && (
+              <Button variant="outline" onClick={() => setNewReport(true)}>
+                Add project report
+              </Button>
+            )}
           </div>
         }
       />
 
       {edit && <ProjectForm record={p} onClose={() => setEdit(false)} />}
       {newTask && <TaskForm projectId={p.id} onClose={() => setNewTask(false)} />}
+      {newReport && <MonthlyReportEditor projectId={p.id} onClose={() => setNewReport(false)} />}
       <Card className="mb-6">
         <div className="mb-4 grid grid-cols-4 gap-2">
           {stages.map((s, i) => {
@@ -120,6 +144,9 @@ function ProjectPage() {
               </div>
             );
           })}
+        </div>
+        <div className="mb-2 text-xs font-semibold text-muted-foreground">
+          Project summary and notes
         </div>
         <SafeHtml html={p.summary} className="blog-content text-sm" />
         <div className="mt-4 flex items-center gap-3">
@@ -139,6 +166,15 @@ function ProjectPage() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
+            <ProjectNotes
+              projectId={p.id}
+              canAdd={mode !== "ceo" && p.members.includes(me.id)}
+              notes={notes.data ?? []}
+              error={notes.error instanceof Error ? notes.error.message : ""}
+              onAdded={async () => {
+                await queryClient.invalidateQueries({ queryKey: ["ops-project-notes", id] });
+              }}
+            />
             <div>
               <SectionTitle>Updates & reports</SectionTitle>
               <div className="space-y-3">
@@ -276,5 +312,76 @@ function ProjectPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function ProjectNotes({
+  projectId,
+  canAdd,
+  notes,
+  error,
+  onAdded,
+}: {
+  projectId: string;
+  canAdd: boolean;
+  notes: { id: string; note: string; createdAt: string; author: { id: string; name: string } }[];
+  error: string;
+  onAdded: () => Promise<void>;
+}) {
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  return (
+    <section>
+      <SectionTitle>Project notes</SectionTitle>
+      <Card className="space-y-4">
+        {error && <p role="alert">{error}</p>}
+        {!error && !notes.length && (
+          <p className="text-sm text-muted-foreground">No notes have been added to this project.</p>
+        )}
+        {notes.map((row) => (
+          <article key={row.id} className="border-b pb-3 last:border-0 last:pb-0">
+            <p className="whitespace-pre-wrap text-sm">{row.note}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {row.author.name} ·{" "}
+              {new Date(row.createdAt).toLocaleString("en-GB", { timeZone: "Africa/Nairobi" })} EAT
+            </p>
+          </article>
+        ))}
+        {canAdd && (
+          <form
+            className="space-y-2 border-t pt-3"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (!note.trim()) return;
+              setSaving(true);
+              const saved = await perform(async () => {
+                await mutateApi(`/projects/${encodeURIComponent(projectId)}/notes`, {
+                  method: "POST",
+                  body: JSON.stringify({ note }),
+                });
+                setNote("");
+                await onAdded();
+              }, "Project note added");
+              setSaving(false);
+              if (!saved) return;
+            }}
+          >
+            <label className="field-label">
+              Add a note
+              <textarea
+                className="field-input min-h-20"
+                maxLength={5000}
+                value={note}
+                disabled={saving}
+                onChange={(event) => setNote(event.target.value)}
+              />
+            </label>
+            <Button type="submit" size="sm" disabled={saving || !note.trim()}>
+              Add note
+            </Button>
+          </form>
+        )}
+      </Card>
+    </section>
   );
 }

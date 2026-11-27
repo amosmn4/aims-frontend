@@ -12,6 +12,23 @@ async function login(page: Page, email = "ceo@ops-verify.local") {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
 }
+
+async function submitWeekly(page: Page, phase: "plan" | "report") {
+  await page.getByRole("button", { name: `Submit ${phase} to CEO`, exact: true }).click();
+  await expect(
+    page
+      .getByRole("dialog", { name: "Reason for late submission" })
+      .or(page.getByRole("button", { name: `Submit ${phase} update`, exact: true })),
+  ).toBeVisible();
+  const late = page.getByRole("dialog", { name: "Reason for late submission" });
+  if (await late.isVisible()) {
+    await late
+      .getByLabel("Reason", { exact: true })
+      .fill("Waiting for confirmation of the completed work.");
+    await late.getByRole("button", { name: `Submit ${phase}`, exact: true }).click();
+  }
+}
+
 async function staffId(request: APIRequestContext) {
   const response = await request.post(api + "/auth/login", {
     maxRetries: 1,
@@ -75,18 +92,19 @@ test("matches the reporting prototype, recalls and updates a plan, and reports a
     [1, "Prepare payroll summaries"],
     [2, "Update recruitment pipeline"],
   ] as const) {
-    await page.getByRole("button", { name: "Add task", exact: true }).click();
+    await page.getByRole("button", { name: "Add task", exact: true }).first().click();
     await page.getByLabel(`Task ${index}`, { exact: true }).fill(title);
+    if (index === 1) {
+      await page.getByLabel("Priority for task 1").selectOption("High");
+      await page.getByLabel("Due day for task 1").selectOption("2026-11-20");
+    }
+    await page.getByRole("button", { name: "Save task", exact: true }).click();
   }
-  await page.getByLabel("Priority for task 1").selectOption("High");
-  await page.getByLabel("Due day for task 1").selectOption("2026-11-20");
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(page.getByText("Draft saved", { exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel("Task 2", { exact: true })).toHaveValue(
-    "Update recruitment pipeline",
-  );
-  await page.getByRole("button", { name: "Submit plan to CEO", exact: true }).click();
+  await expect(page.getByText("2. Update recruitment pipeline", { exact: true })).toBeVisible();
+  await submitWeekly(page, "plan");
   await expect(page.getByRole("button", { name: "Submit plan update", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Recall plan", exact: true }).click();
   await page
@@ -94,10 +112,11 @@ test("matches the reporting prototype, recalls and updates a plan, and reports a
     .getByRole("button", { name: "Recall submission", exact: true })
     .click();
   await expect(page.getByText("Recalled", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Add task", exact: true }).click();
+  await page.getByRole("button", { name: "Add task", exact: true }).first().click();
   await page.getByLabel("Task 3", { exact: true }).fill("Urgent follow-up");
   await page.getByLabel("Priority for task 3").selectOption("Urgent");
-  await page.getByRole("button", { name: "Submit plan to CEO", exact: true }).click();
+  await page.getByRole("button", { name: "Save task", exact: true }).click();
+  await submitWeekly(page, "plan");
   await expect(page.getByRole("button", { name: "Submit plan update", exact: true })).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: "test-results/prototype-staff-plan.png", fullPage: true });
@@ -109,18 +128,22 @@ test("matches the reporting prototype, recalls and updates a plan, and reports a
   await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await page.goto(`/reporting?view=weekly-report&week=${week}`);
-  await expect(page.getByLabel("Status: Standalone weekly work", { exact: true })).toBeVisible();
+  await expect(page.getByText(/^[0-9]+\. Standalone weekly work$/)).toBeVisible();
   await page.getByLabel("Report title", { exact: true }).fill("Payroll and recruitment results");
   await page
     .getByLabel("Executive summary", { exact: true })
     .fill("Payroll was completed. Recruitment needs client input.");
+  await page.getByRole("button", { name: "Edit task 1", exact: true }).click();
   await page
     .getByLabel("Status: Prepare payroll summaries", { exact: true })
     .selectOption("completed");
   await page
     .getByLabel("Outcome: Prepare payroll summaries", { exact: true })
     .fill("Payroll reconciled and sent.");
+  await page.getByRole("button", { name: "Save task", exact: true }).click();
+  await page.getByRole("button", { name: "Edit task 3", exact: true }).click();
   await page.getByLabel("Status: Urgent follow-up", { exact: true }).selectOption("blocked");
+  await page.getByRole("button", { name: "Save task", exact: true }).click();
   await page
     .getByLabel("Challenges and blockers", { exact: true })
     .fill("Client shortlist is pending.");
@@ -131,7 +154,7 @@ test("matches the reporting prototype, recalls and updates a plan, and reports a
     .getByLabel("Notes (optional)", { exact: true })
     .fill("Payroll was completed. Recruitment updates need client input.");
   await page.screenshot({ path: "test-results/prototype-staff-report.png", fullPage: true });
-  await page.getByRole("button", { name: "Submit report to CEO", exact: true }).click();
+  await submitWeekly(page, "report");
   await expect(
     page.getByRole("button", { name: "Submit report update", exact: true }),
   ).toBeVisible();
@@ -184,7 +207,7 @@ test("lets the CEO review prototype submissions, preserves history and notifies 
     await staff
       .getByLabel("Notes (optional)", { exact: true })
       .fill("Amos is following up with the client on Monday.");
-    await staff.getByRole("button", { name: "Submit report to CEO", exact: true }).click();
+    await submitWeekly(staff, "report");
     await expect(
       staff.getByRole("button", { name: "Submit report update", exact: true }),
     ).toBeVisible();
@@ -202,7 +225,8 @@ test("lets the CEO review prototype submissions, preserves history and notifies 
   await expect(
     page.getByText("Thank you. Follow up on Monday.", { exact: true }).first(),
   ).toBeVisible();
-  await page.getByText("Submitted snapshot", { exact: true }).first().click();
+  await expect(page.getByRole("button", { name: /Submission history/ })).toHaveCount(0);
+  await expect(page.getByText(/Updated on/).first()).toBeVisible();
   await expect(
     page
       .getByText("Payroll was completed. Recruitment updates need client input.", { exact: true })
@@ -338,8 +362,9 @@ test("schedules a prototype plan draft and deletes it with its pending schedule"
   await page.clock.setFixedTime(new Date("2026-11-20T16:00:00Z"));
   await login(page, "staff@ops-verify.local");
   await page.goto("/reporting?view=weekly-plan&week=2026-11-23");
-  await page.getByRole("button", { name: "Add task", exact: true }).click();
+  await page.getByRole("button", { name: "Add task", exact: true }).first().click();
   await page.getByLabel("Task 1", { exact: true }).fill("Next week preparation");
+  await page.getByRole("button", { name: "Save task", exact: true }).click();
   await page.getByRole("button", { name: "Schedule", exact: true }).click();
   await page.getByLabel("Submission time (EAT)").fill("2026-11-23T10:00");
   await page.getByRole("button", { name: "Save and schedule", exact: true }).click();

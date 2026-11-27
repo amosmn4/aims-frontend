@@ -207,7 +207,34 @@ table {
 }
 .blog-content li[data-type="taskItem"] > label {
   flex: none;
-  padding-top: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding-top: 0.2em;
+}
+.blog-content li[data-type="taskItem"] > label > input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  flex: none;
+}
+.blog-content ul:not([data-type="taskList"]) {
+  list-style: disc;
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+.blog-content ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+.blog-content p {
+  margin: 0 0 0.5em;
+}
+.blog-content li > p {
+  margin: 0;
 }
 .blog-content li[data-type="taskItem"] > div {
   flex: 1;
@@ -218,4 +245,73 @@ table {
 }
 .blog-content li[data-type="taskItem"] ul {
   margin-left: 1rem;
+}
+.blog-content li.deliverable-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+.blog-content .deliverable-content {
+  grid-column: 1;
+  min-width: 0;
+}
+.blog-content .deliverable-content > div > p {
+  margin: 0;
+}
+.blog-content .deliverable-row > [data-deliverable-actions] {
+  grid-column: 2;
+  grid-row: 1;
+}
+.deliverable-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  align-content: flex-start;
+  align-self: start;
+  gap: 0.35rem;
+  max-width: 240px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.deliverable-actions .deliverable-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 2px 4px;
+  background: #f8fafc;
+  color: #475569;
+}
+.deliverable-actions .deliverable-action[data-selected="true"] {
+  color: #1d4ed8;
+  border-color: #1d4ed8;
+  background: #eff6ff;
+}
+.deliverable-actions .deliverable-action input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  flex: none;
+}
+.deliverable-outcome,
+.deliverable-date {
+  font-size: 11px;
+  white-space: nowrap;
+}
+@media (max-width: 900px) {
+  .blog-content li.deliverable-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .blog-content .deliverable-row > [data-deliverable-actions],
+  .blog-content .deliverable-row > .deliverable-actions {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: end;
+  }
 }

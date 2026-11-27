@@ -60,7 +60,7 @@ const systemAdminNav = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { mode, setMode, me } = useRole();
-  const { account, signOut, error: accountError, retry } = useAccount();
+  const { account, signOut, error: accountError, retry, reconnecting } = useAccount();
   const { pathname, searchStr } = useLocation();
   const { businesses, tenders, clientRequests, people, deptName, settings, storageError } =
     useWorkspace();
@@ -333,10 +333,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         >
           {accountError && (
-            <div role="alert" className="mb-5 rounded-lg border p-4 text-sm">
+            <div role="status" className="mb-5 rounded-lg border bg-muted/30 p-4 text-sm">
+              <p className="mb-1 font-medium">Connection paused</p>
               <p>{accountError}</p>
-              <Button variant="outline" className="mt-3" onClick={retry}>
-                Reload workspace
+              <Button variant="outline" className="mt-3" disabled={reconnecting} onClick={retry}>
+                {reconnecting ? "Reconnecting..." : "Reconnect"}
               </Button>
             </div>
           )}

@@ -43,7 +43,7 @@ function Projects() {
               : "Projects you belong to"
         }
         action={
-          (mode !== "staff" || managed.length > 0) && (
+          (mode !== "staff" || !!me.dept || managed.length > 0) && (
             <button className="action-button" onClick={() => setEdit("new")}>
               New project
             </button>

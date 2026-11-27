@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { deliverableDates } from "@/lib/task-content";
 import { TaskDescription } from "@/components/TaskDescription";
 import { checklistProgress, checklistStatus, taskDescription } from "@/lib/task-content";
 
@@ -51,5 +52,46 @@ describe("Single task description", () => {
     );
     expect(checklistStatus("", "Done")).toBe("Done");
     expect(checklistStatus("", "Blocked")).toBe("Blocked");
+  });
+
+  it("stores independent outcomes and only carries the selected deliverable", async () => {
+    function Form() {
+      const [description, setDescription] = useState(html);
+      return (
+        <>
+          <TaskDescription description={description} onChange={setDescription} />
+          <output data-testid="saved">{description}</output>
+        </>
+      );
+    }
+    render(<Form />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Blocked: Check references" }));
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "Blocked: Check references" })).toBeChecked(),
+    );
+    expect(screen.getByRole("checkbox", { name: "Check references" })).not.toBeChecked();
+    let saved = screen.getByTestId("saved").textContent!;
+    expect(checklistStatus(saved, "To do")).toBe("Blocked");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Forward: Check references" }));
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "Forward: Check references" })).toBeChecked(),
+    );
+    expect(screen.getByRole("checkbox", { name: "Blocked: Check references" })).not.toBeChecked();
+    saved = screen.getByTestId("saved").textContent!;
+    const document = new DOMParser().parseFromString(saved, "text/html");
+    const rows = document.querySelectorAll('li[data-type="taskItem"]');
+    expect(rows[0]!.getAttribute("data-status")).toBeNull();
+    expect(rows[1]!.getAttribute("data-status")).toBe("forwarded");
+    expect(rows[1]!.getAttribute("data-target-date")).toBe(deliverableDates().forward);
+    expect(rows[2]!.getAttribute("data-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Postpone: Check references" }));
+    const date = deliverableDates().forward;
+    fireEvent.change(await screen.findByLabelText("New due date"), { target: { value: date } });
+    fireEvent.click(screen.getByRole("button", { name: "Postpone deliverable" }));
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "Postpone: Check references" })).toBeChecked(),
+    );
+    expect(screen.getByRole("checkbox", { name: "Forward: Check references" })).not.toBeChecked();
+    expect(screen.getByTestId("saved")).toHaveTextContent('data-status="postponed"');
   });
 });

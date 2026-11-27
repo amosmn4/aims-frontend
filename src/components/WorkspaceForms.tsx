@@ -97,10 +97,16 @@ export function ProjectForm({
           label: "Departments",
           type: "multi",
           required: true,
-          options: departments.map((department) => ({
-            value: department.id,
-            label: department.name,
-          })),
+          options: departments
+            .filter(
+              (department) =>
+                mode === "ceo" ||
+                department.id === me.dept ||
+                businessAccess.permissions?.some(
+                  (grant) => grant.business === values.business && grant.manage,
+                ),
+            )
+            .map((department) => ({ value: department.id, label: department.name })),
         },
         {
           name: "members",
@@ -132,7 +138,7 @@ export function ProjectForm({
           required: true,
         },
         { name: "due", label: "Due date", type: "date", required: true },
-        { name: "summary", label: "Summary", type: "richtext", required: true },
+        { name: "summary", label: "Project summary and notes", type: "richtext", required: true },
         {
           name: "business",
           label: "Business",
