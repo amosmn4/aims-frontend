@@ -84,6 +84,12 @@ describe("Single task description", () => {
     expect(rows[1]!.getAttribute("data-status")).toBe("forwarded");
     expect(rows[1]!.getAttribute("data-target-date")).toBe(deliverableDates().forward);
     expect(rows[2]!.getAttribute("data-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Undo forward: Check references" }));
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "Forward: Check references" })).not.toBeChecked(),
+    );
+    expect(screen.getByRole("checkbox", { name: "Run campaign" })).toBeChecked();
+    expect(screen.getByTestId("saved").textContent).not.toContain("data-target-date");
     fireEvent.click(screen.getByRole("checkbox", { name: "Postpone: Check references" }));
     const date = deliverableDates().forward;
     fireEvent.change(await screen.findByLabelText("New due date"), { target: { value: date } });
@@ -93,5 +99,12 @@ describe("Single task description", () => {
     );
     expect(screen.getByRole("checkbox", { name: "Forward: Check references" })).not.toBeChecked();
     expect(screen.getByTestId("saved")).toHaveTextContent('data-status="postponed"');
+    fireEvent.click(screen.getByRole("button", { name: "Undo postpone: Check references" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("checkbox", { name: "Postpone: Check references" }),
+      ).not.toBeChecked(),
+    );
+    expect(screen.getByTestId("saved").textContent).not.toContain("data-target-date");
   });
 });

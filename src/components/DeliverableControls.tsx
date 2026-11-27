@@ -5,6 +5,7 @@ import ScheduleOutlined from "@mui/icons-material/ScheduleOutlined";
 import CloseOutlined from "@mui/icons-material/CloseOutlined";
 import BlockOutlined from "@mui/icons-material/BlockOutlined";
 import PersonAddAltOutlined from "@mui/icons-material/PersonAddAltOutlined";
+import UndoOutlined from "@mui/icons-material/UndoOutlined";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { deliverableDates, type DeliverableStatus } from "@/lib/task-content";
@@ -106,6 +107,18 @@ export function DeliverableControls({
         )}
         {targetDate && (status === "forwarded" || status === "postponed") && (
           <span className="deliverable-date">{targetDate}</span>
+        )}
+        {onChange && (status === "forwarded" || status === "postponed") && (
+          <button
+            type="button"
+            className="deliverable-action deliverable-undo"
+            aria-label={`Undo ${status === "forwarded" ? "forward" : "postpone"}: ${title}`}
+            disabled={!editable}
+            onClick={() => onChange("pending")}
+          >
+            <UndoOutlined fontSize="inherit" />
+            Undo {status === "forwarded" ? "forward" : "postpone"}
+          </button>
         )}
       </span>
       <Dialog open={postponing} onOpenChange={setPostponing}>

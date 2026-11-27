@@ -382,6 +382,41 @@ test("report deliverables keep separate outcomes and future dates after reload",
       .locator('li[data-type="taskItem"]')
       .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-did"))),
   ).toEqual(before);
+  await editor.getByRole("button", { name: "Undo forward: References", exact: true }).click();
+  await expect(
+    editor.getByRole("checkbox", { name: "Forward: References", exact: true }),
+  ).not.toBeChecked();
+  await page.getByRole("button", { name: "Save task", exact: true }).click();
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect(page.getByText("Draft saved", { exact: true })).toBeVisible();
+  await expect.poll(() => state.submissions.length).toBe(2);
+  const revised = await page.evaluate((html) => {
+    const document = new DOMParser().parseFromString(html, "text/html");
+    const rows = Array.from(document.querySelectorAll('li[data-type="taskItem"]'));
+    const reference = rows.find((row) => row.querySelector("p")?.textContent === "References")!;
+    return {
+      total: rows.length,
+      status: reference.getAttribute("data-status"),
+      date: reference.getAttribute("data-target-date"),
+      otherStatuses: rows
+        .filter((row) => row !== reference)
+        .map((row) => row.getAttribute("data-status")),
+    };
+  }, state.submissions.at(-1)!.submission.items[0]!.detail);
+  expect(revised).toEqual({
+    total: 5,
+    status: "pending",
+    date: null,
+    otherStatuses: ["completed", "blocked", "cancelled", "postponed"],
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Edit task 1", exact: true }).click();
+  await expect(
+    editor.getByRole("checkbox", { name: "Forward: References", exact: true }),
+  ).not.toBeChecked();
+  await expect(
+    editor.getByRole("button", { name: "Undo forward: References", exact: true }),
+  ).toHaveCount(0);
   expect(state.errors).toEqual([]);
   expect(state.unknown).toEqual([]);
 });
@@ -519,7 +554,13 @@ test("several nested deliverables keep their identities and only the selected it
   await expect(
     editor.getByRole("checkbox", { name: "Forward: Parent deliverable", exact: true }),
   ).not.toBeChecked();
-  await editor.getByRole("checkbox", { name: "Forward: First child", exact: true }).uncheck();
+  await editor.getByRole("button", { name: "Undo forward: First child", exact: true }).click();
+  await expect(
+    editor.getByRole("checkbox", { name: "Forward: First child", exact: true }),
+  ).not.toBeChecked();
+  await expect(
+    editor.getByRole("button", { name: "Undo forward: First child", exact: true }),
+  ).toHaveCount(0);
   await editor.getByRole("checkbox", { name: "Forward: Third child", exact: true }).check();
   await editor.getByRole("checkbox", { name: "Forward: Parent deliverable", exact: true }).check();
   await expect(
@@ -530,8 +571,8 @@ test("several nested deliverables keep their identities and only the selected it
   await postpone.getByLabel("New due date", { exact: true }).fill("2027-01-13");
   await postpone.getByRole("button", { name: "Postpone deliverable", exact: true }).click();
   await editor
-    .getByRole("checkbox", { name: "Forward: Parent deliverable", exact: true })
-    .uncheck();
+    .getByRole("button", { name: "Undo forward: Parent deliverable", exact: true })
+    .click();
   await expect(
     editor.getByRole("checkbox", { name: "Forward: First child", exact: true }),
   ).not.toBeChecked();
