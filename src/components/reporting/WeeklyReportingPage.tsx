@@ -160,7 +160,7 @@ export function WeeklyReportingPage({
                 />
                 <button
                   type="button"
-                  className="btn secondary sm"
+                  className="btn primary sm"
                   disabled={!validDate(weekInput)}
                   onClick={() => onWeek(weekInput)}
                 >

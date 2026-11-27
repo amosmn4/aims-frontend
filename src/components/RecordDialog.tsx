@@ -23,6 +23,7 @@ export type Field<T extends Values> = {
   step?: number;
   help?: React.ReactNode;
   checklist?: boolean;
+  onDelegate?: (id: string, html: string) => void;
 };
 
 export function RecordDialog<T extends Values>({
@@ -142,6 +143,7 @@ export function RecordDialog<T extends Values>({
                   <RichTextEditor
                     value={String(value ?? "")}
                     checklist={field.checklist}
+                    onDelegate={field.onDelegate}
                     deliverableWeek={
                       typeof values["weekStart"] === "string" ? values["weekStart"] : undefined
                     }

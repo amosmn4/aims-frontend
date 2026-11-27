@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import AddOutlined from "@mui/icons-material/AddOutlined";
 import CheckOutlined from "@mui/icons-material/CheckOutlined";
+import { TaskStatusBadge } from "@/components/TaskStatusBadge";
+import { taskStatusKey } from "@/lib/task-content";
 import UndoOutlined from "@mui/icons-material/UndoOutlined";
 import { useSubmissionSchedules } from "@/lib/reporting";
 import { useQueryClient } from "@tanstack/react-query";
@@ -187,13 +189,18 @@ export function StaffReportingDashboard() {
               <i style={{ width: `${percent}%` }} />
             </div>
             {tasks.slice(0, 5).map((item) => (
-              <div className="taskrow" key={item.id}>
+              <div
+                className="taskrow task-status-edge"
+                data-task-status={taskStatusKey(item.status)}
+                key={item.id}
+              >
                 <span className={`taskcheck ${item.status === "completed" ? "done" : ""}`}>
                   {item.status === "completed" && <CheckOutlined fontSize="inherit" />}
                 </span>
                 <div className="taskbody">
                   <strong>{item.title}</strong>
                   <small>{item.due ? `Due ${reportingDate(item.due)}` : "This week"}</small>
+                  <TaskStatusBadge status={item.status} />
                 </div>
                 <ReportingTag
                   status={item.priority === "High" || item.priority === "Urgent" ? "attention" : ""}

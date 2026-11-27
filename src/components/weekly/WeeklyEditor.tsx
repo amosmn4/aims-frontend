@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/production/components/confirm-dialog";
 import { api, isDemo } from "@/lib/api";
 import { TaskDescription } from "@/components/TaskDescription";
+import { TaskStatusBadge } from "@/components/TaskStatusBadge";
 import { TaskDelegateDialog } from "@/components/TaskDelegations";
 import type { Task } from "@/lib/data";
 import { documentSchema } from "@/lib/models";
@@ -23,7 +24,11 @@ import {
   checklistSummary,
   checklistStatus,
   taskOutcome,
+  taskStatusKey,
+  hasDeliverables,
+  reportTaskComplete,
 } from "@/lib/task-content";
+import { mergeDelegatedOutcomes } from "@/lib/deliverable-delegation";
 import { plainText, validDate } from "@/lib/text";
 import {
   Dialog,
@@ -66,6 +71,10 @@ export function WeeklyEditor({
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [taskBeforeEdit, setTaskBeforeEdit] = useState<WeeklyItem | null>(null);
   const [delegating, setDelegating] = useState<Task | null>(null);
+  const [delegatingDeliverable, setDelegatingDeliverable] = useState<{
+    task: Task;
+    id: string;
+  } | null>(null);
   const editorRegion = useRef<HTMLDivElement>(null);
   const [clockOrigin] = useState(() => ({
     server: new Date(detail.now).getTime(),
@@ -145,6 +154,18 @@ export function WeeklyEditor({
   }, [detail, phase]);
   const [saved, setSaved] = useState(JSON.stringify(initial));
   const dirty = JSON.stringify(form) !== saved;
+  useEffect(() => {
+    setForm((current) => {
+      const items = current.items.map((item) => {
+        const live = detail.tasks.find((task) => task.id === (item.taskId ?? item.id));
+        const detailHtml = mergeDelegatedOutcomes(item.detail, live?.description ?? "");
+        return detailHtml === item.detail ? item : { ...item, detail: detailHtml };
+      });
+      return items.some((item, index) => item !== current.items[index])
+        ? { ...current, items }
+        : current;
+    });
+  }, [detail.tasks]);
   const mutation = useMutation({
     mutationFn: ({ submit, reason }: { submit: boolean; reason?: string }) =>
       api<{ version: number }>(`/weekly/reports/${detail.weekStart}/${phase}`, {
@@ -214,8 +235,21 @@ export function WeeklyEditor({
     event.preventDefault();
     if (busy || editingItemId) return;
     if (
+      phase === "report" &&
+      form.items.some(
+        (item) => checklistProgress(item.detail).total && !reportTaskComplete(item.detail),
+      )
+    ) {
+      toast.error("Choose an outcome for every deliverable before submitting the report.");
+      return;
+    }
+    if (
+      !entry?.submittedAt &&
+      !entry?.firstSubmittedAt &&
+      !entry?.recalledAt &&
+      !entry?.returnedAt &&
       clockOrigin.server + Date.now() - clockOrigin.local >
-      new Date(detail.deadlines[phase]).getTime()
+        new Date(detail.deadlines[phase]).getTime()
     ) {
       setLateDialogOpen(true);
       return;
@@ -243,6 +277,7 @@ export function WeeklyEditor({
               id,
               title: "",
               detail: "",
+              requiresDeliverables: true,
               ...(phase === "report" ? { outcome: "" } : {}),
               due: new Date(new Date(`${detail.weekStart}T12:00:00Z`).getTime() + 4 * 86400000)
                 .toISOString()
@@ -277,6 +312,7 @@ export function WeeklyEditor({
           taskId: task.id,
           title: task.title,
           detail: taskDescription(task.description, task.subtasks),
+          requiresDeliverables: task.requiresDeliverables,
           due,
           priority: task.priority,
           status: task.status === "To do" ? "planned" : taskOutcome(task.status),
@@ -297,6 +333,10 @@ export function WeeklyEditor({
     }
     if (item.detail.length > 10000 || (phase === "plan" && item.due && !validDate(item.due))) {
       toast.error("Check the task description and due date before saving.");
+      return;
+    }
+    if (item.requiresDeliverables && !hasDeliverables(item.detail)) {
+      toast.error("Add at least one named checklist deliverable before saving the task.");
       return;
     }
     updateItem(item.id, { title: plainText(item.title).trim() });
@@ -375,7 +415,7 @@ export function WeeklyEditor({
               />
               <button
                 type="button"
-                className="btn secondary sm"
+                className="btn primary sm"
                 disabled={busy || !validDate(weekInput)}
                 onClick={async () => {
                   if (!dirty || (await discard()))
@@ -475,12 +515,19 @@ export function WeeklyEditor({
                     task.id === (item.taskId ?? item.id) && task.assignee === detail.person.id,
                 );
                 return (
-                  <div key={item.id} className="weekly-task-card">
+                  <div
+                    key={item.id}
+                    className="weekly-task-card task-status-edge"
+                    data-task-status={taskStatusKey(item.status)}
+                  >
                     <div className="weekly-task-card-head">
                       <div>
                         <strong>
                           {index + 1}. {item.title}
                         </strong>
+                        <div className="mt-2">
+                          <TaskStatusBadge status={item.status} />
+                        </div>
                         <p>
                           {item.due ? `Due ${item.due} | ` : ""}
                           {item.priority ?? "Medium"} priority |{" "}
@@ -549,7 +596,8 @@ export function WeeklyEditor({
                 <div
                   key={item.id}
                   ref={editorRegion}
-                  className="taskedit weekly-task-composer"
+                  className="taskedit weekly-task-composer task-status-edge"
+                  data-task-status={taskStatusKey(item.status)}
                   role="group"
                   aria-label={`Edit task ${index + 1}`}
                 >
@@ -661,6 +709,36 @@ export function WeeklyEditor({
                         checklist
                         deliverableWeek={detail.weekStart}
                         ariaLabel={`Description for task ${index + 1}`}
+                        onDelegate={
+                          !isDemo
+                            ? (id, description) => {
+                                if (!plainText(item.title).trim()) {
+                                  toast.error("Enter a task title before delegating.");
+                                  return;
+                                }
+                                const original = tasks?.find(
+                                  (task) => task.id === (item.taskId ?? item.id),
+                                );
+                                setDelegatingDeliverable({
+                                  id,
+                                  task: {
+                                    ...original,
+                                    id: item.taskId ?? item.id,
+                                    title: item.title,
+                                    description,
+                                    assignee: detail.person.id,
+                                    project: original?.project ?? "",
+                                    weekStart: detail.weekStart,
+                                    due: item.due ?? detail.weekEnd,
+                                    priority: item.priority ?? "Medium",
+                                    source: item.source ?? "planned",
+                                    business: item.business ?? "b0",
+                                    status: checklistStatus(description, "To do"),
+                                  },
+                                });
+                              }
+                            : undefined
+                        }
                         value={item.detail}
                         disabled={busy}
                         onChange={(detail) =>
@@ -685,8 +763,9 @@ export function WeeklyEditor({
                       </p>
                     ) : (
                       <select
-                        className="report-status"
+                        className="report-status task-status-select"
                         data-status={item.status}
+                        data-task-status={taskStatusKey(item.status)}
                         aria-label={`Status: ${item.title}`}
                         value={item.status}
                         disabled={busy}
@@ -802,6 +881,7 @@ export function WeeklyEditor({
               </div>
             ))}
             <UploadField
+              compact
               aria-label="Upload weekly attachment"
               disabled={busy || (form.attachments?.length ?? 0) >= 10}
               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
@@ -895,6 +975,13 @@ export function WeeklyEditor({
         </div>
       </form>
       {delegating && <TaskDelegateDialog task={delegating} onClose={() => setDelegating(null)} />}
+      {delegatingDeliverable && (
+        <TaskDelegateDialog
+          task={delegatingDeliverable.task}
+          deliverableId={delegatingDeliverable.id}
+          onClose={() => setDelegatingDeliverable(null)}
+        />
+      )}
       {scheduling && (
         <SubmissionSchedule
           kind={phase}

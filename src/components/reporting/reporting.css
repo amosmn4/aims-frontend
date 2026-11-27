@@ -234,6 +234,9 @@
   padding: 11px 0;
   border-bottom: 1px solid #edf0f4;
 }
+.reporting .taskrow.task-status-edge {
+  padding-left: 14px;
+}
 .reporting .taskrow:last-child {
   border: 0;
 }
@@ -656,8 +659,8 @@
   flex-shrink: 0;
 }
 .reporting .taskcheck.done {
-  background: var(--green);
-  border-color: var(--green);
+  background: var(--task-color);
+  border-color: var(--task-color);
 }
 .reporting .report-between {
   display: flex;
@@ -812,6 +815,12 @@
   border-radius: 8px;
   margin-bottom: 20px;
 }
+.reporting .detailgrid > div {
+  min-width: 0;
+}
+.reporting .weekly-submission-task ~ td {
+  vertical-align: top;
+}
 .reporting .report-facts small {
   display: block;
   font-size: 14px;
@@ -944,22 +953,14 @@
   border-color: #7ca5d4;
   box-shadow: 0 0 0 3px #edf4fd;
 }
-.reporting .report-status[data-status="pending"] {
-  background: #f1f5f9;
-  color: #475569;
+.reporting .report-status.task-status-select {
+  background: var(--task-color);
+  border-color: var(--task-color);
+  color: #fff;
 }
-.reporting .report-status[data-status="in_progress"] {
-  background: var(--blue-light);
-  color: var(--blue);
-}
-.reporting .report-status[data-status="completed"] {
-  background: var(--green-bg);
-  color: var(--green);
-}
-.reporting .report-status[data-status="blocked"],
-.reporting .report-status[data-status="cancelled"] {
-  background: var(--red-bg);
-  color: var(--red);
+.reporting .report-status.task-status-select option {
+  background: #fff;
+  color: #334155;
 }
 @media (max-width: 680px) {
   .reporting .weekly-task-heading {

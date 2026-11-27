@@ -1,5 +1,7 @@
 import { TaskDelegateDialog, TaskDelegationsPanel } from "@/components/TaskDelegations";
 import { UploadField } from "@/components/UploadField";
+import { TaskStatusBadge } from "@/components/TaskStatusBadge";
+import { taskStatusKey } from "@/lib/task-content";
 import { checklistProgress, taskDescription } from "@/lib/task-content";
 import { SubtaskChecklist } from "@/components/SubtaskChecklist";
 import { reportingWeek, forwardTaskPeriod } from "@/lib/weekly";
@@ -270,218 +272,226 @@ function Tasks() {
                     (!task.project && task.assignee === me.id) ||
                     project(task.project)?.members.includes(me.id);
                   return (
-                    <Card key={task.id} className="p-4">
-                      <div className="text-sm font-medium">{plainText(task.title)}</div>
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                        <span>{person(task.assignee).name}</span>
-                        {!!checklistProgress(taskDescription(task.description, task.subtasks))
-                          .total && (
-                          <span>
-                            {
-                              checklistProgress(taskDescription(task.description, task.subtasks))
-                                .done
-                            }
-                            /
-                            {
-                              checklistProgress(taskDescription(task.description, task.subtasks))
-                                .total
-                            }{" "}
-                            deliverables
-                          </span>
-                        )}
-                      </div>
-                      {editable &&
-                        !checklistProgress(taskDescription(task.description, task.subtasks))
-                          .total && (
-                          <select
-                            aria-label={`Status for ${task.title}`}
-                            className="field-input mt-2 w-full py-1 text-xs"
-                            value={task.status}
-                            onChange={(event) =>
-                              perform(() =>
-                                saveRecord("tasks", {
-                                  ...task,
-                                  status: event.target.value as Task["status"],
-                                }),
-                              )
-                            }
-                          >
-                            {cols.map((value) => (
-                              <option key={value}>{value}</option>
-                            ))}
-                          </select>
-                        )}
-                      {(mode === "ceo" || task.assignee === me.id) &&
-                        task.status !== "Done" &&
-                        task.status !== "Cancelled" && (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                void perform(async () => {
-                                  if (isDemo) {
-                                    await saveRecord("tasks", {
-                                      ...task,
-                                      ...forwardTaskPeriod(task),
-                                    });
-                                  } else {
-                                    await mutateApi(`/tasks/${task.id}/forward`, {
-                                      method: "POST",
-                                    });
-                                  }
-                                  await queryClient.invalidateQueries({ queryKey: ["weekly"] });
-                                }, "Task moved to next week's plan")
+                    <div
+                      key={task.id}
+                      className="task-status-edge"
+                      data-task-status={taskStatusKey(task.status)}
+                    >
+                      <Card className="p-4">
+                        <div className="text-sm font-medium">{plainText(task.title)}</div>
+                        <div className="mt-2">
+                          <TaskStatusBadge status={task.status} />
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                          <span>{person(task.assignee).name}</span>
+                          {!!checklistProgress(taskDescription(task.description, task.subtasks))
+                            .total && (
+                            <span>
+                              {
+                                checklistProgress(taskDescription(task.description, task.subtasks))
+                                  .done
+                              }
+                              /
+                              {
+                                checklistProgress(taskDescription(task.description, task.subtasks))
+                                  .total
+                              }{" "}
+                              deliverables
+                            </span>
+                          )}
+                        </div>
+                        {editable &&
+                          !checklistProgress(taskDescription(task.description, task.subtasks))
+                            .total && (
+                            <select
+                              aria-label={`Status for ${task.title}`}
+                              className="field-input mt-2 w-full py-1 text-xs"
+                              value={task.status}
+                              onChange={(event) =>
+                                perform(() =>
+                                  saveRecord("tasks", {
+                                    ...task,
+                                    status: event.target.value as Task["status"],
+                                  }),
+                                )
                               }
                             >
-                              Forward to next week
-                            </Button>
-                            {!isDemo && mode !== "ceo" && task.assignee === me.id && (
+                              {cols.map((value) => (
+                                <option key={value}>{value}</option>
+                              ))}
+                            </select>
+                          )}
+                        {(mode === "ceo" || task.assignee === me.id) &&
+                          task.status !== "Done" &&
+                          task.status !== "Cancelled" && (
+                            <div className="mt-3 flex flex-wrap gap-2">
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setDelegating(task)}
-                              >
-                                Delegate task
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                      <details
-                        className="mt-2 text-sm"
-                        open={expanded.includes(task.id)}
-                        onToggle={(event) => {
-                          const open = event.currentTarget.open;
-                          setExpanded((current) =>
-                            open
-                              ? current.includes(task.id)
-                                ? current
-                                : [...current, task.id]
-                              : current.filter((id) => id !== task.id),
-                          );
-                        }}
-                      >
-                        <summary className="cursor-pointer text-xs font-medium text-primary">
-                          Details{attachments.length ? ` (${attachments.length} files)` : ""}
-                          {task.ceoComment ? " / CEO comment" : ""}
-                        </summary>
-                        {task.project ? (
-                          <Link
-                            to="/projects/$id"
-                            params={{ id: task.project }}
-                            className="mt-1 block text-xs text-primary"
-                          >
-                            {project(task.project)?.name}
-                          </Link>
-                        ) : (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {task.source?.replaceAll("_", " ") ?? "Weekly work"}
-                            {task.weekStart ? ` | Week of ${task.weekStart}` : ""}
-                          </p>
-                        )}
-                        <SubtaskChecklist task={task} editable={editable} />
-                        {task.ceoComment && (
-                          <div className="mt-3 rounded-md border-l-2 border-primary bg-muted/50 p-3 text-sm">
-                            <div className="mb-1 text-xs font-semibold text-muted-foreground">
-                              CEO comment
-                            </div>
-                            <p className="whitespace-pre-wrap">{task.ceoComment}</p>
-                          </div>
-                        )}
-                        {(attachments.length > 0 || canAttach) && (
-                          <div className="mt-3 space-y-2 border-t pt-3">
-                            {attachments.map((doc) => (
-                              <button
-                                key={doc.id}
-                                type="button"
-                                className="block text-left text-xs text-primary underline"
-                                onClick={async () => {
-                                  try {
-                                    downloadBlob(await documentBlob(doc), doc.name);
-                                  } catch (error) {
-                                    toast.error(
-                                      error instanceof Error ? error.message : "Download failed.",
-                                    );
-                                  }
-                                }}
-                              >
-                                {doc.name}
-                              </button>
-                            ))}
-                            {canAttach && (
-                              <label className="inline-flex cursor-pointer items-center text-xs font-medium text-primary underline">
-                                Attach document or image
-                                <UploadField
-                                  className="sr-only"
-                                  aria-label={`Attach document or image to ${task.title}`}
-                                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                                  onChange={async (event) => {
-                                    const input = event.currentTarget;
-                                    const file = input.files?.[0];
-                                    input.value = "";
-                                    if (!file) return;
-                                    if (file.size > 25 * 1024 * 1024) {
-                                      toast.error("Choose a file no larger than 25 MB.");
-                                      return;
+                                onClick={() =>
+                                  void perform(async () => {
+                                    if (isDemo) {
+                                      await saveRecord("tasks", {
+                                        ...task,
+                                        ...forwardTaskPeriod(task),
+                                      });
+                                    } else {
+                                      await mutateApi(`/tasks/${task.id}/forward`, {
+                                        method: "POST",
+                                      });
                                     }
-                                    const fileKey = crypto.randomUUID();
-                                    const doc = documentSchema.parse({
-                                      id: crypto.randomUUID(),
-                                      name: file.name,
-                                      folder: "Task attachments",
-                                      access: task.project ? "project" : "restricted",
-                                      allowed: task.project ? undefined : [me.id],
-                                      owner: me.id,
-                                      updated: today(),
-                                      project: task.project || undefined,
-                                      task: task.id,
-                                      fileKey,
-                                      mime: file.type || "application/octet-stream",
-                                    });
-                                    await perform(async () => {
-                                      if (!isDemo) return uploadDocument(doc, file);
-                                      await saveFile(fileKey, file);
-                                      try {
-                                        await saveRecord("documents", doc);
-                                      } catch (error) {
-                                        await deleteFile(fileKey).catch(() => {});
-                                        throw error;
-                                      }
-                                    }, "Attachment uploaded");
+                                    await queryClient.invalidateQueries({ queryKey: ["weekly"] });
+                                  }, "Task moved to next week's plan")
+                                }
+                              >
+                                Forward to next week
+                              </Button>
+                              {!isDemo && mode !== "ceo" && task.assignee === me.id && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setDelegating(task)}
+                                >
+                                  Delegate task
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                        <details
+                          className="mt-2 text-sm"
+                          open={expanded.includes(task.id)}
+                          onToggle={(event) => {
+                            const open = event.currentTarget.open;
+                            setExpanded((current) =>
+                              open
+                                ? current.includes(task.id)
+                                  ? current
+                                  : [...current, task.id]
+                                : current.filter((id) => id !== task.id),
+                            );
+                          }}
+                        >
+                          <summary className="cursor-pointer text-xs font-medium text-primary">
+                            Details{attachments.length ? ` (${attachments.length} files)` : ""}
+                            {task.ceoComment ? " / CEO comment" : ""}
+                          </summary>
+                          {task.project ? (
+                            <Link
+                              to="/projects/$id"
+                              params={{ id: task.project }}
+                              className="mt-1 block text-xs text-primary"
+                            >
+                              {project(task.project)?.name}
+                            </Link>
+                          ) : (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {task.source?.replaceAll("_", " ") ?? "Weekly work"}
+                              {task.weekStart ? ` | Week of ${task.weekStart}` : ""}
+                            </p>
+                          )}
+                          <SubtaskChecklist task={task} editable={editable} />
+                          {task.ceoComment && (
+                            <div className="mt-3 rounded-md border-l-2 border-primary bg-muted/50 p-3 text-sm">
+                              <div className="mb-1 text-xs font-semibold text-muted-foreground">
+                                CEO comment
+                              </div>
+                              <p className="whitespace-pre-wrap">{task.ceoComment}</p>
+                            </div>
+                          )}
+                          {(attachments.length > 0 || canAttach) && (
+                            <div className="mt-3 space-y-2 border-t pt-3">
+                              {attachments.map((doc) => (
+                                <button
+                                  key={doc.id}
+                                  type="button"
+                                  className="block text-left text-xs text-primary underline"
+                                  onClick={async () => {
+                                    try {
+                                      downloadBlob(await documentBlob(doc), doc.name);
+                                    } catch (error) {
+                                      toast.error(
+                                        error instanceof Error ? error.message : "Download failed.",
+                                      );
+                                    }
                                   }}
+                                >
+                                  {doc.name}
+                                </button>
+                              ))}
+                              {canAttach && (
+                                <div>
+                                  <UploadField
+                                    compact
+                                    aria-label={`Attach document or image to ${task.title}`}
+                                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                                    onChange={async (event) => {
+                                      const input = event.currentTarget;
+                                      const file = input.files?.[0];
+                                      input.value = "";
+                                      if (!file) return;
+                                      if (file.size > 25 * 1024 * 1024) {
+                                        toast.error("Choose a file no larger than 25 MB.");
+                                        return;
+                                      }
+                                      const fileKey = crypto.randomUUID();
+                                      const doc = documentSchema.parse({
+                                        id: crypto.randomUUID(),
+                                        name: file.name,
+                                        folder: "Task attachments",
+                                        access: task.project ? "project" : "restricted",
+                                        allowed: task.project ? undefined : [me.id],
+                                        owner: me.id,
+                                        updated: today(),
+                                        project: task.project || undefined,
+                                        task: task.id,
+                                        fileKey,
+                                        mime: file.type || "application/octet-stream",
+                                      });
+                                      await perform(async () => {
+                                        if (!isDemo) return uploadDocument(doc, file);
+                                        await saveFile(fileKey, file);
+                                        try {
+                                          await saveRecord("documents", doc);
+                                        } catch (error) {
+                                          await deleteFile(fileKey).catch(() => {});
+                                          throw error;
+                                        }
+                                      }, "Attachment uploaded");
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {editable && (
+                            <div className="mt-4 flex items-center justify-between gap-2 border-t pt-3">
+                              {(mode === "ceo" ||
+                                manages(task) ||
+                                project(task.project)?.lead === me.id ||
+                                (!task.project && task.assignee === me.id)) && (
+                                <RecordActions
+                                  collection="tasks"
+                                  id={task.id}
+                                  label={task.title}
+                                  onEdit={() => setEdit(task)}
                                 />
-                              </label>
-                            )}
-                          </div>
-                        )}
-                        {editable && (
-                          <div className="mt-4 flex items-center justify-between gap-2 border-t pt-3">
-                            {(mode === "ceo" ||
-                              manages(task) ||
-                              project(task.project)?.lead === me.id ||
-                              (!task.project && task.assignee === me.id)) && (
-                              <RecordActions
-                                collection="tasks"
-                                id={task.id}
-                                label={task.title}
-                                onEdit={() => setEdit(task)}
-                              />
-                            )}
-                          </div>
-                        )}
-                        {mode === "ceo" && (
-                          <button
-                            type="button"
-                            className="mt-3 text-xs font-medium text-primary underline"
-                            onClick={() => setCommenting(task)}
-                          >
-                            {task.ceoComment ? "Edit CEO comment" : "Add CEO comment"}
-                          </button>
-                        )}
-                      </details>
-                    </Card>
+                              )}
+                            </div>
+                          )}
+                          {mode === "ceo" && (
+                            <button
+                              type="button"
+                              className="mt-3 text-xs font-medium text-primary underline"
+                              onClick={() => setCommenting(task)}
+                            >
+                              {task.ceoComment ? "Edit CEO comment" : "Add CEO comment"}
+                            </button>
+                          )}
+                        </details>
+                      </Card>
+                    </div>
                   );
                 })}
             </div>

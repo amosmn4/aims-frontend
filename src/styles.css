@@ -246,22 +246,48 @@ table {
 .blog-content li[data-type="taskItem"] ul {
   margin-left: 1rem;
 }
+.blog-content {
+  container: deliverable-editor / inline-size;
+}
 .blog-content li.deliverable-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.5rem;
-  margin: 0.5rem 0;
+  grid-template-columns: minmax(0, 1fr) fit-content(280px);
+  gap: 0.5rem 0.75rem;
+  min-width: 0;
+  margin: 0.75rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #d1d5db;
 }
-.blog-content .deliverable-content {
-  grid-column: 1;
+.blog-content .deliverable-content,
+.blog-content .deliverable-content > [data-node-view-content-react] {
+  display: contents;
+  overflow-wrap: anywhere;
+}
+.blog-content .deliverable-content > *,
+.blog-content .deliverable-content > [data-node-view-content-react] > * {
+  grid-column: 1 / -1;
   min-width: 0;
 }
-.blog-content .deliverable-content > div > p {
+.blog-content .deliverable-content > p:first-child,
+.blog-content .deliverable-content > [data-node-view-content-react] > p:first-child {
+  grid-column: 1;
+  grid-row: 1;
   margin: 0;
 }
-.blog-content .deliverable-row > [data-deliverable-actions] {
+.blog-content .deliverable-row > [data-deliverable-actions],
+.blog-content .deliverable-row > .deliverable-actions {
   grid-column: 2;
   grid-row: 1;
+  min-width: 0;
+  max-width: 100%;
+  justify-self: end;
+}
+.blog-content .deliverable-row > .deliverable-status {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: start;
+  align-self: start;
+  max-width: 100%;
 }
 .deliverable-actions {
   display: inline-flex;
@@ -271,14 +297,18 @@ table {
   align-content: flex-start;
   align-self: start;
   gap: 0.35rem;
-  max-width: 240px;
+  max-width: 100%;
+  min-width: 0;
   font-size: 14px;
   line-height: 1.5;
 }
 .deliverable-actions .deliverable-action {
   display: inline-flex;
+  flex: none;
   align-items: center;
+  justify-content: center;
   gap: 0.2rem;
+  min-height: 28px;
   margin: 0;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
@@ -287,9 +317,12 @@ table {
   color: #475569;
 }
 .deliverable-actions .deliverable-action[data-selected="true"] {
-  color: #1d4ed8;
-  border-color: #1d4ed8;
-  background: #eff6ff;
+  color: #fff;
+  border-color: var(--task-color);
+  background: var(--task-color);
+}
+.deliverable-actions .deliverable-action[data-selected="true"]:disabled {
+  opacity: 1;
 }
 .deliverable-actions .deliverable-action input[type="checkbox"] {
   width: 14px;
@@ -298,20 +331,84 @@ table {
   padding: 0;
   margin: 0;
   flex: none;
+  accent-color: var(--task-color);
 }
-.deliverable-outcome,
 .deliverable-date {
   font-size: 11px;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }
-@media (max-width: 900px) {
+@container deliverable-editor (max-width: 42rem) {
   .blog-content li.deliverable-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .blog-content .deliverable-content > p:first-child,
+  .blog-content .deliverable-content > [data-node-view-content-react] > p:first-child {
+    grid-column: 1 / -1;
   }
   .blog-content .deliverable-row > [data-deliverable-actions],
   .blog-content .deliverable-row > .deliverable-actions {
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 3;
     justify-self: end;
   }
+}
+
+[data-task-status] {
+  --task-color: #475569;
+}
+[data-task-status="in_progress"] {
+  --task-color: #1d4ed8;
+}
+[data-task-status="completed"] {
+  --task-color: #047857;
+}
+[data-task-status="forwarded"] {
+  --task-color: #4338ca;
+}
+[data-task-status="postponed"] {
+  --task-color: #7e22ce;
+}
+[data-task-status="blocked"] {
+  --task-color: #b91c1c;
+}
+[data-task-status="cancelled"] {
+  --task-color: #3f3f46;
+}
+[data-task-status="delegated"] {
+  --task-color: #0f766e;
+}
+.task-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 3px 9px;
+  background: var(--task-color);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.task-status-edge {
+  position: relative;
+  min-width: 0;
+}
+.weekly-submission-task.task-status-edge {
+  min-width: 16rem;
+}
+.task-status-edge::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 0;
+  background: var(--task-color);
+  pointer-events: none;
 }

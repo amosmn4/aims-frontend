@@ -8,12 +8,12 @@ const otherId = "10000000-0000-4000-8000-000000000002";
 const taskId = "10000000-0000-4000-8000-000000000003";
 const week = "2026-11-23";
 
-async function workspaceApi(page: Page, incoming = false) {
+async function workspaceApi(page: Page, incoming = false, role: "staff" | "ceo" = "staff") {
   const account = {
     id: staffId,
     personId: staffId,
     email: "staff@example.test",
-    role: "staff" as const,
+    role,
     active: true,
     salt: "",
     passwordHash: "",
@@ -150,9 +150,28 @@ async function workspaceApi(page: Page, incoming = false) {
       return reply({ minutes });
     }
     if (path === "/task-delegations") return reply(requests);
-    if (path === `/tasks/${taskId}/delegation-recipients`)
+    if (path.endsWith("/delegation-recipients"))
       return reply([{ id: otherId, name: "Other Staff" }]);
     if (path.endsWith("/delegate")) {
+      const body = request.postDataJSON();
+      if (body.source) {
+        const selected = body.source.description.match(
+          new RegExp(`<li\\b[^>]*data-did="${body.deliverableId}"[^>]*>[\\s\\S]*?</li>`),
+        )?.[0];
+        if (!workspace.tasks.some((task) => task.id === body.source.id))
+          workspace.tasks.push({
+            ...body.source,
+            description: `<ul data-type="taskList">${selected}</ul>`,
+          });
+      }
+      delegation.taskId = path.split("/")[2]!;
+      delegation.taskTitle =
+        workspace.tasks.find((task) => task.id === delegation.taskId)?.title ??
+        delegation.taskTitle;
+      if (body.deliverableId) {
+        delegation.deliverableId = body.deliverableId;
+        delegation.deliverableTitle = "References";
+      }
       requests = [delegation];
       revision++;
       return reply({ id: delegation.id, status: "pending", weekStart: week });
@@ -211,6 +230,15 @@ async function workspaceApi(page: Page, incoming = false) {
         limit: 20,
       });
     if (path.endsWith("/history")) return reply([]);
+    if (method === "POST" && /^\/weekly\/submissions\/(plan|report)-entry\/recall$/.test(path)) {
+      const phase = path.includes("plan-entry") ? "plan" : "report";
+      const entry = detail[phase]!;
+      entry.firstSubmittedAt ??= entry.submittedAt;
+      entry.submittedAt = null;
+      entry.recalledAt = detail.now;
+      entry.version++;
+      return reply({ success: true });
+    }
     if (path === `/weekly/reports/${week}/${staffId}`)
       return reply({ ...detail, tasks: workspace.tasks });
     if (method === "PUT" && (path.endsWith("/plan") || path.endsWith("/report"))) {
@@ -224,7 +252,10 @@ async function workspaceApi(page: Page, incoming = false) {
         phase,
         version: (detail[phase]?.version ?? 0) + 1,
         submission: body.submission,
-        submittedAt: body.submit ? detail.now : null,
+        submittedAt: body.submit
+          ? (detail[phase]?.firstSubmittedAt ?? detail[phase]?.submittedAt ?? detail.now)
+          : null,
+        firstSubmittedAt: detail[phase]?.firstSubmittedAt ?? (body.submit ? detail.now : null),
         updatedAt: detail.now,
         late: !!body.submit,
         lateReason: body.lateReason,
@@ -242,6 +273,8 @@ async function workspaceApi(page: Page, incoming = false) {
   });
   return {
     workspace,
+    detail,
+    requests: () => requests,
     submissions,
     errors,
     unknown,
@@ -251,15 +284,20 @@ async function workspaceApi(page: Page, incoming = false) {
   };
 }
 
-async function login(page: Page, phase: WeeklyPhase = "plan") {
-  await page.goto(
-    `/login?redirect=${encodeURIComponent(`/reporting?view=weekly-${phase}&week=${week}`)}`,
-  );
+async function signIn(page: Page, redirect: string) {
+  await page.goto(`/login?redirect=${encodeURIComponent(redirect)}`);
   await page.getByLabel("Email", { exact: true }).fill("staff@example.test");
   await page.getByLabel("Password", { exact: true }).fill("TestPassword2026!");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+}
+
+async function login(page: Page, phase: WeeklyPhase = "plan") {
+  await signIn(page, `/reporting?view=weekly-${phase}&week=${week}`);
   await expect(
-    page.getByLabel(phase === "plan" ? "Weekly objective" : "Executive summary", { exact: true }),
+    page.getByRole("textbox", {
+      name: phase === "plan" ? "Weekly objective" : "Executive summary",
+      exact: true,
+    }),
   ).toBeVisible();
 }
 
@@ -297,6 +335,21 @@ test("report deliverables keep separate outcomes and future dates after reload",
     .locator('li[data-type="taskItem"]')
     .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-did")));
   expect(new Set(before).size).toBe(5);
+  for (const [status, color] of Object.entries({
+    completed: "rgb(4, 120, 87)",
+    forwarded: "rgb(67, 56, 202)",
+    blocked: "rgb(185, 28, 28)",
+    cancelled: "rgb(63, 63, 70)",
+    postponed: "rgb(126, 34, 206)",
+  })) {
+    await expect(
+      editor.locator(`.deliverable-actions[data-task-status="${status}"] [data-selected="true"]`),
+    ).toHaveCSS("background-color", color);
+    await expect(editor.locator(`.task-status-badge[data-task-status="${status}"]`)).toHaveCSS(
+      "background-color",
+      color,
+    );
+  }
   await page.screenshot({ path: "test-results/deliverable-outcomes-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
@@ -333,9 +386,103 @@ test("report deliverables keep separate outcomes and future dates after reload",
   expect(state.unknown).toEqual([]);
 });
 
+for (const phase of ["plan", "report"] as const) {
+  test(`CEO ${phase} keeps all deliverables with approved colors and square task strips`, async ({
+    page,
+  }) => {
+    const state = await workspaceApi(page, false, "ceo");
+    const colors = {
+      pending: "rgb(71, 85, 105)",
+      in_progress: "rgb(29, 78, 216)",
+      completed: "rgb(4, 120, 87)",
+      forwarded: "rgb(67, 56, 202)",
+      postponed: "rgb(126, 34, 206)",
+      blocked: "rgb(185, 28, 28)",
+      cancelled: "rgb(63, 63, 70)",
+      delegated: "rgb(15, 118, 110)",
+    };
+    const detail = `<ul data-type="taskList">${Object.keys(colors)
+      .map(
+        (status) =>
+          `<li data-type="taskItem" data-did="color-${status}" data-status="${status}" data-checked="${status === "completed"}"${status === "forwarded" || status === "postponed" ? ' data-target-date="2026-12-04"' : ""}><div><p>Deliverable ${status}</p></div></li>`,
+      )
+      .join("")}</ul>`;
+    state.detail[phase] = {
+      id: `${phase}-entry`,
+      staffId,
+      weekStart: week,
+      phase,
+      version: 1,
+      submission: {
+        title: `Color review ${phase}`,
+        summary: "Submitted outcomes remain visible",
+        items: [
+          { id: taskId, title: "Original delivery task", detail, status: "in_progress" },
+          { id: "done-task", title: "Completed task", detail: "", status: "completed" },
+          { id: "cancelled-task", title: "Cancelled task", detail: "", status: "cancelled" },
+        ],
+        blockers: "",
+        nextWeek: "",
+        noWorkReason: "",
+      },
+      submittedAt: state.detail.now,
+      updatedAt: state.detail.now,
+      late: false,
+      reviewedAt: null,
+      reviewComment: null,
+      returnedAt: null,
+      returnComment: null,
+      editable: true,
+      counts: {},
+    };
+    await signIn(page, `/reporting?view=detail&phase=${phase}&week=${week}&staff=${staffId}`);
+    await expect(
+      page.getByRole("heading", { name: `Color review ${phase}`, level: 1, exact: true }),
+    ).toBeVisible();
+    const description = page.locator(".task-description").first();
+    await expect(description.locator("li.deliverable-row")).toHaveCount(8);
+    for (const [status, color] of Object.entries(colors)) {
+      const row = description.locator(`li[data-status="${status}"]`);
+      await expect(row.getByText(`Deliverable ${status}`, { exact: true })).toBeVisible();
+      await expect(row.locator(".task-status-badge")).toHaveCSS("background-color", color);
+      const selected = row.locator('.deliverable-action[data-selected="true"]');
+      if (status !== "pending" && status !== "in_progress")
+        await expect(selected).toHaveCSS("background-color", color);
+      if (status === "delegated") await expect(selected).toHaveCSS("opacity", "1");
+    }
+    const checkboxes = description.getByRole("checkbox");
+    for (const checkbox of await checkboxes.all()) await expect(checkbox).toBeDisabled();
+    const strip = page.locator('td.task-status-edge[data-task-status="in_progress"]');
+    const shape = await strip.evaluate((element) => {
+      const style = getComputedStyle(element, "::before");
+      return { radius: style.borderRadius, color: style.backgroundColor, width: style.width };
+    });
+    expect(shape).toEqual({ radius: "0px", color: colors.in_progress, width: "4px" });
+    const statusAlignment = await strip.evaluate((element) => {
+      const status = element.nextElementSibling!.querySelector(".task-status-badge")!;
+      return status.getBoundingClientRect().top - element.getBoundingClientRect().top;
+    });
+    expect(statusAlignment).toBeLessThan(16);
+    await expect(page.getByText("Cancelled task", { exact: true })).toBeVisible();
+    for (const width of [1366, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      ).toBe(true);
+      await page.screenshot({
+        path: `test-results/ceo-${phase}-colors-${width}.png`,
+        fullPage: true,
+      });
+    }
+    expect(state.errors).toEqual([]);
+    expect(state.unknown).toEqual([]);
+  });
+}
+
 test("several nested deliverables keep their identities and only the selected item moves", async ({
   page,
 }) => {
+  await page.clock.setFixedTime(new Date("2026-11-27T16:00:00Z"));
   const state = await workspaceApi(page);
   await login(page);
   await page.getByRole("button", { name: "Add task", exact: true }).first().click();
@@ -372,7 +519,219 @@ test("several nested deliverables keep their identities and only the selected it
   await expect(
     editor.getByRole("checkbox", { name: "Forward: Parent deliverable", exact: true }),
   ).not.toBeChecked();
+  await editor.getByRole("checkbox", { name: "Forward: First child", exact: true }).uncheck();
+  await editor.getByRole("checkbox", { name: "Forward: Third child", exact: true }).check();
+  await editor.getByRole("checkbox", { name: "Forward: Parent deliverable", exact: true }).check();
+  await expect(
+    editor.getByRole("checkbox", { name: "Forward: Second child", exact: true }),
+  ).toBeChecked();
+  await editor.getByRole("checkbox", { name: "Postpone: First child", exact: true }).click();
+  const postpone = page.getByRole("dialog", { name: "Postpone deliverable", exact: true });
+  await postpone.getByLabel("New due date", { exact: true }).fill("2027-01-13");
+  await postpone.getByRole("button", { name: "Postpone deliverable", exact: true }).click();
+  await editor
+    .getByRole("checkbox", { name: "Forward: Parent deliverable", exact: true })
+    .uncheck();
+  await expect(
+    editor.getByRole("checkbox", { name: "Forward: First child", exact: true }),
+  ).not.toBeChecked();
+  await expect(
+    editor.getByRole("checkbox", { name: "Postpone: First child", exact: true }),
+  ).toBeChecked();
+  await expect(
+    editor.getByRole("checkbox", { name: "Forward: Second child", exact: true }),
+  ).not.toBeChecked();
+  await expect(
+    editor.getByRole("checkbox", { name: "Forward: Third child", exact: true }),
+  ).toBeChecked();
   expect(state.errors).toEqual([]);
+});
+
+for (const phase of ["plan", "report"] as const) {
+  test(`${phase} nested deliverables keep controls clear at laptop and phone widths`, async ({
+    page,
+  }) => {
+    const state = await workspaceApi(page);
+    await login(page, phase);
+    await page.getByRole("button", { name: "Add task", exact: true }).first().click();
+    await page.getByLabel("Task 1", { exact: true }).fill("Nested layout review");
+    const editor = page.getByRole("textbox", { name: "Description for task 1", exact: true });
+    await editor.fill("Prepare the client delivery package and confirm every required attachment");
+    await page.getByRole("button", { name: "Checklist", exact: true }).click();
+    await editor.press("End");
+    await editor.press("Enter");
+    await editor.pressSequentially("Review the supporting documents with the client");
+    await editor.press("Tab");
+    await editor.press("Enter");
+    await editor.pressSequentially("Confirm approval and provide the final references");
+    await editor.press("Shift+Enter");
+    await editor.pressSequentially("Keep these supporting details under this deliverable.");
+    await editor.press("Enter");
+    await editor.press("Shift+Tab");
+    await editor.pressSequentially("Send the final package");
+    await expect(editor.locator("li li")).toHaveCount(2);
+    for (const width of [1366, 1024, 768, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      const layout = await editor.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const rows = Array.from(element.querySelectorAll<HTMLElement>("li.deliverable-row"));
+        const texts = Array.from(element.querySelectorAll("p")).map((p) =>
+          p.getBoundingClientRect(),
+        );
+        const controls = Array.from(element.querySelectorAll(".deliverable-action")).map((c) =>
+          c.getBoundingClientRect(),
+        );
+        return {
+          fits:
+            element.scrollWidth <= element.clientWidth + 1 &&
+            controls.every((c) => c.left >= bounds.left && c.right <= bounds.right),
+          overlaps: controls.some((c) =>
+            texts.some(
+              (p) => c.left < p.right && c.right > p.left && c.top < p.bottom && c.bottom > p.top,
+            ),
+          ),
+          nestedWidth: rows[1]!.getBoundingClientRect().width,
+          parentWidth: rows[0]!.getBoundingClientRect().width,
+          divided: rows.every((row) => getComputedStyle(row).borderBottomWidth === "1px"),
+        };
+      });
+      expect(layout, `deliverable layout at ${width}px`).toMatchObject({
+        fits: true,
+        overlaps: false,
+        divided: true,
+      });
+      expect(layout.nestedWidth).toBeGreaterThanOrEqual(layout.parentWidth - 40);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+      ).toBe(true);
+      if (width === 1366 || width === 390)
+        await page.screenshot({
+          path: `test-results/nested-${phase}-${width}.png`,
+          fullPage: true,
+        });
+    }
+    await page.getByText("Attachments (optional)", { exact: true }).click();
+    const attachment = page.getByLabel("Upload weekly attachment", { exact: true });
+    expect(
+      await attachment.evaluate((input) => input.parentElement!.getBoundingClientRect().height),
+    ).toBeLessThanOrEqual(64);
+    await expect(page.getByRole("button", { name: "Apply week", exact: true })).toHaveCSS(
+      "background-color",
+      "rgb(21, 87, 164)",
+    );
+    await page.getByRole("button", { name: "Save task", exact: true }).click();
+    const saved = page.locator(".task-description").first();
+    await expect(saved.locator("li.deliverable-row")).toHaveCount(4);
+    const savedLayout = await saved.evaluate((element) => {
+      const rows = element.querySelectorAll("li.deliverable-row");
+      return rows[0]!.getBoundingClientRect().width - rows[1]!.getBoundingClientRect().width;
+    });
+    expect(savedLayout).toBeLessThanOrEqual(40);
+    expect(state.errors).toEqual([]);
+    expect(state.unknown).toEqual([]);
+  });
+}
+
+test("deliverable delegation opens a dialog, saves only the selected item and waits for acceptance", async ({
+  page,
+}) => {
+  const state = await workspaceApi(page);
+  await login(page);
+  await page.getByRole("button", { name: "Add task", exact: true }).first().click();
+  await page.getByLabel("Task 1", { exact: true }).fill("Recruitment work");
+  const editor = page.getByRole("textbox", { name: "Description for task 1", exact: true });
+  await editor.fill("References");
+  await page.getByRole("button", { name: "Checklist", exact: true }).click();
+  await editor.press("End");
+  await editor.press("Enter");
+  await editor.pressSequentially("Approval");
+  await editor.getByRole("button", { name: "Delegate: References", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Delegate deliverable", exact: true });
+  await expect(dialog).toBeVisible();
+  expect(state.workspace.tasks).toHaveLength(1);
+  await dialog.getByLabel("Delegate to").selectOption(otherId);
+  await dialog.getByRole("button", { name: "Send request", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.workspace.tasks).toHaveLength(2);
+  expect(state.workspace.tasks[1]!.description).toContain("References");
+  expect(state.workspace.tasks[1]!.description).not.toContain("Approval");
+  expect(state.workspace.tasks[1]!.assignee).toBe(staffId);
+  expect(state.requests()[0]).toMatchObject({ status: "pending", deliverableTitle: "References" });
+  await editor.getByRole("button", { name: "Delegate: References", exact: true }).click();
+  await expect(dialog.getByText("Awaiting Other Staff's response.", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Close", exact: true }).first().click();
+  expect(state.errors).toEqual([]);
+  expect(state.unknown).toEqual([]);
+});
+
+for (const phase of ["plan", "report"] as const) {
+  test(`${phase} updates and recalled resubmissions skip the late reason`, async ({ page }) => {
+    const state = await workspaceApi(page);
+    state.detail[phase] = {
+      id: `${phase}-entry`,
+      staffId,
+      weekStart: week,
+      phase,
+      version: 1,
+      submission: {
+        summary: "Saved work",
+        note: "All work accounted for.",
+        items: [],
+        blockers: "",
+        nextWeek: "",
+        noWorkReason: "",
+      },
+      submittedAt: "2026-11-23T06:00:00Z",
+      firstSubmittedAt: "2026-11-23T06:00:00Z",
+      updatedAt: state.detail.now,
+      late: false,
+      reviewedAt: null,
+      reviewComment: null,
+      returnedAt: null,
+      returnComment: null,
+      editable: true,
+      counts: {},
+    };
+    await login(page, phase);
+    await page.getByRole("button", { name: `Submit ${phase} update`, exact: true }).click();
+    await expect.poll(() => state.submissions.length).toBe(1);
+    expect(state.submissions[0]!.lateReason).toBeUndefined();
+    await page.getByRole("button", { name: `Recall ${phase}`, exact: true }).click();
+    await page
+      .getByRole("alertdialog", { name: "Recall this submission?", exact: true })
+      .getByRole("button", { name: "Recall submission", exact: true })
+      .click();
+    await page.getByRole("button", { name: `Submit ${phase} to CEO`, exact: true }).click();
+    await expect.poll(() => state.submissions.length).toBe(2);
+    expect(state.submissions[1]!.lateReason).toBeUndefined();
+    await expect(page.getByRole("dialog", { name: "Reason for late submission" })).toHaveCount(0);
+    expect(state.errors).toEqual([]);
+    expect(state.unknown).toEqual([]);
+  });
+}
+
+test("new weekly tasks require named deliverables", async ({ page }) => {
+  const state = await workspaceApi(page);
+  await login(page);
+  await page.getByRole("button", { name: "Add task", exact: true }).first().click();
+  await page.getByLabel("Task 1", { exact: true }).fill("New required task");
+  const editor = page.getByRole("textbox", { name: "Description for task 1", exact: true });
+  await editor.fill("Prepare shortlist");
+  await page.getByRole("button", { name: "Save task", exact: true }).click();
+  await expect(editor).toBeVisible();
+  await expect(
+    page.getByText("Add at least one named checklist deliverable before saving the task.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Checklist", exact: true }).click();
+  await page.getByRole("button", { name: "Save task", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await expect.poll(() => state.submissions.length).toBe(1);
+  expect(state.submissions[0]!.submission.items[0]!.requiresDeliverables).toBe(true);
+  expect(state.errors).toEqual([]);
+  expect(state.unknown).toEqual([]);
 });
 
 for (const phase of ["plan", "report"] as const) {
@@ -423,6 +782,13 @@ for (const phase of ["plan", "report"] as const) {
       "Nested bullet",
     );
     await editor.press("Shift+Tab");
+    if (phase === "report") {
+      await editor.getByRole("checkbox", { name: "First deliverable", exact: true }).check();
+      await editor
+        .getByRole("checkbox", { name: /^Second deliverable/ })
+        .first()
+        .check();
+    }
     await page.getByRole("button", { name: "Save task", exact: true }).click();
     await expect(editor).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Add task", exact: true })).toHaveCount(2);
@@ -478,6 +844,49 @@ test("expired sessions sign back in on the same form and reminders save", async 
   await expect(recovery).toHaveCount(0);
   await expect(summary).toHaveValue("Unsaved work survives inactivity");
   await expect(page.getByLabel("Reminder before weekly submission deadline")).toHaveValue("20");
+  expect(state.errors).toEqual([]);
+  expect(state.unknown).toEqual([]);
+});
+
+test("task details keep nested outcomes clear and attachments compact", async ({ page }) => {
+  const state = await workspaceApi(page);
+  state.workspace.tasks[0]!.description =
+    '<ul data-type="taskList"><li data-type="taskItem" data-did="layout-parent"><p>Prepare the client package</p><ul data-type="taskList"><li data-type="taskItem" data-did="layout-child"><p>Review all supporting documents and confirm the final references</p></li></ul></li></ul>';
+  await login(page);
+  await page.goto("/tasks");
+  await page.getByText("Details", { exact: true }).click();
+  const description = page.locator(".task-description").first();
+  await expect(description.locator("li.deliverable-row")).toHaveCount(2);
+  const attachment = page.getByLabel("Attach document or image to Existing staff task", {
+    exact: true,
+  });
+  for (const width of [1366, 1024, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const layout = await description.evaluate((element) => {
+      const rows = element.querySelectorAll("li.deliverable-row");
+      const texts = Array.from(element.querySelectorAll("p")).map((p) => p.getBoundingClientRect());
+      const controls = Array.from(element.querySelectorAll(".deliverable-action")).map((c) =>
+        c.getBoundingClientRect(),
+      );
+      return {
+        nestedIndent:
+          rows[0]!.getBoundingClientRect().width - rows[1]!.getBoundingClientRect().width,
+        overlaps: controls.some((c) =>
+          texts.some(
+            (p) => c.left < p.right && c.right > p.left && c.top < p.bottom && c.bottom > p.top,
+          ),
+        ),
+      };
+    });
+    expect(layout.nestedIndent).toBeLessThanOrEqual(40);
+    expect(layout.overlaps).toBe(false);
+    expect(
+      await attachment.evaluate((input) => input.parentElement!.getBoundingClientRect().height),
+    ).toBeLessThanOrEqual(64);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+      true,
+    );
+  }
   expect(state.errors).toEqual([]);
   expect(state.unknown).toEqual([]);
 });

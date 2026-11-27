@@ -11,9 +11,11 @@ import {
   type DeliverableStatus,
 } from "@/lib/task-content";
 import { DeliverableControls } from "./DeliverableControls";
+import { TaskStatusBadge } from "./TaskStatusBadge";
 
 type ActionTarget = {
   host: HTMLElement;
+  statusHost: HTMLElement;
   id: string;
   title: string;
   status: DeliverableStatus;
@@ -26,12 +28,14 @@ export function TaskDescription({
   onChange,
   disabled = false,
   week,
+  onDelegate,
 }: {
   description?: string | null | undefined;
   items?: Deliverable[] | undefined;
   onChange?: ((html: string) => void) | undefined;
   disabled?: boolean | undefined;
   week?: string | null | undefined;
+  onDelegate?: ((id: string, html: string) => void) | undefined;
 }) {
   const html = useMemo(
     () => ensureChecklistIds(taskDescription(description, items)),
@@ -45,17 +49,24 @@ export function TaskDescription({
       rows.map((row) => {
         Array.from(row.children)
           .filter(
-            (child) => child.tagName === "LABEL" || child.hasAttribute("data-deliverable-actions"),
+            (child) =>
+              child.tagName === "LABEL" ||
+              child.hasAttribute("data-deliverable-actions") ||
+              child.hasAttribute("data-deliverable-status"),
           )
           .forEach((child) => child.remove());
         row.classList.add("deliverable-row");
         row.querySelector(":scope > div")?.classList.add("deliverable-content");
         const host = document.createElement("span");
         host.setAttribute("data-deliverable-actions", "");
-        row.append(host);
+        const statusHost = document.createElement("span");
+        statusHost.setAttribute("data-deliverable-status", "");
+        statusHost.className = "deliverable-status";
+        row.append(statusHost, host);
         const raw = row.getAttribute("data-status");
         return {
           host,
+          statusHost,
           id: row.getAttribute("data-did") ?? "",
           title: row.querySelector("p")?.textContent || "Deliverable",
           status:
@@ -78,7 +89,12 @@ export function TaskDescription({
         onContentReady={ready}
         className="blog-content text-sm font-normal"
       />
-      {targets.map((target) =>
+      {targets.flatMap((target) => [
+        createPortal(
+          <TaskStatusBadge status={target.status} />,
+          target.statusHost,
+          `${target.id}-status`,
+        ),
         createPortal(
           <DeliverableControls
             title={target.title}
@@ -86,6 +102,7 @@ export function TaskDescription({
             targetDate={target.date}
             week={week}
             disabled={disabled}
+            onDelegate={onDelegate ? () => onDelegate(target.id, html) : undefined}
             onChange={
               onChange
                 ? (status, date) => {
@@ -96,16 +113,30 @@ export function TaskDescription({
                     if (!row) return;
                     row.setAttribute("data-status", status);
                     row.setAttribute("data-checked", String(status === "completed"));
-                    if (status === "forwarded" || status === "postponed")
+                    row.removeAttribute("data-carry-parent");
+                    const undo =
+                      status === "pending" && ["forwarded", "postponed"].includes(target.status);
+                    if (status === "forwarded" || status === "postponed" || undo)
                       row.querySelectorAll('li[data-type="taskItem"]').forEach((child) => {
                         if (
                           child.getAttribute("data-checked") === "true" ||
-                          child.getAttribute("data-status") === "cancelled"
+                          ["cancelled", "delegated"].includes(
+                            child.getAttribute("data-status") ?? "",
+                          ) ||
+                          (undo && child.getAttribute("data-carry-parent") !== target.id) ||
+                          (!undo &&
+                            ["forwarded", "postponed"].includes(
+                              child.getAttribute("data-status") ?? "",
+                            ) &&
+                            child.getAttribute("data-carry-parent") !== target.id)
                         )
                           return;
                         child.setAttribute("data-status", status);
                         child.setAttribute("data-checked", "false");
                         if (date) child.setAttribute("data-target-date", date);
+                        else child.removeAttribute("data-target-date");
+                        if (undo) child.removeAttribute("data-carry-parent");
+                        else child.setAttribute("data-carry-parent", target.id);
                       });
                     if (date) row.setAttribute("data-target-date", date);
                     else row.removeAttribute("data-target-date");
@@ -120,7 +151,7 @@ export function TaskDescription({
           target.host,
           target.id,
         ),
-      )}
+      ])}
       {progress.total > 0 && (
         <div className="text-xs text-muted-foreground">
           <p>

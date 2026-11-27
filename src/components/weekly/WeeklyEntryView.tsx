@@ -8,10 +8,11 @@ import { useWorkspace } from "@/lib/workspace";
 import { documentBlob, downloadBlob } from "@/lib/file-storage";
 import { useAccount } from "@/lib/account";
 import { TaskDescription } from "@/components/TaskDescription";
+import { TaskStatusBadge } from "@/components/TaskStatusBadge";
+import { taskStatusKey } from "@/lib/task-content";
 import { plainText } from "@/lib/text";
 import {
   useWeekly,
-  weeklyLabels,
   weeklyStatus,
   weeklyTime,
   leaveDays,
@@ -61,7 +62,10 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
             <tbody>
               {submission.items.map((item) => (
                 <tr key={item.id} className="border-b">
-                  <td className="p-2 align-top font-medium">
+                  <td
+                    className="weekly-submission-task task-status-edge p-2 align-top font-medium"
+                    data-task-status={taskStatusKey(item.status)}
+                  >
                     {plainText(item.title)}
                     <TaskDescription description={item.detail} items={item.subtasks} />
                     {item.outcome && (
@@ -71,7 +75,9 @@ export function WeeklySubmissionBody({ submission }: { submission: WeeklySubmiss
                       </div>
                     )}
                   </td>
-                  <td className="p-2 align-top">{weeklyLabels[item.status]}</td>
+                  <td className="p-2 align-top">
+                    <TaskStatusBadge status={item.status} />
+                  </td>
                   <td className="p-2 align-top">
                     {item.due
                       ? new Date(`${item.due}T12:00:00Z`).toLocaleDateString("en-GB", {

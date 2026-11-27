@@ -6,6 +6,8 @@ export type TaskDelegation = {
   id: string;
   taskId: string;
   taskTitle: string;
+  deliverableId?: string | null;
+  deliverableTitle?: string | null;
   senderId: string;
   recipientId: string;
   weekStart: string;

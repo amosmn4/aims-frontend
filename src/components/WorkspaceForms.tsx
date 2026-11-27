@@ -1,6 +1,13 @@
 import { RecordDialog, type Field } from "./RecordDialog";
 import { useState } from "react";
-import { taskDescription, checklistStatus, checklistProgress } from "@/lib/task-content";
+import {
+  taskDescription,
+  checklistStatus,
+  checklistProgress,
+  hasDeliverables,
+} from "@/lib/task-content";
+import { TaskDelegateDialog } from "./TaskDelegations";
+import { validDate } from "@/lib/text";
 import { mutateApi, saveRecord, useWorkspace } from "@/lib/workspace";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -173,6 +180,9 @@ export function TaskForm({
   projectId?: string | undefined;
   onClose: () => void;
 }) {
+  const [taskId] = useState(() => record?.id ?? crypto.randomUUID());
+  const [delegating, setDelegating] = useState<{ task: Task; id: string } | null>(null);
+  const requireDeliverables = !record || record.requiresDeliverables === true;
   const queryClient = useQueryClient();
   const { projects, people, businesses } = useWorkspace();
   const { mode, me } = useRole();
@@ -210,103 +220,145 @@ export function TaskForm({
     source: record?.source ?? (selected ? "project" : "ad_hoc"),
   };
   return (
-    <RecordDialog<typeof initial>
-      title={record ? "Edit task" : "New task"}
-      description={
-        selected
-          ? "Add a task to this project."
-          : "Add a task for this week. A weekly plan is optional."
-      }
-      onClose={onClose}
-      initial={initial}
-      fields={(values): Field<typeof values>[] => [
-        { name: "title", label: "Task title", required: true },
-        {
-          name: "description",
-          label: "Description / deliverables (optional)",
-          type: "richtext",
-          checklist: true,
-        },
-        ...(!checklistProgress(values.description).total
-          ? [
-              {
-                name: "status" as const,
-                label: "Task status",
-                type: "select" as const,
-                options: ["To do", "In progress", "Done", "Blocked", "Cancelled"].map((value) => ({
-                  value,
-                  label: value,
-                })),
-              },
-            ]
-          : []),
-        {
-          name: "weekStart",
-          label: "Reporting period (optional)",
-          type: "date",
-          help: <TaskPeriodNotice period={values.weekStart} staff={values.assignee} />,
-        },
-        { name: "due", label: "Due date", type: "date", required: true },
-        {
-          name: "priority",
-          label: "Priority",
-          type: "select",
-          options: ["High", "Medium", "Low", "Urgent"].map((value) => ({ value, label: value })),
-        },
-        ...(!selected && availableBusinesses.length > 1
-          ? [
-              {
-                name: "business" as const,
-                label: "Business",
-                type: "select" as const,
-                options: availableBusinesses.map((business) => ({
-                  value: business.id,
-                  label: business.name,
-                })),
-              },
-            ]
-          : []),
-        ...(mode === "ceo" || manages(values.business) || parent?.lead === me.id
-          ? [
-              {
-                name: "assignee" as const,
-                label: "Assignee",
-                type: "select" as const,
-                required: true,
-                options: people
-                  .filter((person) => !selected || parent?.members.includes(person.id))
-                  .map((person) => ({ value: person.id, label: person.name })),
-              },
-            ]
-          : []),
-      ]}
-      onSave={async (values) => {
-        const task = taskSchema.parse({
-          ...record,
-          ...values,
-          weekStart: values.weekStart
-            ? reportingWeek(new Date(`${values.weekStart}T12:00:00Z`))
-            : undefined,
-          description: values.description,
-          status: checklistStatus(values.description, values.status),
-          id: record?.id ?? crypto.randomUUID(),
-          subtasks: [],
-        });
-        if (isDemo) await saveRecord("tasks", task);
-        else {
-          const result = await mutateApi<{ planLink?: "waiting" | "added" | "linked" }>(
-            `/records/tasks/${encodeURIComponent(task.id)}`,
-            { method: "PUT", body: JSON.stringify(task) },
-          );
-          await queryClient.invalidateQueries({ queryKey: ["weekly"] });
-          if (result.planLink === "waiting")
-            toast.info(
-              "No plan exists for this period. Task saved; it will be included automatically when the plan is created.",
-            );
-          else if (result.planLink === "added") toast.success("Task added to the weekly plan");
+    <>
+      <RecordDialog<typeof initial>
+        title={record ? "Edit task" : "New task"}
+        description={
+          selected
+            ? "Add a task to this project."
+            : "Add a task for this week. A weekly plan is optional."
         }
-      }}
-    />
+        onClose={onClose}
+        initial={initial}
+        fields={(values): Field<typeof values>[] => [
+          { name: "title", label: "Task title", required: true },
+          {
+            name: "description",
+            label: requireDeliverables
+              ? "Description / deliverables"
+              : "Description / deliverables (optional)",
+            required: requireDeliverables,
+            help: requireDeliverables ? "Add at least one named checklist deliverable." : undefined,
+            type: "richtext",
+            checklist: true,
+            ...(!isDemo && mode === "staff" && initial.assignee === me.id
+              ? {
+                  onDelegate: (id: string, description: string) => {
+                    if (!values.title.trim() || !validDate(values.due)) {
+                      toast.error("Enter the task title and a valid due date before delegating.");
+                      return;
+                    }
+                    setDelegating({
+                      id,
+                      task: taskSchema.parse({
+                        ...record,
+                        ...values,
+                        id: taskId,
+                        description,
+                        weekStart: values.weekStart
+                          ? reportingWeek(new Date(`${values.weekStart}T12:00:00Z`))
+                          : undefined,
+                      }),
+                    });
+                  },
+                }
+              : {}),
+          },
+          ...(!checklistProgress(values.description).total
+            ? [
+                {
+                  name: "status" as const,
+                  label: "Task status",
+                  type: "select" as const,
+                  options: ["To do", "In progress", "Done", "Blocked", "Cancelled"].map(
+                    (value) => ({
+                      value,
+                      label: value,
+                    }),
+                  ),
+                },
+              ]
+            : []),
+          {
+            name: "weekStart",
+            label: "Reporting period (optional)",
+            type: "date",
+            help: <TaskPeriodNotice period={values.weekStart} staff={values.assignee} />,
+          },
+          { name: "due", label: "Due date", type: "date", required: true },
+          {
+            name: "priority",
+            label: "Priority",
+            type: "select",
+            options: ["High", "Medium", "Low", "Urgent"].map((value) => ({ value, label: value })),
+          },
+          ...(!selected && availableBusinesses.length > 1
+            ? [
+                {
+                  name: "business" as const,
+                  label: "Business",
+                  type: "select" as const,
+                  options: availableBusinesses.map((business) => ({
+                    value: business.id,
+                    label: business.name,
+                  })),
+                },
+              ]
+            : []),
+          ...(mode === "ceo" || manages(values.business) || parent?.lead === me.id
+            ? [
+                {
+                  name: "assignee" as const,
+                  label: "Assignee",
+                  type: "select" as const,
+                  required: true,
+                  options: people
+                    .filter((person) => !selected || parent?.members.includes(person.id))
+                    .map((person) => ({ value: person.id, label: person.name })),
+                },
+              ]
+            : []),
+        ]}
+        onSave={async (values) => {
+          if (requireDeliverables && !hasDeliverables(values.description))
+            throw new Error(
+              "Add at least one named checklist deliverable before saving this task.",
+            );
+          const task = taskSchema.parse({
+            ...record,
+            ...values,
+            weekStart: values.weekStart
+              ? reportingWeek(new Date(`${values.weekStart}T12:00:00Z`))
+              : undefined,
+            description: values.description,
+            status: checklistStatus(values.description, values.status),
+            id: taskId,
+            requiresDeliverables: requireDeliverables,
+            subtasks: [],
+          });
+          if (isDemo) await saveRecord("tasks", task);
+          else {
+            const result = await mutateApi<{ planLink?: "waiting" | "added" | "linked" }>(
+              `/records/tasks/${encodeURIComponent(task.id)}`,
+              { method: "PUT", body: JSON.stringify(task) },
+            );
+            await queryClient.invalidateQueries({ queryKey: ["weekly"] });
+            if (result.planLink === "waiting")
+              toast.info(
+                "No plan exists for this period. Task saved; it will be included automatically when the plan is created.",
+              );
+            else if (result.planLink === "added") toast.success("Task added to the weekly plan");
+          }
+        }}
+      />
+      {delegating && (
+        <TaskDelegateDialog
+          task={delegating.task}
+          deliverableId={delegating.id}
+          onClose={() => setDelegating(null)}
+        />
+      )}
+    </>
   );
 }
 

@@ -1,6 +1,6 @@
 import { TaskList } from "@tiptap/extension-list";
 import { DeliverableItem } from "./deliverable-item";
-import { DeliverableWeek } from "./deliverable-week";
+import { DeliverableWeek, DeliverableDelegate } from "./deliverable-week";
 import { ensureChecklistIds } from "@/lib/task-content";
 import { Extension } from "@tiptap/core";
 import ChecklistOutlined from "@mui/icons-material/ChecklistOutlined";
@@ -421,6 +421,7 @@ export function RichTextEditor({
   ariaLabel = "Formatted content",
   checklist = false,
   deliverableWeek,
+  onDelegate,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -428,6 +429,7 @@ export function RichTextEditor({
   ariaLabel?: string | undefined;
   checklist?: boolean | undefined;
   deliverableWeek?: string | undefined;
+  onDelegate?: ((id: string, html: string) => void) | undefined;
 }) {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -888,7 +890,11 @@ export function RichTextEditor({
         </Button>
       </div>
       <DeliverableWeek.Provider value={deliverableWeek ?? null}>
-        <EditorContent editor={editor} />
+        <DeliverableDelegate.Provider
+          value={onDelegate ? (id) => onDelegate(id, editor.getHTML()) : undefined}
+        >
+          <EditorContent editor={editor} />
+        </DeliverableDelegate.Provider>
       </DeliverableWeek.Provider>
       <p className="mt-1 text-xs font-normal text-muted-foreground">
         Within a list, Enter adds an item. Shift+Enter adds a line within the item. Tab and

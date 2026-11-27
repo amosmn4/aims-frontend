@@ -24,7 +24,7 @@ test("description clicks preserve content and formatting, undo, redo and checkli
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Task title", { exact: true }).fill("Editor regression task");
   const description = dialog.getByRole("textbox", {
-    name: "Description / deliverables (optional)",
+    name: "Description / deliverables",
     exact: true,
   });
   const undo = dialog.getByRole("button", { name: "Undo", exact: true });

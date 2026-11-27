@@ -9,6 +9,7 @@ export const deliverableStatuses = {
   cancelled: "Cancelled",
   forwarded: "Forwarded",
   postponed: "Postponed",
+  delegated: "Delegated",
 } as const;
 export const deliverableSchema = z.object({
   id: z.string().min(1),
@@ -16,7 +17,16 @@ export const deliverableSchema = z.object({
   done: z.boolean(),
   detail: z.string().max(10000).optional(),
   status: z
-    .enum(["pending", "in_progress", "completed", "blocked", "cancelled", "forwarded", "postponed"])
+    .enum([
+      "pending",
+      "in_progress",
+      "completed",
+      "blocked",
+      "cancelled",
+      "forwarded",
+      "postponed",
+      "delegated",
+    ])
     .optional(),
   targetDate: z.string().optional(),
 });
@@ -26,7 +36,7 @@ export function deliverableStatus(item: Deliverable) {
 }
 export function taskOutcome(
   status?: string,
-): Exclude<keyof typeof deliverableStatuses, "forwarded" | "postponed"> {
+): Exclude<keyof typeof deliverableStatuses, "forwarded" | "postponed" | "delegated"> {
   return status === "Done"
     ? "completed"
     : status === "In progress"
@@ -46,6 +56,13 @@ export function checklistProgress(html = "") {
   };
 }
 export type DeliverableStatus = keyof typeof deliverableStatuses;
+export function taskStatusKey(status: string): DeliverableStatus {
+  const key = status.toLowerCase().replaceAll(" ", "_");
+  if (key === "done") return "completed";
+  return Object.prototype.hasOwnProperty.call(deliverableStatuses, key)
+    ? (key as DeliverableStatus)
+    : "pending";
+}
 export function deliverableDates(week?: string | null) {
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Nairobi",
@@ -74,6 +91,7 @@ export function checklistOutcomes(html = "") {
     cancelled: 0,
     forwarded: 0,
     postponed: 0,
+    delegated: 0,
   };
   for (const tag of html.match(/<li\b[^>]*data-type="taskItem"[^>]*>/gi) ?? []) {
     const status = tag.match(/data-status="([a-z_]+)"/i)?.[1];
@@ -97,6 +115,15 @@ export function checklistSummary(html = "") {
     )
     .join(" | ");
 }
+export function hasDeliverables(html = "") {
+  const document = new DOMParser().parseFromString(html, "text/html");
+  const rows = Array.from(document.querySelectorAll('li[data-type="taskItem"]'));
+  return rows.length > 0 && rows.every((row) => !!row.querySelector("p")?.textContent?.trim());
+}
+export function reportTaskComplete(html = "") {
+  const counts = checklistOutcomes(html);
+  return checklistProgress(html).total > 0 && !counts.pending && !counts.in_progress;
+}
 export function checklistStatus<T extends string>(
   html: string,
   fallback: T,
@@ -111,7 +138,12 @@ export function checklistStatus<T extends string>(
         ? "Cancelled"
         : counts.blocked > 0
           ? "Blocked"
-          : done || counts.forwarded || counts.postponed || counts.cancelled || counts.in_progress
+          : done ||
+              counts.forwarded ||
+              counts.postponed ||
+              counts.cancelled ||
+              counts.in_progress ||
+              counts.delegated
             ? "In progress"
             : "To do";
 }

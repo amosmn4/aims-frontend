@@ -22,6 +22,7 @@ export type WeeklyItem = {
   source?: "project" | "planned" | "ad_hoc" | "contingency" | undefined;
   business?: string | undefined;
   subtasks?: Deliverable[] | undefined;
+  requiresDeliverables?: boolean | undefined;
   id: string;
   taskId?: string | undefined;
   title: string;
@@ -48,6 +49,7 @@ export type WeeklyEntry = {
   version: number;
   submission: WeeklySubmission;
   submittedAt: string | null;
+  firstSubmittedAt?: string | null;
   lateReason?: string | null;
   recalledAt?: string | null;
   reviewedAt: string | null;
@@ -105,6 +107,7 @@ export function planItems(detail: WeeklyDetail): WeeklyItem[] {
       business: task.business,
       source: task.source,
       subtasks: task.subtasks,
+      requiresDeliverables: task.requiresDeliverables,
     })),
   ];
 }
@@ -144,6 +147,7 @@ export function reportItems(detail: WeeklyDetail): WeeklyItem[] {
       source: task.source,
       business: task.business,
       subtasks: task.subtasks,
+      requiresDeliverables: task.requiresDeliverables,
     }));
   const saved = detail.report?.submission.items ?? [];
   return [
@@ -237,6 +241,7 @@ export type WeeklyDetail = {
     source?: WeeklyItem["source"];
     business?: string;
     subtasks?: WeeklyItem["subtasks"];
+    requiresDeliverables?: boolean;
   }[];
 };
 export type WeeklyBrief = {

@@ -44,7 +44,7 @@ export function DelegationActions({ request }: { request: TaskDelegation }) {
       {incoming ? (
         <>
           <Button type="button" size="sm" disabled={busy} onClick={() => void respond("accepted")}>
-            Accept task
+            {request.deliverableId ? "Accept deliverable" : "Accept task"}
           </Button>
           <Button
             type="button"
@@ -97,6 +97,7 @@ export function TaskDelegationsPanel() {
               <strong>{plainText(row.taskTitle)}</strong>
               <span className="capitalize">{row.status}</span>
             </div>
+            {row.deliverableTitle && <p>Deliverable: {plainText(row.deliverableTitle)}</p>}
             <p className="text-muted-foreground">
               {row.senderId === account.id ? `To ${row.recipient.name}` : `From ${row.sender.name}`}{" "}
               | Week of {row.weekStart}
@@ -114,18 +115,42 @@ export function TaskDelegationsPanel() {
   );
 }
 
-export function TaskDelegateDialog({ task, onClose }: { task: Task; onClose: () => void }) {
+export function TaskDelegateDialog({
+  task,
+  deliverableId,
+  onClose,
+}: {
+  task: Task;
+  deliverableId?: string;
+  onClose: () => void;
+}) {
   const { account } = useAccount();
   const recipients = useQuery({
-    queryKey: ["task-delegation-recipients", account?.id, task.id],
-    queryFn: () => api<{ id: string; name: string }[]>(`/tasks/${task.id}/delegation-recipients`),
+    queryKey: ["task-delegation-recipients", account?.id, task.id, task.project, task.business],
+    queryFn: () =>
+      api<{ id: string; name: string }[]>(
+        `/tasks/${task.id}/delegation-recipients${deliverableId ? `?${new URLSearchParams({ project: task.project, business: task.business ?? "b0" })}` : ""}`,
+      ),
     enabled: !isDemo && account?.role === "staff",
   });
   const query = useTaskDelegations();
   const client = useQueryClient();
   const [assignee, setAssignee] = useState("");
   const [busy, setBusy] = useState(false);
-  const pending = query.data?.find((row) => row.taskId === task.id && row.status === "pending");
+  const pending = query.data?.find(
+    (row) =>
+      row.taskId === task.id &&
+      (row.deliverableId ?? undefined) === deliverableId &&
+      row.status === "pending",
+  );
+  const accepted = deliverableId
+    ? query.data?.find(
+        (row) =>
+          row.taskId === task.id &&
+          row.deliverableId === deliverableId &&
+          row.status === "accepted",
+      )
+    : undefined;
   const eligible = recipients.data ?? [];
   return (
     <Dialog
@@ -136,13 +161,19 @@ export function TaskDelegateDialog({ task, onClose }: { task: Task; onClose: () 
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delegate task</DialogTitle>
+          <DialogTitle>{deliverableId ? "Delegate deliverable" : "Delegate task"}</DialogTitle>
           <DialogDescription>
-            {plainText(task.title)} stays assigned to you until the selected staff member accepts.
+            {deliverableId
+              ? "Only the selected deliverable is offered. The parent task stays assigned to you."
+              : `${plainText(task.title)} stays assigned to you until the selected staff member accepts.`}{" "}
             On acceptance it appears in their weekly plan.
           </DialogDescription>
         </DialogHeader>
-        {pending ? (
+        {accepted ? (
+          <p className="text-sm">
+            Accepted by {accepted.recipient.name}. This deliverable is in their plan.
+          </p>
+        ) : pending ? (
           <div className="text-sm">
             <p>Awaiting {pending.recipient.name}'s response.</p>
             <DelegationActions request={pending} />
@@ -191,7 +222,7 @@ export function TaskDelegateDialog({ task, onClose }: { task: Task; onClose: () 
           <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
             Close
           </Button>
-          {!pending && (
+          {!pending && !accepted && (
             <Button
               type="button"
               disabled={
@@ -209,7 +240,12 @@ export function TaskDelegateDialog({ task, onClose }: { task: Task; onClose: () 
                     await perform(async () => {
                       await mutateApi(`/tasks/${task.id}/delegate`, {
                         method: "POST",
-                        body: JSON.stringify({ assignee }),
+                        body: JSON.stringify({
+                          assignee,
+                          ...(deliverableId
+                            ? { deliverableId, weekStart: task.weekStart, source: task }
+                            : {}),
+                        }),
                       });
                       await client.invalidateQueries({ queryKey: ["task-delegations"] });
                       await client.invalidateQueries({ queryKey: ["weekly"] });

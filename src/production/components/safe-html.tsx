@@ -115,6 +115,7 @@ export function SafeHtml({
                 "data-status",
                 "data-target-date",
                 "data-carry-key",
+                "data-carry-parent",
               ],
             }
           : CONFIG,

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getWorkspace, mutateApi, perform, useWorkspace } from "@/lib/workspace";
 import { ProjectForm, TaskForm } from "@/components/WorkspaceForms";
+import { TaskStatusBadge } from "@/components/TaskStatusBadge";
+import { taskStatusKey } from "@/lib/task-content";
 import { MonthlyReportEditor } from "@/components/MonthlyReportEditor";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { Download, FileText, Lock } from "@/components/icons";
@@ -241,7 +243,11 @@ function ProjectPage() {
               </div>
               <Card className="divide-y p-0">
                 {pt.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between px-5 py-3 text-sm">
+                  <div
+                    key={t.id}
+                    className="task-status-edge flex items-center justify-between px-5 py-3 text-sm"
+                    data-task-status={taskStatusKey(t.status)}
+                  >
                     <span
                       className={t.status === "Done" ? "text-muted-foreground line-through" : ""}
                     >
@@ -249,7 +255,7 @@ function ProjectPage() {
                     </span>
                     <span className="flex items-center gap-3 text-xs text-muted-foreground">
                       {person(t.assignee).name}
-                      <Pill>{t.status}</Pill>
+                      <TaskStatusBadge status={t.status} />
                     </span>
                   </div>
                 ))}

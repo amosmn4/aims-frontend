@@ -51,6 +51,7 @@ export const taskSchema = z.object({
   weekStart: date.optional(),
   source: z.enum(["project", "planned", "ad_hoc", "contingency"]).optional(),
   subtasks: z.array(deliverableSchema).max(100).optional(),
+  requiresDeliverables: z.boolean().optional(),
 });
 export const reportSchema = z.object({
   id,

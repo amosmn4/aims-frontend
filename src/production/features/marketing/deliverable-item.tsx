@@ -8,11 +8,13 @@ import {
   type NodeViewProps,
 } from "@tiptap/react";
 import { DeliverableControls } from "@/components/DeliverableControls";
+import { TaskStatusBadge } from "@/components/TaskStatusBadge";
 import { deliverableStatuses, type DeliverableStatus } from "@/lib/task-content";
-import { DeliverableWeek } from "./deliverable-week";
+import { DeliverableWeek, DeliverableDelegate } from "./deliverable-week";
 
 function DeliverableItemView({ node, editor, updateAttributes, getPos }: NodeViewProps) {
   const week = useContext(DeliverableWeek);
+  const delegate = useContext(DeliverableDelegate);
   const raw = node.attrs["status"] as string | null;
   const status: DeliverableStatus =
     raw && Object.prototype.hasOwnProperty.call(deliverableStatuses, raw)
@@ -31,33 +33,45 @@ function DeliverableItemView({ node, editor, updateAttributes, getPos }: NodeVie
       data-checked={String(status === "completed")}
     >
       <NodeViewContent className="deliverable-content" />
+      <TaskStatusBadge status={status} className="deliverable-status" />
       <DeliverableControls
         title={title}
         status={status}
         targetDate={node.attrs["targetDate"]}
         week={week}
         disabled={!editor.isEditable}
+        onDelegate={delegate ? () => delegate(node.attrs["deliverableId"]) : undefined}
         onChange={(next, date) => {
           const position = getPos();
-          if ((next === "forwarded" || next === "postponed") && typeof position === "number") {
+          const undo = next === "pending" && ["forwarded", "postponed"].includes(status);
+          if (
+            (next === "forwarded" || next === "postponed" || undo) &&
+            typeof position === "number"
+          ) {
             const transaction = editor.state.tr;
             transaction.setNodeMarkup(position, undefined, {
               ...node.attrs,
               status: next,
               checked: false,
               targetDate: date ?? null,
+              carryParent: null,
             });
             node.descendants((child, offset) => {
               if (
                 child.type.name === "taskItem" &&
                 !child.attrs["checked"] &&
-                child.attrs["status"] !== "cancelled"
+                !["cancelled", "delegated"].includes(child.attrs["status"]) &&
+                (undo
+                  ? child.attrs["carryParent"] === node.attrs["deliverableId"]
+                  : !["forwarded", "postponed"].includes(child.attrs["status"]) ||
+                    child.attrs["carryParent"] === node.attrs["deliverableId"])
               )
                 transaction.setNodeMarkup(position + 1 + offset, undefined, {
                   ...child.attrs,
                   status: next,
                   checked: false,
                   targetDate: date ?? null,
+                  carryParent: undo ? null : node.attrs["deliverableId"],
                 });
             });
             editor.view.dispatch(transaction);
@@ -66,6 +80,7 @@ function DeliverableItemView({ node, editor, updateAttributes, getPos }: NodeVie
               status: next,
               checked: next === "completed",
               targetDate: date ?? null,
+              carryParent: null,
             });
         }}
       />
@@ -101,6 +116,12 @@ export const DeliverableItem = TaskItem.extend({
         renderHTML: (attributes) =>
           attributes["carryKey"] ? { "data-carry-key": attributes["carryKey"] } : {},
       },
+      carryParent: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("data-carry-parent"),
+        renderHTML: (attributes) =>
+          attributes["carryParent"] ? { "data-carry-parent": attributes["carryParent"] } : {},
+      },
     };
   },
   addNodeView() {
@@ -122,7 +143,13 @@ export const DeliverableItem = TaskItem.extend({
                 ...node.attrs,
                 deliverableId: next,
                 ...(id
-                  ? { checked: false, status: "pending", targetDate: null, carryKey: null }
+                  ? {
+                      checked: false,
+                      status: "pending",
+                      targetDate: null,
+                      carryKey: null,
+                      carryParent: null,
+                    }
                   : {}),
               });
               seen.add(next);

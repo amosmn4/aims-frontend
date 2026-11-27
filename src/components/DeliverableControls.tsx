@@ -4,9 +4,10 @@ import ArrowForwardOutlined from "@mui/icons-material/ArrowForwardOutlined";
 import ScheduleOutlined from "@mui/icons-material/ScheduleOutlined";
 import CloseOutlined from "@mui/icons-material/CloseOutlined";
 import BlockOutlined from "@mui/icons-material/BlockOutlined";
+import PersonAddAltOutlined from "@mui/icons-material/PersonAddAltOutlined";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
-import { deliverableDates, deliverableStatuses, type DeliverableStatus } from "@/lib/task-content";
+import { deliverableDates, type DeliverableStatus } from "@/lib/task-content";
 
 const actions = [
   { status: "completed", label: "Done", Icon: CheckOutlined },
@@ -23,6 +24,7 @@ export function DeliverableControls({
   week,
   disabled = false,
   onChange,
+  onDelegate,
 }: {
   title: string;
   status: DeliverableStatus;
@@ -30,6 +32,7 @@ export function DeliverableControls({
   week?: string | null | undefined;
   disabled?: boolean;
   onChange?: ((status: DeliverableStatus, date?: string) => void) | undefined;
+  onDelegate?: (() => void) | undefined;
 }) {
   const [postponing, setPostponing] = useState(false);
   const dates = deliverableDates(week);
@@ -44,6 +47,7 @@ export function DeliverableControls({
     <>
       <span
         className="deliverable-actions"
+        data-task-status={status}
         contentEditable={false}
         role="group"
         aria-label={`Outcome for ${title}`}
@@ -66,7 +70,7 @@ export function DeliverableControls({
                 type="checkbox"
                 aria-label={choice === "completed" ? title : `${label}: ${title}`}
                 checked={status === choice}
-                disabled={!editable}
+                disabled={!editable || status === "delegated"}
                 onChange={() => {
                   if (status === choice) {
                     onChange?.("pending");
@@ -83,8 +87,22 @@ export function DeliverableControls({
               <Icon fontSize="inherit" />
             </label>
           ))}
-        {status !== "pending" && status !== "completed" && (
-          <span className="deliverable-outcome">{deliverableStatuses[status]}</span>
+        {(onDelegate || status === "delegated") && (
+          <button
+            type="button"
+            className="deliverable-action"
+            data-selected={status === "delegated"}
+            title="Delegate"
+            aria-label={`Delegate: ${title}`}
+            disabled={
+              !onDelegate ||
+              disabled ||
+              ["completed", "cancelled", "forwarded", "postponed", "delegated"].includes(status)
+            }
+            onClick={onDelegate}
+          >
+            <PersonAddAltOutlined fontSize="inherit" />
+          </button>
         )}
         {targetDate && (status === "forwarded" || status === "postponed") && (
           <span className="deliverable-date">{targetDate}</span>
